@@ -1,0 +1,1280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SeaWise Client</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        /* ===== Light Mode (default) ===== */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #F5F5F5;
+            min-height: 100vh;
+            color: #0A0A0A;
+            padding: 0;
+        }
+        .container { max-width: 700px; margin: 0 auto; padding: 0 2rem 2rem; }
+        .text-primary { color: #2563EB; }
+
+        /* Top row - server info + disconnect */
+        .top-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #FFFFFF;
+            border: 1px solid #E0E0E0;
+            border-left: 4px solid #F97316;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            padding: 1rem 1.25rem;
+            margin-bottom: 1rem;
+        }
+        .server-info {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .server-details {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .server-name {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        .server-meta {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: #525252;
+        }
+        .server-id-footer {
+            position: fixed;
+            bottom: 0.75rem;
+            left: 0.75rem;
+            font-family: monospace;
+            font-size: 0.65rem;
+            color: #0A0A0A;
+            opacity: 0.4;
+        }
+        .version-footer {
+            position: fixed;
+            bottom: 0.75rem;
+            right: 0.75rem;
+            font-family: monospace;
+            font-size: 0.65rem;
+            color: #0A0A0A;
+            opacity: 0.4;
+        }
+        .disconnect-btn {
+            background: #FEF2F2;
+            color: #DC2626;
+            border: 1px solid #FECACA;
+            padding: 0.4rem 0.75rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .disconnect-btn:hover {
+            background: #FEE2E2;
+        }
+
+        /* Add service horizontal form */
+        .add-service-form {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+        .add-service-form input {
+            margin-bottom: 0;
+            flex: 1;
+        }
+        .add-service-form input[type="number"] {
+            max-width: 100px;
+        }
+        .add-service-form .btn {
+            width: auto;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 600px) {
+            .top-row {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: stretch;
+            }
+            .add-service-form {
+                flex-direction: column;
+            }
+            .add-service-form input[type="number"] {
+                max-width: none;
+            }
+        }
+
+        /* Header Bar */
+        .header-bar {
+            background: #111111;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding: 1rem 0;
+            margin-bottom: 2rem;
+        }
+        .header-content {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .logo-group {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #FFFFFF;
+        }
+        .subtitle { color: rgba(255,255,255,0.5); font-size: 0.8rem; margin-top: 0; }
+
+        /* Status Badge */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-top: 0;
+        }
+        .status-badge.online {
+            background: #ECFDF5;
+            color: #059669;
+            border: 1px solid #A7F3D0;
+        }
+        .status-badge.offline {
+            background: #FEF2F2;
+            color: #DC2626;
+            border: 1px solid #FECACA;
+        }
+        .status-badge.pending {
+            background: #FFFBEB;
+            color: #D97706;
+            border: 1px solid #FDE68A;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+        .status-badge.pending .status-dot {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        /* Cards */
+        .card {
+            background: #FFFFFF;
+            border: 1px solid #E0E0E0;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card-icon.blue { background: #EFF6FF; color: #2563EB; }
+        .card-icon.green { background: #ECFDF5; color: #059669; }
+        .card-icon.red { background: #FEF2F2; color: #DC2626; }
+        .card-icon.orange { background: rgba(249,115,22,0.2); color: #F97316; }
+        .card-icon svg { width: 20px; height: 20px; }
+        .card-title { font-size: 1rem; font-weight: 600; }
+        .card-subtitle { font-size: 0.8rem; color: #525252; }
+
+        /* Form Elements */
+        input {
+            width: 100%;
+            padding: 0.875rem 1rem;
+            border: 1px solid #E0E0E0;
+            border-radius: 10px;
+            background: #FFFFFF;
+            color: #0A0A0A;
+            font-size: 0.95rem;
+            margin-bottom: 0.75rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        input:focus {
+            outline: none;
+            border-color: #2563EB;
+            box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+        }
+        input::placeholder { color: #8C8C8C; }
+        .input-hint {
+            font-size: 0.75rem;
+            color: #525252;
+            margin: -0.5rem 0 0.75rem 0;
+        }
+
+        /* Buttons */
+        .btn {
+            width: 100%;
+            padding: 0.875rem 1.5rem;
+            border: none;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-primary {
+            background: #2563EB;
+            color: #FFFFFF;
+        }
+        .btn-primary:hover {
+            background: #1D4ED8;
+        }
+        .btn-secondary {
+            background: #F0F0F0;
+            color: #374151;
+            border: 1px solid #E0E0E0;
+        }
+        .btn-secondary:hover {
+            background: #E0E0E0;
+        }
+        .btn-danger {
+            background: #FEF2F2;
+            color: #DC2626;
+            border: 1px solid #FECACA;
+        }
+        .btn-danger:hover {
+            background: #FEE2E2;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Services List */
+        .services-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+        .services-count {
+            font-size: 0.8rem;
+            color: #EA580C;
+            background: rgba(249,115,22,0.1);
+            padding: 0.25rem 0.75rem;
+            border-radius: 50px;
+        }
+        .service-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: #EFF6FF;
+            border: 1px solid #DBEAFE;
+            border-radius: 12px;
+            margin-bottom: 0.5rem;
+            transition: all 0.2s;
+        }
+        .service-item:hover {
+            border-color: #F97316;
+        }
+        .service-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            background: rgba(249,115,22,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: #F97316;
+            font-size: 1.1rem;
+        }
+        .service-info { flex: 1; min-width: 0; }
+        .service-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .service-details {
+            font-size: 0.8rem;
+            color: #525252;
+            margin-top: 0.2rem;
+        }
+        .service-subdomain {
+            font-size: 0.75rem;
+            color: #059669;
+            font-family: monospace;
+            background: #ECFDF5;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+        }
+        .service-delete {
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            font-size: 1rem;
+            line-height: 1;
+            background: #FEF2F2;
+            color: #DC2626;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .service-delete:hover {
+            background: #FEE2E2;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: #525252;
+        }
+        .empty-state svg {
+            width: 48px;
+            height: 48px;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+
+        /* Waiting Spinner */
+        .waiting {
+            text-align: center;
+            padding: 2rem;
+        }
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid rgba(37,99,235,0.2);
+            border-top-color: #2563EB;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Info Row */
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #E0E0E0;
+        }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { color: #525252; font-size: 0.9rem; }
+        .info-value {
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+        .info-value.mono {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #525252;
+        }
+
+        .hidden { display: none !important; }
+
+        /* Login screen centering */
+        #login-screen:not(.hidden) {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: calc(100vh - 80px);
+        }
+
+        /* Divider */
+        .divider {
+            height: 1px;
+            background: #E0E0E0;
+            margin: 1rem 0;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+        }
+        .modal-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal {
+            background: #FFFFFF;
+            border: 1px solid #E0E0E0;
+            border-radius: 16px;
+            padding: 1.5rem;
+            max-width: 400px;
+            width: 90%;
+            transform: scale(0.95);
+            transition: transform 0.2s;
+        }
+        .modal-overlay.visible .modal {
+            transform: scale(1);
+        }
+        .modal-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #FEF2F2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem;
+        }
+        .modal-icon svg {
+            width: 24px;
+            height: 24px;
+            color: #DC2626;
+        }
+        .modal-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 0.5rem;
+        }
+        .modal-message {
+            font-size: 0.9rem;
+            color: #525252;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 0.75rem;
+        }
+        .modal-buttons .btn {
+            flex: 1;
+        }
+
+        /* Settings Icon */
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .settings-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: none;
+            background: rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.7);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, color 0.2s;
+        }
+        .settings-btn:hover {
+            background: rgba(255,255,255,0.2);
+            color: #FFFFFF;
+        }
+        .settings-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* Settings Modal */
+        .settings-modal {
+            max-width: 360px;
+        }
+        .settings-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .settings-section {
+            margin-bottom: 1rem;
+        }
+        .settings-section:last-child {
+            margin-bottom: 0;
+        }
+        .settings-label {
+            font-size: 0.8rem;
+            color: #525252;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .settings-label svg {
+            width: 14px;
+            height: 14px;
+        }
+        .password-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            background: #F5F5F5;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-bottom: 0.75rem;
+        }
+        .password-status.protected {
+            background: #ECFDF5;
+            color: #059669;
+        }
+        .password-status.unprotected {
+            background: #FEF2F2;
+            color: #DC2626;
+        }
+        .password-status svg {
+            width: 16px;
+            height: 16px;
+        }
+        .settings-input {
+            width: 100%;
+            padding: 0.625rem 0.75rem;
+            border: 1px solid #E0E0E0;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+        .settings-input:focus {
+            outline: none;
+            border-color: #2563EB;
+        }
+        .settings-btn-row {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .settings-btn-row .btn {
+            padding: 0.625rem 1rem;
+            font-size: 0.85rem;
+        }
+        .settings-error {
+            color: #DC2626;
+            font-size: 0.8rem;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Dark Header Bar -->
+    <div class="header-bar">
+        <div class="header-content">
+            <div class="logo-group">
+                <img src="/static/seawise-logo.png" alt="SeaWise" style="height: 32px; width: auto;">
+                <div class="subtitle">Service Manager</div>
+            </div>
+            <div class="header-right">
+                <div class="status-badge offline" id="status-badge">
+                    <span class="status-dot"></span>
+                    <span id="status-text">Not Connected</span>
+                </div>
+                <button class="settings-btn" onclick="showSettingsModal()" title="Settings">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Screen (shown when password is set but not authenticated) -->
+    <div class="container hidden" id="login-screen">
+        <div class="card" style="max-width: 400px; width: 100%; margin: 0 auto; border: 2px solid #F97316;">
+            <div class="card-header" style="justify-content: center;">
+                <div class="card-icon orange">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="card-title">Password Required</div>
+                    <div class="card-subtitle">Enter your password to access the manager</div>
+                </div>
+            </div>
+            <div>
+                <input type="password" id="login-password" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()" />
+                <div id="login-error" style="color: #DC2626; font-size: 0.85rem; margin-bottom: 0.75rem; display: none;"></div>
+                <button class="btn btn-primary" onclick="doLogin()">Unlock</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container" id="main-container">
+
+        <!-- Connect Card (shown when not paired) - centered single column -->
+        <div class="card" id="connect-card" style="max-width: 450px; margin: 0 auto; border: 2px solid #F97316;">
+            <div class="card-header">
+                <div class="card-icon orange">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="card-title">Connect to SeaWise</div>
+                    <div class="card-subtitle">Link this server to your account</div>
+                </div>
+            </div>
+
+            <div id="connect-form">
+                <input type="text" id="server-name-input" placeholder="Server name (e.g., Home Server)" />
+                <button class="btn btn-primary" onclick="connectToSeaWise()">Connect to SeaWise</button>
+                <p class="input-hint" style="text-align: center; margin-top: 0.75rem;">Opens your browser to authorize this server</p>
+            </div>
+
+            <div id="waiting-approval" class="hidden">
+                <div class="waiting">
+                    <div class="spinner"></div>
+                    <p class="text-primary" style="font-weight: 500; margin-bottom: 0.5rem;">Waiting for authorization...</p>
+                    <p style="color: #525252; font-size: 0.85rem;">Complete the authorization in your browser</p>
+                </div>
+                <button class="btn btn-secondary" onclick="cancelPairing()" style="margin-top: 1rem;">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Main Content (shown when paired) -->
+        <div class="hidden" id="main-content">
+            <!-- Top Row: Server Info + Disconnect -->
+            <div class="top-row">
+                <div class="server-info">
+                    <div class="card-icon green">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z" />
+                        </svg>
+                    </div>
+                    <div class="server-details">
+                        <div class="server-name" id="server-name">My Server</div>
+                        <div class="server-meta">
+                            <span id="user-email">-</span>
+                        </div>
+                    </div>
+                </div>
+                <button class="disconnect-btn" onclick="showDisconnectModal()">Disconnect</button>
+            </div>
+
+            <!-- Add Service Section -->
+            <div class="card" id="add-service-card">
+                <div class="card-title" style="margin-bottom: 1rem;">Add Service</div>
+                <div class="add-service-form">
+                    <input type="text" id="service-name" placeholder="Service name (e.g., Plex)" />
+                    <input type="text" id="service-host" placeholder="Host" value="localhost" />
+                    <input type="number" id="service-port" placeholder="Port" min="1" max="65535" />
+                    <button class="btn btn-primary" onclick="addService()">Add</button>
+                </div>
+            </div>
+
+            <!-- Services Section -->
+            <div class="card" id="services-card">
+                <div class="services-header">
+                    <div class="card-title">Services</div>
+                    <span class="services-count" id="services-count">0 services</span>
+                </div>
+                <div id="services-list">
+                    <div class="empty-state">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+                        </svg>
+                        <p>No services added yet</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Disconnect Confirmation Modal -->
+    <div class="modal-overlay" id="disconnect-modal" onclick="if(event.target === this) hideDisconnectModal()">
+        <div class="modal">
+            <div class="modal-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                </svg>
+            </div>
+            <div class="modal-title">Disconnect from SeaWise?</div>
+            <div class="modal-message">You will need to re-pair this server to use services again.</div>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" onclick="hideDisconnectModal()">Cancel</button>
+                <button class="btn btn-danger" onclick="confirmDisconnect()">Disconnect</button>
+            </div>
+        </div>
+    </div>
+
+        </div>
+    </div>
+
+    <!-- Footer (shown when paired) -->
+    <div class="server-id-footer hidden" id="server-id-footer"></div>
+    <div class="version-footer" id="version-footer"></div>
+
+    <!-- Delete Service Confirmation Modal -->
+    <div class="modal-overlay" id="delete-service-modal" onclick="if(event.target === this) hideDeleteServiceModal()">
+        <div class="modal">
+            <div class="modal-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                </svg>
+            </div>
+            <div class="modal-title">Delete "<span id="delete-service-name"></span>"?</div>
+            <div class="modal-message">This will stop exposing this service through SeaWise.</div>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" onclick="hideDeleteServiceModal()">Cancel</button>
+                <button class="btn btn-danger" onclick="confirmDeleteService()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal" onclick="if(event.target === this) hideSettingsModal()">
+        <div class="modal settings-modal">
+            <div class="settings-title">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:20px;height:20px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                </svg>
+                Settings
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-label">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    </svg>
+                    Password Protection
+                </div>
+                <div class="password-status unprotected" id="settings-password-status">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    </svg>
+                    <span id="settings-password-text">Not protected</span>
+                </div>
+
+                <!-- Set password form (shown when no password) -->
+                <div id="settings-set-password">
+                    <input type="password" class="settings-input" id="settings-new-pw" placeholder="New password (min 8 chars)" />
+                    <input type="password" class="settings-input" id="settings-confirm-pw" placeholder="Confirm password" />
+                    <div class="settings-error hidden" id="settings-set-error"></div>
+                    <button class="btn btn-primary" style="width:100%;padding:0.625rem;" onclick="settingsSetPassword()">Enable Password</button>
+                </div>
+
+                <!-- Change/remove password (shown when password is set) -->
+                <div id="settings-change-password" class="hidden">
+                    <input type="password" class="settings-input" id="settings-current-pw" placeholder="Current password" />
+                    <input type="password" class="settings-input" id="settings-change-pw" placeholder="New password (leave blank to remove)" />
+                    <div class="settings-error hidden" id="settings-change-error"></div>
+                    <div class="settings-btn-row">
+                        <button class="btn btn-primary" style="flex:1;" onclick="settingsChangePassword()">Update</button>
+                        <button class="btn btn-danger" onclick="settingsRemovePassword()">Remove</button>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top:1rem; padding-top:1rem; border-top:1px solid #E0E0E0; display:flex; gap:0.5rem;">
+                <button class="btn btn-secondary" style="flex:1;padding:0.625rem;" onclick="hideSettingsModal()">Close</button>
+                <button class="btn btn-danger" style="padding:0.625rem;" onclick="lockUI()" id="lock-btn" title="Lock UI">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:16px;height:16px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let pollInterval;
+        let currentCode = '';
+        let addedServices = [];
+        let isAuthenticated = false;
+        let passwordSet = false;
+        const WEB_APP_URL = '{{.WebAppURL}}';
+
+        // --- Auth Functions ---
+        async function checkAuth() {
+            try {
+                const resp = await fetch('/api/auth/status');
+                const data = await resp.json();
+                passwordSet = data.password_set;
+                isAuthenticated = data.authenticated;
+
+                if (passwordSet && !isAuthenticated) {
+                    document.getElementById('login-screen').classList.remove('hidden');
+                    document.getElementById('main-container').classList.add('hidden');
+                    return false;
+                } else {
+                    document.getElementById('login-screen').classList.add('hidden');
+                    document.getElementById('main-container').classList.remove('hidden');
+                    return true;
+                }
+            } catch (err) {
+                console.error('Auth check failed:', err);
+                return true; // Fail open if auth endpoint is down
+            }
+        }
+
+        async function doLogin() {
+            const password = document.getElementById('login-password').value;
+            const errorEl = document.getElementById('login-error');
+            errorEl.style.display = 'none';
+
+            try {
+                const resp = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                const data = await resp.json();
+                if (data.error) {
+                    errorEl.textContent = data.error;
+                    errorEl.style.display = 'block';
+                    return;
+                }
+                document.getElementById('login-password').value = '';
+                isAuthenticated = true;
+                document.getElementById('login-screen').classList.add('hidden');
+                document.getElementById('main-container').classList.remove('hidden');
+                checkStatus();
+            } catch (err) {
+                errorEl.textContent = 'Login failed';
+                errorEl.style.display = 'block';
+            }
+        }
+
+        // --- Settings Modal ---
+        function showSettingsModal() {
+            updateSettingsUI();
+            document.getElementById('settings-modal').classList.add('visible');
+        }
+
+        function hideSettingsModal() {
+            document.getElementById('settings-modal').classList.remove('visible');
+            // Clear inputs
+            document.getElementById('settings-new-pw').value = '';
+            document.getElementById('settings-confirm-pw').value = '';
+            document.getElementById('settings-current-pw').value = '';
+            document.getElementById('settings-change-pw').value = '';
+            document.getElementById('settings-set-error').classList.add('hidden');
+            document.getElementById('settings-change-error').classList.add('hidden');
+        }
+
+        async function lockUI() {
+            if (!passwordSet) {
+                alert('Set a password first to enable locking.');
+                return;
+            }
+            try {
+                await fetch('/api/auth/logout', { method: 'POST' });
+                hideSettingsModal();
+                isAuthenticated = false;
+                document.getElementById('login-screen').classList.remove('hidden');
+                document.getElementById('main-container').classList.add('hidden');
+            } catch (err) {
+                alert('Failed to lock');
+            }
+        }
+
+        function updateSettingsUI() {
+            const statusEl = document.getElementById('settings-password-status');
+            const statusText = document.getElementById('settings-password-text');
+            const setForm = document.getElementById('settings-set-password');
+            const changeForm = document.getElementById('settings-change-password');
+
+            if (passwordSet) {
+                statusEl.className = 'password-status protected';
+                statusEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg><span>Protected</span>`;
+                setForm.classList.add('hidden');
+                changeForm.classList.remove('hidden');
+            } else {
+                statusEl.className = 'password-status unprotected';
+                statusEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg><span>Not protected</span>`;
+                setForm.classList.remove('hidden');
+                changeForm.classList.add('hidden');
+            }
+        }
+
+        async function settingsSetPassword() {
+            const pw = document.getElementById('settings-new-pw').value;
+            const confirm = document.getElementById('settings-confirm-pw').value;
+            const errorEl = document.getElementById('settings-set-error');
+            errorEl.classList.add('hidden');
+
+            if (pw.length < 8) { errorEl.textContent = 'Min 8 characters'; errorEl.classList.remove('hidden'); return; }
+            if (pw !== confirm) { errorEl.textContent = 'Passwords do not match'; errorEl.classList.remove('hidden'); return; }
+
+            try {
+                const resp = await fetch('/api/auth/set-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: pw })
+                });
+                const data = await resp.json();
+                if (data.error) { errorEl.textContent = data.error; errorEl.classList.remove('hidden'); return; }
+                document.getElementById('settings-new-pw').value = '';
+                document.getElementById('settings-confirm-pw').value = '';
+                passwordSet = true;
+                isAuthenticated = true;
+                updateSettingsUI();
+            } catch (err) {
+                errorEl.textContent = 'Failed to set password';
+                errorEl.classList.remove('hidden');
+            }
+        }
+
+        async function settingsChangePassword() {
+            const current = document.getElementById('settings-current-pw').value;
+            const newPw = document.getElementById('settings-change-pw').value;
+            const errorEl = document.getElementById('settings-change-error');
+            errorEl.classList.add('hidden');
+
+            if (!current) { errorEl.textContent = 'Enter current password'; errorEl.classList.remove('hidden'); return; }
+
+            // If new password is empty, treat as remove
+            if (!newPw) {
+                settingsRemovePassword();
+                return;
+            }
+
+            if (newPw.length < 8) { errorEl.textContent = 'Min 8 characters'; errorEl.classList.remove('hidden'); return; }
+
+            try {
+                const resp = await fetch('/api/auth/set-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: newPw, current_password: current })
+                });
+                const data = await resp.json();
+                if (data.error) { errorEl.textContent = data.error; errorEl.classList.remove('hidden'); return; }
+                document.getElementById('settings-current-pw').value = '';
+                document.getElementById('settings-change-pw').value = '';
+                hideSettingsModal();
+            } catch (err) {
+                errorEl.textContent = 'Failed to change password';
+                errorEl.classList.remove('hidden');
+            }
+        }
+
+        async function settingsRemovePassword() {
+            const current = document.getElementById('settings-current-pw').value;
+            const errorEl = document.getElementById('settings-change-error');
+            errorEl.classList.add('hidden');
+
+            if (!current) { errorEl.textContent = 'Enter current password'; errorEl.classList.remove('hidden'); return; }
+
+            try {
+                const resp = await fetch('/api/auth/remove-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: current })
+                });
+                const data = await resp.json();
+                if (data.error) { errorEl.textContent = data.error; errorEl.classList.remove('hidden'); return; }
+                passwordSet = false;
+                isAuthenticated = false;
+                document.getElementById('settings-current-pw').value = '';
+                document.getElementById('settings-change-pw').value = '';
+                updateSettingsUI();
+            } catch (err) {
+                errorEl.textContent = 'Failed to remove password';
+                errorEl.classList.remove('hidden');
+            }
+        }
+
+        // --- Main Functions ---
+        async function checkStatus() {
+            try {
+                const resp = await fetch('/api/status');
+                if (resp.status === 401) {
+                    // Session expired, show login
+                    isAuthenticated = false;
+                    await checkAuth();
+                    return;
+                }
+                const data = await resp.json();
+                const badge = document.getElementById('status-badge');
+                const statusText = document.getElementById('status-text');
+                const serverNameInput = document.getElementById('server-name-input');
+
+                if (serverNameInput && !serverNameInput.value && data.default_hostname) {
+                    serverNameInput.value = data.default_hostname;
+                }
+
+                // Show version
+                const versionFooter = document.getElementById('version-footer');
+                if (data.version) {
+                    versionFooter.textContent = data.version;
+                }
+
+                if (data.pairing_state === 'paired') {
+                    badge.className = 'status-badge online';
+                    statusText.textContent = 'Connected';
+                    document.getElementById('connect-card').classList.add('hidden');
+                    document.getElementById('main-content').classList.remove('hidden');
+                    document.getElementById('server-name').textContent = data.server_name || 'My Server';
+                    document.getElementById('user-email').textContent = data.user_email || '-';
+                    const idFooter = document.getElementById('server-id-footer');
+                    idFooter.textContent = data.server_id || '';
+                    idFooter.classList.remove('hidden');
+                    loadServices();
+                } else if (data.pairing_state === 'pending') {
+                    badge.className = 'status-badge pending';
+                    statusText.textContent = 'Authorizing...';
+                } else {
+                    badge.className = 'status-badge offline';
+                    statusText.textContent = 'Not Connected';
+                    document.getElementById('connect-card').classList.remove('hidden');
+                    document.getElementById('main-content').classList.add('hidden');
+                    document.getElementById('connect-form').classList.remove('hidden');
+                    document.getElementById('waiting-approval').classList.add('hidden');
+                    document.getElementById('server-id-footer').classList.add('hidden');
+                    addedServices = [];
+                    renderServices();
+                }
+            } catch (err) {
+                console.error('Status check failed:', err);
+            }
+        }
+
+        async function connectToSeaWise() {
+            const serverName = document.getElementById('server-name-input').value || 'My Server';
+            try {
+                const resp = await fetch('/api/pair/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ server_name: serverName })
+                });
+                const data = await resp.json();
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+                currentCode = data.code;
+                document.getElementById('connect-form').classList.add('hidden');
+                document.getElementById('waiting-approval').classList.remove('hidden');
+                window.open(`${WEB_APP_URL}/connect?code=${data.code}`, '_blank');
+                startPolling();
+            } catch (err) {
+                alert('Failed to connect: ' + err.message);
+            }
+        }
+
+        function cancelPairing() {
+            if (pollInterval) clearInterval(pollInterval);
+            currentCode = '';
+            document.getElementById('connect-form').classList.remove('hidden');
+            document.getElementById('waiting-approval').classList.add('hidden');
+        }
+
+        function showDisconnectModal() {
+            document.getElementById('disconnect-modal').classList.add('visible');
+        }
+
+        function hideDisconnectModal() {
+            document.getElementById('disconnect-modal').classList.remove('visible');
+        }
+
+        async function confirmDisconnect() {
+            hideDisconnectModal();
+            try {
+                const resp = await fetch('/api/unpair', { method: 'POST' });
+                const data = await resp.json();
+                if (data.success) {
+                    checkStatus();
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to disconnect'));
+                }
+            } catch (err) {
+                alert('Failed to disconnect: ' + err.message);
+            }
+        }
+
+        function startPolling() {
+            pollInterval = setInterval(async () => {
+                try {
+                    const resp = await fetch('/api/pair/poll');
+                    const data = await resp.json();
+                    if (data.state === 'paired') {
+                        clearInterval(pollInterval);
+                        checkStatus();
+                    } else if (data.state === 'none' || data.state === 'expired') {
+                        clearInterval(pollInterval);
+                        cancelPairing();
+                        alert('Authorization expired. Please try again.');
+                    }
+                } catch (err) {
+                    console.error('Poll failed:', err);
+                }
+            }, 2000);
+        }
+
+        async function addService() {
+            const name = document.getElementById('service-name').value.trim();
+            const host = document.getElementById('service-host').value.trim() || 'localhost';
+            const port = parseInt(document.getElementById('service-port').value);
+
+            if (!name) { alert('Please enter a service name'); return; }
+            if (!port || port < 1 || port > 65535) { alert('Please enter a valid port (1-65535)'); return; }
+
+            try {
+                const resp = await fetch('/api/services/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, host, port })
+                });
+                const data = await resp.json();
+                if (data.error) { alert('Error: ' + data.error); return; }
+
+                addedServices.push({
+                    id: data.service?.id || '',
+                    name, host, port,
+                    subdomain: data.subdomain
+                });
+                renderServices();
+                document.getElementById('service-name').value = '';
+                document.getElementById('service-host').value = 'localhost';
+                document.getElementById('service-port').value = '';
+            } catch (err) {
+                alert('Failed to add service: ' + err.message);
+            }
+        }
+
+        let pendingDeleteService = null;
+
+        function showDeleteServiceModal(serviceId, serviceName) {
+            pendingDeleteService = { id: serviceId, name: serviceName };
+            document.getElementById('delete-service-name').textContent = serviceName;
+            document.getElementById('delete-service-modal').classList.add('visible');
+        }
+
+        function hideDeleteServiceModal() {
+            document.getElementById('delete-service-modal').classList.remove('visible');
+            pendingDeleteService = null;
+        }
+
+        async function confirmDeleteService() {
+            if (!pendingDeleteService) return;
+            const { id: serviceId, name: serviceName } = pendingDeleteService;
+            hideDeleteServiceModal();
+
+            try {
+                const resp = await fetch('/api/services/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ service_id: serviceId, service_name: serviceName })
+                });
+                const data = await resp.json();
+                if (data.error) { alert('Error: ' + data.error); return; }
+                addedServices = addedServices.filter(svc => svc.id !== serviceId);
+                renderServices();
+            } catch (err) {
+                alert('Failed to delete: ' + err.message);
+            }
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(str));
+            return div.innerHTML;
+        }
+
+        function escapeAttr(str) {
+            return String(str).replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function renderServices() {
+            const list = document.getElementById('services-list');
+            const count = document.getElementById('services-count');
+            count.textContent = addedServices.length + ' service' + (addedServices.length !== 1 ? 's' : '');
+
+            if (addedServices.length === 0) {
+                list.innerHTML = `
+                    <div class="empty-state">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+                        </svg>
+                        <p>No services added yet</p>
+                    </div>`;
+                return;
+            }
+
+            list.innerHTML = addedServices.map((svc, i) => `
+                <div class="service-item">
+                    <div class="service-icon">${escapeHtml(svc.name.charAt(0).toUpperCase())}</div>
+                    <div class="service-info">
+                        <div class="service-name">${escapeHtml(svc.name)}</div>
+                        <div class="service-details">${escapeHtml(svc.host)}:${escapeHtml(String(svc.port))}</div>
+                    </div>
+                    <span class="service-subdomain">${escapeHtml(svc.subdomain)}</span>
+                    <button class="service-delete" onclick="showDeleteServiceModal('${escapeAttr(svc.id)}', '${escapeAttr(svc.name)}')" title="Remove service">&times;</button>
+                </div>
+            `).join('');
+        }
+
+        async function loadServices() {
+            try {
+                const resp = await fetch('/api/services/list');
+                const data = await resp.json();
+                if (data.services && data.services.length > 0) {
+                    addedServices = data.services.map(svc => ({
+                        id: svc.id,
+                        name: svc.name,
+                        host: svc.host,
+                        port: svc.port,
+                        subdomain: svc.subdomain
+                    }));
+                }
+                renderServices();
+            } catch (err) {
+                console.error('Failed to load services:', err);
+            }
+        }
+
+        // Init: check auth first, then status
+        (async () => {
+            const authed = await checkAuth();
+            if (authed) checkStatus();
+        })();
+        setInterval(async () => {
+            if (passwordSet && !isAuthenticated) return;
+            checkStatus();
+        }, 5000);
+    </script>
+</body>
+</html>

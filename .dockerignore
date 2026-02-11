@@ -1,0 +1,6 @@
+.git
+.github
+.gitignore
+*.md
+LICENSE
+.DS_Store
