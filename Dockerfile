@@ -34,26 +34,29 @@ RUN apk add --no-cache curl tar && \
 # Runtime stage
 FROM alpine:3.21
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates su-exec
 
-# Run as non-root user for security (HIGH-13)
+# Create default user (entrypoint will adjust UID/GID to match PUID/PGID)
 RUN addgroup -S seawise && adduser -S seawise -G seawise
 
 WORKDIR /app
 
 COPY --from=builder /seawise-client /app/seawise-client
 COPY --from=frp-downloader /frpc /app/frpc
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
-# Create directories for config and declare volume for persistence
-RUN mkdir -p /home/seawise/.seawise && chown -R seawise:seawise /home/seawise/.seawise /app
-VOLUME ["/home/seawise/.seawise"]
+# /config is the standard mount point (like Overseerr, Sonarr, etc.)
+RUN mkdir -p /config && chown seawise:seawise /config /app
+VOLUME ["/config"]
 
-# Bind to all interfaces inside the container (overrides the localhost default in server.go)
+# Bind to all interfaces inside the container
 ENV SEAWISE_BIND_ADDR=0.0.0.0
-
-USER seawise
+# Tell the app to store data in /config (instead of ~/.seawise)
+ENV SEAWISE_DATA_DIR=/config
 
 # Expose web UI port
 EXPOSE 8082
 
-ENTRYPOINT ["/app/seawise-client"]
+# Entrypoint handles PUID/PGID, then drops to non-root user
+ENTRYPOINT ["/app/entrypoint.sh"]

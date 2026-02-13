@@ -88,12 +88,10 @@ const (
 
 // HTTP server timeouts for the client web UI
 const (
-	// WebUIReadTimeout is the read timeout for the web UI server
-	WebUIReadTimeout = 15 * time.Second
-	// WebUIWriteTimeout is the write timeout for the web UI server
-	WebUIWriteTimeout = 30 * time.Second
-	// WebUIIdleTimeout is the idle timeout for the web UI server
-	WebUIIdleTimeout = 60 * time.Second
+	WebUIReadHeaderTimeout = 5 * time.Second
+	WebUIReadTimeout       = 15 * time.Second
+	WebUIWriteTimeout      = 30 * time.Second
+	WebUIIdleTimeout       = 60 * time.Second
 )
 
 // Network defaults

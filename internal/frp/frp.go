@@ -13,6 +13,8 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/seawise/client/internal/paths"
+
 	"github.com/seawise/client/internal/constants"
 )
 
@@ -114,11 +116,7 @@ subdomain = "{{ tomlEscape .Subdomain }}"
 `
 
 func New(cfg Config) *Client {
-	// Use user home dir for config; fallback for environments without a home dir
-	configPath := "/home/seawise/.seawise/frpc.toml"
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		configPath = filepath.Join(home, ".seawise", "frpc.toml")
-	}
+	configPath := filepath.Join(paths.DataDir(), "frpc.toml")
 	log.Printf("[FRP] Config path: %s", configPath)
 	return &Client{
 		config:     cfg,

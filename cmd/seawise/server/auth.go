@@ -77,8 +77,10 @@ func newAuthManager() *authManager {
 				log.Printf("[Auth] No password set — setup token written to: %s", tokenFile)
 				log.Printf("[Auth] Use this token at http://localhost:8082 to set your password")
 			} else {
-				// Fallback: print to console only if file write fails (local only, not logged)
-				log.Printf("[Auth] No password set — setup token (DO NOT SHARE): %s", am.setupToken)
+				// SECURITY: Don't log the token — centralized logging would expose it.
+				// Tell user to fix file system or use CLI instead.
+				log.Printf("[Auth] WARNING: Could not write setup token to %s: %v", tokenFile, writeErr)
+				log.Printf("[Auth] Fix file permissions and restart, or set password via CLI: seawise password set")
 			}
 		} else {
 			log.Printf("[Auth] Failed to generate setup token: %v", err)
@@ -293,16 +295,40 @@ func (am *authManager) clearRateLimit(ip string) {
 	delete(am.rateLimits, ip)
 }
 
-// removePassword deletes the stored password and clears all sessions.
+// getSetupToken returns the current setup token (empty string if already used or password is set).
+func (am *authManager) getSetupToken() string {
+	am.mu.RLock()
+	defer am.mu.RUnlock()
+	return am.setupToken
+}
+
+// removePassword deletes the stored password, clears all sessions, and regenerates a setup token.
 func (am *authManager) removePassword() error {
+	// Generate new setup token BEFORE clearing state (so it's ready immediately)
+	tokenBytes := make([]byte, 16)
+	var newToken string
+	if _, err := rand.Read(tokenBytes); err == nil {
+		newToken = hex.EncodeToString(tokenBytes)
+	}
+
 	am.mu.Lock()
 	am.passwordHash = nil
 	am.sessions = make(map[string]time.Time)
+	am.setupToken = newToken
 	am.mu.Unlock()
 
 	if err := os.Remove(am.passwordFile); err != nil && !os.IsNotExist(err) {
 		return err
 	}
+
+	// Write new setup token to file
+	if newToken != "" {
+		tokenFile := auth.SetupTokenFile()
+		if err := os.WriteFile(tokenFile, []byte(newToken), 0600); err != nil {
+			log.Printf("[Auth] Warning: failed to write new setup token: %v", err)
+		}
+	}
+
 	log.Printf("[Auth] Password removed — web UI is unprotected")
 	return nil
 }
@@ -653,12 +679,22 @@ func (s *Server) handleAuthRemovePassword(w http.ResponseWriter, r *http.Request
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, constants.MaxAuthBodySize)
-	body, _ := io.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to read request"})
+		return
+	}
 
 	var req struct {
 		Password string `json:"password"`
 	}
-	if err := json.Unmarshal(body, &req); err != nil || !s.auth.checkPassword(req.Password) {
+	if err := json.Unmarshal(body, &req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request"})
+		return
+	}
+	if !s.auth.checkPassword(req.Password) {
 		w.WriteHeader(http.StatusForbidden)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Incorrect password"})
 		return

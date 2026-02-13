@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/seawise/client/internal/constants"
+	"github.com/seawise/client/internal/paths"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/term"
 )
@@ -25,21 +26,13 @@ const (
 
 // PasswordFile returns the path to the password hash file
 func PasswordFile() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		home = "/home/seawise"
-	}
-	return filepath.Join(home, ".seawise", "password.hash")
+	return filepath.Join(paths.DataDir(), "password.hash")
 }
 
 // SetupTokenFile returns the path to the setup token file
 // SECURITY: Token is written here instead of logged to prevent exposure in centralized logs
 func SetupTokenFile() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		home = "/home/seawise"
-	}
-	return filepath.Join(home, ".seawise", "setup-token")
+	return filepath.Join(paths.DataDir(), "setup-token")
 }
 
 // cliSessionFile returns the path to the CLI session file (in /tmp so it's cleared on reboot)

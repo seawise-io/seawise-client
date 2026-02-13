@@ -25,6 +25,7 @@ import (
 	"github.com/seawise/client/internal/connection"
 	"github.com/seawise/client/internal/constants"
 	"github.com/seawise/client/internal/frp"
+	"github.com/seawise/client/internal/paths"
 	"github.com/seawise/client/internal/validation"
 )
 
@@ -212,11 +213,7 @@ func (s *Server) startServices(ctx context.Context) {
 
 	// Initialize cert manager if E2E TLS is enabled
 	if s.e2eTLSEnabled {
-		home, _ := os.UserHomeDir()
-		if home == "" {
-			home = "/root"
-		}
-		s.certManager = certs.New(home + "/.seawise")
+		s.certManager = certs.New(paths.DataDir())
 		if err := s.certManager.EnsureDir(); err != nil {
 			log.Printf("[E2E TLS] Failed to create certs dir: %v", err)
 			s.e2eTLSEnabled = false
@@ -804,11 +801,12 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 	handler := s.auth.middleware(mux)
 
 	srv := &http.Server{
-		Addr:         bindAddr + ":" + strconv.Itoa(port),
-		Handler:      handler,
-		ReadTimeout:  constants.WebUIReadTimeout,
-		WriteTimeout: constants.WebUIWriteTimeout,
-		IdleTimeout:  constants.WebUIIdleTimeout,
+		Addr:              bindAddr + ":" + strconv.Itoa(port),
+		Handler:           handler,
+		ReadHeaderTimeout: constants.WebUIReadHeaderTimeout,
+		ReadTimeout:       constants.WebUIReadTimeout,
+		WriteTimeout:      constants.WebUIWriteTimeout,
+		IdleTimeout:       constants.WebUIIdleTimeout,
 	}
 
 	log.Printf("Web UI listening on %s:%d", bindAddr, port)
@@ -850,9 +848,11 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	if err := indexTemplate.Execute(w, struct {
-		WebAppURL string
+		WebAppURL  string
+		SetupToken string
 	}{
-		WebAppURL: config.GetWebURL(),
+		WebAppURL:  config.GetWebURL(),
+		SetupToken: s.auth.getSetupToken(),
 	}); err != nil {
 		log.Printf("[WebUI] Template render error: %v", err)
 	}

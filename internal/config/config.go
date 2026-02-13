@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/seawise/client/internal/constants"
+	"github.com/seawise/client/internal/paths"
 )
 
 type Config struct {
@@ -22,12 +23,7 @@ type Config struct {
 }
 
 func ConfigPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		// Fallback to /tmp if home directory is not available
-		home = "/tmp"
-	}
-	return filepath.Join(home, ".seawise", "config.json")
+	return filepath.Join(paths.DataDir(), "config.json")
 }
 
 func Load() (*Config, error) {

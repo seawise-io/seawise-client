@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -591,16 +592,18 @@ func (c *Client) RequestCertificate(subdomain string, csrPEM []byte) (*CertIssue
 		return nil, fmt.Errorf("marshal cert request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.baseURL+"/api/certs/issue", bytes.NewReader(body))
+	// Certificate issuance can take time due to DNS propagation — use longer timeout via context
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/certs/issue", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create cert issue request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-FRP-Token", c.getFRPToken())
 
-	// Certificate issuance can take time due to DNS propagation
-	client := &http.Client{Timeout: 2 * time.Minute}
-	resp, err := client.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("send cert issue request: %w", err)
 	}
