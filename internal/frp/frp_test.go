@@ -44,18 +44,20 @@ func TestTemplateRendering(t *testing.T) {
 	}
 
 	data := struct {
-		ServerAddr string
-		ServerPort int
-		Token      string
-		UseTLS     bool
-		ServerID   string
-		Services   []Service
+		ServerAddr   string
+		ServerPort   int
+		Token        string
+		UseTLS       bool
+		ServerID     string
+		ConnectionID string
+		Services     []Service
 	}{
-		ServerAddr: "frp.example.com",
-		ServerPort: 7000,
-		Token:      "secret-token-123",
-		UseTLS:     false,
-		ServerID:   "server-abc",
+		ServerAddr:   "frp.example.com",
+		ServerPort:   7000,
+		Token:        "secret-token-123",
+		UseTLS:       false,
+		ServerID:     "server-abc",
+		ConnectionID: "conn-123",
 		Services: []Service{
 			{
 				Name:      "my-app",
@@ -101,17 +103,19 @@ func TestTemplateInjectionPrevention(t *testing.T) {
 
 	// Adversarial input: service name containing TOML injection
 	data := struct {
-		ServerAddr string
-		ServerPort int
-		Token      string
-		UseTLS     bool
-		ServerID   string
-		Services   []Service
+		ServerAddr   string
+		ServerPort   int
+		Token        string
+		UseTLS       bool
+		ServerID     string
+		ConnectionID string
+		Services     []Service
 	}{
-		ServerAddr: "frp.example.com",
-		ServerPort: 7000,
-		Token:      "token",
-		ServerID:   "server1",
+		ServerAddr:   "frp.example.com",
+		ServerPort:   7000,
+		Token:        "token",
+		ServerID:     "server1",
+		ConnectionID: "conn-456",
 		Services: []Service{
 			{
 				Name:      "evil\"\n[[proxies]]\nname = \"injected",
@@ -151,18 +155,20 @@ func TestTemplateWithE2ETLS(t *testing.T) {
 	}
 
 	data := struct {
-		ServerAddr string
-		ServerPort int
-		Token      string
-		UseTLS     bool
-		ServerID   string
-		Services   []Service
+		ServerAddr   string
+		ServerPort   int
+		Token        string
+		UseTLS       bool
+		ServerID     string
+		ConnectionID string
+		Services     []Service
 	}{
-		ServerAddr: "frp.example.com",
-		ServerPort: 7000,
-		Token:      "token",
-		UseTLS:     true,
-		ServerID:   "server1",
+		ServerAddr:   "frp.example.com",
+		ServerPort:   7000,
+		Token:        "token",
+		UseTLS:       true,
+		ServerID:     "server1",
+		ConnectionID: "conn-789",
 		Services: []Service{
 			{
 				Name:      "secure-app",
