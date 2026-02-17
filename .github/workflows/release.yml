@@ -45,7 +45,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log in to Docker Hub
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && secrets.DOCKERHUB_USERNAME != ''
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY_DOCKER }}
@@ -58,7 +58,7 @@ jobs:
         with:
           images: |
             ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}
-            ${{ env.REGISTRY_DOCKER }}/seawise/client
+            ${{ secrets.DOCKERHUB_USERNAME != '' && format('{0}/seawise/client', env.REGISTRY_DOCKER) || '' }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
