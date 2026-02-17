@@ -133,11 +133,19 @@ func TestTemplateInjectionPrevention(t *testing.T) {
 
 	output := buf.String()
 
-	// The injected TOML directive should NOT appear as a separate section
-	// Count [[proxies]] — should only appear once (the legitimate one)
-	count := strings.Count(output, "[[proxies]]")
-	if count != 1 {
-		t.Errorf("Expected exactly 1 [[proxies]] section, got %d. Injection may have succeeded.\nOutput:\n%s", count, output)
+	// Verify newlines in service names are escaped (no raw newlines in output)
+	// tomlEscape converts \n to literal \n sequence, keeping the value inside the TOML string
+	lines := strings.Split(output, "\n")
+	proxySections := 0
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// A real TOML section header is [[proxies]] at the start of a line, not inside a string
+		if trimmed == "[[proxies]]" {
+			proxySections++
+		}
+	}
+	if proxySections != 1 {
+		t.Errorf("Expected exactly 1 [[proxies]] section header, got %d. Injection may have succeeded.\nOutput:\n%s", proxySections, output)
 	}
 
 	// The escaped quotes should be present (not raw quotes)
