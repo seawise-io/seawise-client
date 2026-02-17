@@ -30,6 +30,17 @@ jobs:
       - name: Run govulncheck
         run: govulncheck ./...
 
+  gosec:
+    name: Go Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run gosec
+        uses: securego/gosec@v2.21.4
+        with:
+          args: ./...
+
   codeql:
     name: CodeQL Analysis
     runs-on: ubuntu-latest
