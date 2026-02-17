@@ -13,7 +13,7 @@ on:
 env:
   REGISTRY_GHCR: ghcr.io
   REGISTRY_DOCKER: docker.io
-  IMAGE_NAME: seawise/seawise-client
+  IMAGE_NAME: seawise-io/seawise-client
 
 jobs:
   build:
