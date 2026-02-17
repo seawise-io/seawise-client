@@ -362,7 +362,7 @@ func (s *Server) sendHeartbeat() {
 		log.Printf("[Heartbeat] Server detected gap of %ds", result.Response.GapSeconds)
 	}
 
-	// Handle shard migration signal
+	// Handle shard migration signal (draining shard → new shard)
 	if result.Response != nil && result.Response.Status == "migrate" && result.Response.MigrateTo != nil {
 		migrate := result.Response.MigrateTo
 		log.Printf("[Heartbeat] Migration requested → %s:%d (shard %s)",
@@ -386,6 +386,42 @@ func (s *Server) sendHeartbeat() {
 				log.Printf("[Heartbeat] Migration restart failed: %v", err)
 			} else {
 				log.Printf("[Heartbeat] Migration complete → connected to shard %s", migrate.ShardID)
+			}
+		}
+		return
+	}
+
+	// Self-heal stale FRP address (e.g., after infrastructure migration)
+	// If the shard's current address differs from our stored address, update and reconnect
+	if result.Response != nil && result.Response.Shard != nil && client != nil {
+		shard := result.Response.Shard
+		s.mu.RLock()
+		storedAddr := currentCfg.FRPServerAddr
+		storedPort := currentCfg.FRPServerPort
+		s.mu.RUnlock()
+
+		if shard.FRPServerAddr != storedAddr || shard.FRPServerPort != storedPort {
+			log.Printf("[Heartbeat] Shard address changed: %s:%d → %s:%d",
+				storedAddr, storedPort, shard.FRPServerAddr, shard.FRPServerPort)
+
+			// SECURITY: Validate the new address before updating
+			if err := client.UpdateServer(shard.FRPServerAddr, shard.FRPServerPort); err != nil {
+				log.Printf("[Heartbeat] SECURITY: Rejected shard update to untrusted server: %v", err)
+			} else {
+				// Update saved config so restarts use the new address
+				s.mu.Lock()
+				currentCfg.FRPServerAddr = shard.FRPServerAddr
+				currentCfg.FRPServerPort = shard.FRPServerPort
+				if err := currentCfg.Save(); err != nil {
+					log.Printf("[Heartbeat] Failed to save updated config: %v", err)
+				}
+				s.mu.Unlock()
+
+				if err := client.Restart(); err != nil {
+					log.Printf("[Heartbeat] FRP restart after address update failed: %v", err)
+				} else {
+					log.Printf("[Heartbeat] FRP reconnected to updated shard address")
+				}
 			}
 		}
 	}

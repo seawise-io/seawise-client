@@ -315,6 +315,13 @@ type MigrateInfo struct {
 	ShardID       string `json:"shard_id"`
 }
 
+// ShardInfo contains the current shard address from the server
+// Used for self-healing when the client's stored address is stale
+type ShardInfo struct {
+	FRPServerAddr string `json:"frp_server_addr"`
+	FRPServerPort int    `json:"frp_server_port"`
+}
+
 // HeartbeatResponse contains the bidirectional status from the server
 type HeartbeatResponse struct {
 	Status          string       `json:"status"`
@@ -325,6 +332,7 @@ type HeartbeatResponse struct {
 	NextHeartbeatMs int          `json:"next_heartbeat_ms"`
 	TimeoutMs       int          `json:"timeout_ms"`
 	MigrateTo       *MigrateInfo `json:"migrate_to,omitempty"`
+	Shard           *ShardInfo   `json:"shard,omitempty"`
 }
 
 // HeartbeatResult contains the result of a heartbeat call
