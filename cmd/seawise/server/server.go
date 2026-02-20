@@ -329,7 +329,11 @@ func (s *Server) sendHeartbeat() {
 		return
 	}
 
-	frpConnected := client != nil && client.IsRunning()
+	// FRP is "connected" if the client is initialized (has a connection ID),
+	// even if the process isn't running yet (no services to proxy).
+	// Without this, the first service can never be registered: FRP doesn't start
+	// because there are no services, but the API requires "online" to add services.
+	frpConnected := client != nil && (client.IsRunning() || client.ConnectionID() != "")
 	serviceCount := 0
 	connectionID := ""
 	if client != nil {
