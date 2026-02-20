@@ -399,6 +399,10 @@ func (s *Server) sendHeartbeat() {
 				log.Printf("[Heartbeat] Migration restart failed: %v", err)
 			} else {
 				log.Printf("[Heartbeat] Migration complete → connected to shard %s", migrate.ShardID)
+				// Clear health cache so services get re-reported
+				s.mu.Lock()
+				s.lastHealthStatus = make(map[string]string)
+				s.mu.Unlock()
 			}
 		}
 		return
@@ -434,6 +438,10 @@ func (s *Server) sendHeartbeat() {
 					log.Printf("[Heartbeat] FRP restart after address update failed: %v", err)
 				} else {
 					log.Printf("[Heartbeat] FRP reconnected to updated shard address")
+					// Clear health cache so services get re-reported
+					s.mu.Lock()
+					s.lastHealthStatus = make(map[string]string)
+					s.mu.Unlock()
 				}
 			}
 		}
@@ -782,6 +790,13 @@ func (s *Server) handleFRPCrash() {
 		s.connManager.ResetBackoff()
 		client.ResetCrashCount()
 		s.connManager.SetState(connection.StateConnected)
+
+		// Clear health cache so next health check re-reports all service statuses.
+		// Without this, services stay "offline" in the DB because the cache thinks
+		// they were already reported as "online" before the crash.
+		s.mu.Lock()
+		s.lastHealthStatus = make(map[string]string)
+		s.mu.Unlock()
 	}
 }
 
@@ -794,7 +809,15 @@ func (s *Server) reconnectFRP() error {
 		return nil
 	}
 	client.Stop()
-	return client.Start()
+	if err := client.Start(); err != nil {
+		return err
+	}
+
+	// Clear health cache so services get re-reported after reconnect
+	s.mu.Lock()
+	s.lastHealthStatus = make(map[string]string)
+	s.mu.Unlock()
+	return nil
 }
 
 func (s *Server) handleUnpairInternal() {
