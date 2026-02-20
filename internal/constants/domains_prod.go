@@ -2,7 +2,7 @@
 
 package constants
 
-// Production: only allow seawise.io domains for FRP connections.
+// Production: only allow seawise.dev domains for FRP connections.
 var allowedFRPDomains = []string{
-	".seawise.io",
+	".seawise.dev",
 }

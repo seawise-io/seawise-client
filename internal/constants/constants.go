@@ -61,7 +61,7 @@ const (
 	DefaultFRPServerPort = 7000
 	// DefaultSubdomainHost is the default subdomain host for service URLs.
 	// Production default — override with SUBDOMAIN_HOST env var for local development.
-	DefaultSubdomainHost = "seawise.io"
+	DefaultSubdomainHost = "seawise.dev"
 	// MaxRequestBodySize is the maximum size for HTTP request bodies (1KB)
 	MaxRequestBodySize = 1024
 	// MaxAuthBodySize is the maximum size for auth request bodies (4KB).
@@ -71,7 +71,7 @@ const (
 
 // AllowedFRPDomains is the list of trusted FRP server domains.
 // SECURITY: Only these domains are allowed for FRP migration to prevent redirect attacks.
-// Production builds include only ".seawise.io".
+// Production builds include only ".seawise.dev".
 // Development builds (go build -tags dev) add localhost and Docker entries.
 // See domains_prod.go and domains_dev.go.
 var AllowedFRPDomains = allowedFRPDomains
