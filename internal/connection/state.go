@@ -127,8 +127,9 @@ func (m *Manager) HeartbeatOK() {
 	m.reconnectAttempt = 0
 
 	if m.state == StateReconnecting || m.state == StateConnecting {
+		oldState := m.state
 		m.state = StateConnected
-		log.Printf("[Connection] State: %s -> connected (heartbeat OK)", m.state)
+		log.Printf("[Connection] State: %s -> connected (heartbeat OK)", oldState)
 	}
 }
 
@@ -176,6 +177,11 @@ func (m *Manager) CalculateBackoff() time.Duration {
 	// Add jitter (0-100% of delay) to prevent thundering herd
 	jitter := rand.Float64() * delay
 	finalDelay := time.Duration(delay + jitter)
+
+	// Cap the final delay after adding jitter to ensure we never exceed maxRetryDelay
+	if finalDelay > m.maxRetryDelay {
+		finalDelay = m.maxRetryDelay
+	}
 
 	log.Printf("[Connection] Backoff: attempt %d, delay %v", attempt+1, finalDelay)
 	return finalDelay

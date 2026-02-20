@@ -81,7 +81,9 @@ func checkPaired() (*config.Config, *api.Client) {
 		fmt.Println("❌ Not paired. Run 'seawise pair' first.")
 		os.Exit(1)
 	}
-	return cfg, api.New(cfg.APIURL)
+	apiClient := api.New(cfg.APIURL)
+	apiClient.SetFRPToken(cfg.FRPToken)
+	return cfg, apiClient
 }
 
 func runServicesList() {

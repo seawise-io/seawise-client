@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -27,7 +28,7 @@ func New(baseURL string) *Client {
 	// Log warning but don't fail - allows gradual enforcement
 	if err := ValidateBaseURL(baseURL); err != nil {
 		// Import log is already available via other usages
-		fmt.Printf("[API] WARNING: %v\n", err)
+		log.Printf("[API] WARNING: %v", err)
 	}
 	return &Client{
 		baseURL: baseURL,
@@ -62,7 +63,7 @@ func isSuccessStatus(code int) bool {
 
 // PairingCodes holds both codes from pairing request
 type PairingCodes struct {
-	UserCode   string    // Show to user (6 chars)
+	UserCode   string    // Show to user (10 chars)
 	DeviceCode string    // Keep secret, use for polling (32 chars)
 	ExpiresAt  time.Time
 }
@@ -106,13 +107,12 @@ func (c *Client) BaseURL() string {
 
 // Request a new pairing code from the API
 // Returns two codes (OAuth Device Flow pattern):
-// - UserCode: 6 chars, shown to user
+// - UserCode: 10 chars, shown to user
 // - DeviceCode: 32 chars, used by client for polling/completion (never shown)
 type PairRequestResponse struct {
 	UserCode   string `json:"user_code"`   // Show this to user
 	DeviceCode string `json:"device_code"` // Keep secret, use for polling
 	ExpiresAt  string `json:"expires_at"`
-	PollURL    string `json:"poll_url"`
 }
 
 func (c *Client) RequestPairing(serverName string) (*PairRequestResponse, error) {
@@ -245,23 +245,19 @@ func (c *Client) CompletePairing(deviceCode string) (*PairCompleteResponse, erro
 }
 
 type Service struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	Subdomain   string `json:"subdomain"`
-	Description string `json:"description,omitempty"`
-	IconURL     string `json:"icon_url,omitempty"`
-	Status      string `json:"status"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	Subdomain string `json:"subdomain"`
+	Status    string `json:"status"`
 }
 
 type RegisterServiceRequest struct {
-	ServerID    string `json:"server_id"`
-	Name        string `json:"name"`
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	Description string `json:"description,omitempty"`
-	IconURL     string `json:"icon_url,omitempty"`
+	ServerID string `json:"server_id"`
+	Name     string `json:"name"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
 }
 
 func (c *Client) RegisterService(serverID, name, host string, port int) (*Service, error) {

@@ -44,6 +44,15 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 	}
 }
 
+// writeJSONStatus encodes data as JSON with a specific HTTP status code.
+func writeJSONStatus(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Printf("[WebUI] Failed to encode JSON response: %v", err)
+	}
+}
+
 // Server owns all runtime state for the SeaWise client.
 // All fields are protected by mu for concurrent access.
 type Server struct {
@@ -121,6 +130,8 @@ func (s *Server) run(port int) {
 			s.connManager.SetState(connection.StateDisconnected)
 		} else {
 			log.Printf("Already paired as server: %s (ID: %s)", s.cfg.ServerName, s.cfg.ServerID)
+			// Re-initialize API client with the stored URL (may differ from default)
+			s.apiClient = api.New(s.cfg.APIURL)
 			s.apiClient.SetFRPToken(s.cfg.FRPToken)
 			s.pairingState = "paired"
 			s.connManager.SetState(connection.StateConnecting)
@@ -343,7 +354,9 @@ func (s *Server) sendHeartbeat() {
 		s.connManager.HeartbeatFailed(false)
 		// Stop the FRP client to avoid competing with the new connection
 		if client != nil {
-			client.Stop()
+			if err := client.Stop(); err != nil {
+				log.Printf("[Heartbeat] Failed to stop FRP after superseded: %v", err)
+			}
 		}
 		return
 	}
@@ -370,9 +383,9 @@ func (s *Server) sendHeartbeat() {
 
 		// Update saved config so restarts use the new shard
 		s.mu.Lock()
-		currentCfg.FRPServerAddr = migrate.FRPServerAddr
-		currentCfg.FRPServerPort = migrate.FRPServerPort
-		if err := currentCfg.Save(); err != nil {
+		s.cfg.FRPServerAddr = migrate.FRPServerAddr
+		s.cfg.FRPServerPort = migrate.FRPServerPort
+		if err := s.cfg.Save(); err != nil {
 			log.Printf("[Heartbeat] Failed to save migrated config: %v", err)
 		}
 		s.mu.Unlock()
@@ -396,8 +409,8 @@ func (s *Server) sendHeartbeat() {
 	if result.Response != nil && result.Response.Shard != nil && client != nil {
 		shard := result.Response.Shard
 		s.mu.RLock()
-		storedAddr := currentCfg.FRPServerAddr
-		storedPort := currentCfg.FRPServerPort
+		storedAddr := s.cfg.FRPServerAddr
+		storedPort := s.cfg.FRPServerPort
 		s.mu.RUnlock()
 
 		if shard.FRPServerAddr != storedAddr || shard.FRPServerPort != storedPort {
@@ -410,9 +423,9 @@ func (s *Server) sendHeartbeat() {
 			} else {
 				// Update saved config so restarts use the new address
 				s.mu.Lock()
-				currentCfg.FRPServerAddr = shard.FRPServerAddr
-				currentCfg.FRPServerPort = shard.FRPServerPort
-				if err := currentCfg.Save(); err != nil {
+				s.cfg.FRPServerAddr = shard.FRPServerAddr
+				s.cfg.FRPServerPort = shard.FRPServerPort
+				if err := s.cfg.Save(); err != nil {
 					log.Printf("[Heartbeat] Failed to save updated config: %v", err)
 				}
 				s.mu.Unlock()
@@ -557,7 +570,8 @@ func (s *Server) ensureServiceCert(subdomain string) (certPath, keyPath string, 
 	}
 
 	// Validate subdomain before constructing domain (defense in depth)
-	if !validation.IsValidHost(subdomain) {
+	// Subdomains are more restrictive than hosts: no dots, colons, or brackets
+	if !validation.IsValidHost(subdomain) || strings.ContainsAny(subdomain, ".:[]") {
 		return "", "", fmt.Errorf("invalid subdomain: %s", subdomain)
 	}
 
@@ -915,10 +929,8 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add connection state info
-	if s.connManager != nil {
-		connStatus := s.connManager.GetStatus()
-		status["connection"] = connStatus
-	}
+	connStatus := s.connManager.GetStatus()
+	status["connection"] = connStatus
 
 	// Add FRP process state
 	if s.frpClient != nil {
@@ -935,7 +947,6 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.RUnlock()
 
-	w.Header().Set("Content-Type", "application/json")
 	writeJSON(w, status)
 }
 
@@ -981,7 +992,6 @@ func (s *Server) handlePairStart(w http.ResponseWriter, r *http.Request) {
 	// Start polling for approval in background using device_code
 	go s.pollForApproval(result.DeviceCode)
 
-	w.Header().Set("Content-Type", "application/json")
 	writeJSON(w,map[string]interface{}{
 		"code":       result.UserCode, // Only expose user_code to web UI
 		"expires_at": result.ExpiresAt,
@@ -1052,9 +1062,10 @@ func (s *Server) pollForApproval(deviceCode string) {
 				s.pairingState = "paired"
 				s.pairingCode = ""
 				s.pairingDeviceCode = ""
+				serverName := s.cfg.ServerName
 				s.mu.Unlock()
 
-				log.Printf("Pairing successful! Server: %s", s.cfg.ServerName)
+				log.Printf("Pairing successful! Server: %s", serverName)
 
 				// Start services
 				s.connManager.SetState(connection.StateConnecting)
@@ -1083,9 +1094,7 @@ func (s *Server) handlePairPoll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add connection info if paired
-	if s.connManager != nil {
-		response["connection_state"] = string(s.connManager.State())
-	}
+	response["connection_state"] = string(s.connManager.State())
 	s.mu.RUnlock()
 
 	writeJSON(w,response)
@@ -1296,9 +1305,7 @@ func (s *Server) handleUnpair(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Set state to unpaired first
-	if s.connManager != nil {
-		s.connManager.SetState(connection.StateUnpaired)
-	}
+	s.connManager.SetState(connection.StateUnpaired)
 
 	// Snapshot globals under lock for API call
 	s.mu.RLock()

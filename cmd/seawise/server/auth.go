@@ -365,9 +365,7 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 				}
 				if !isValidOrigin {
 					log.Printf("[CSRF] Blocked request from origin: %s to %s", origin, path)
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusForbidden)
-					json.NewEncoder(w).Encode(map[string]string{"error": "Cross-origin requests not allowed"})
+										writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
 					return
 				}
 			} else if referer != "" {
@@ -392,18 +390,14 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 				}
 				if !isValidReferer {
 					log.Printf("[CSRF] Blocked request with referer: %s to %s", referer, path)
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusForbidden)
-					json.NewEncoder(w).Encode(map[string]string{"error": "Cross-origin requests not allowed"})
+										writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
 					return
 				}
 			} else {
 				// SECURITY: Block requests with no Origin AND no Referer
 				// This prevents CSRF via curl/wget-style attacks
 				log.Printf("[CSRF] Blocked request with no origin/referer to %s", path)
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusForbidden)
-				json.NewEncoder(w).Encode(map[string]string{"error": "Origin or Referer header required"})
+								writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Origin or Referer header required"})
 				return
 			}
 		}
@@ -425,9 +419,7 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 		if err != nil || !am.validateSession(cookie.Value) {
 			// For API calls, return 401 JSON
 			if len(path) > 4 && path[:5] == "/api/" {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusUnauthorized)
-				json.NewEncoder(w).Encode(map[string]string{"error": "Authentication required"})
+								writeJSONStatus(w, http.StatusUnauthorized, map[string]string{"error": "Authentication required"})
 				return
 			}
 			// For page requests, serve the page (JS will handle showing login)
@@ -466,8 +458,6 @@ func clearSessionCookie(w http.ResponseWriter) {
 // --- HTTP Handlers ---
 
 func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
 	authenticated := false
 	if s.auth.hasPassword() {
 		cookie, err := r.Cookie(sessionCookieName)
@@ -476,7 +466,7 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, map[string]interface{}{
 		"password_set":  s.auth.hasPassword(),
 		"authenticated": authenticated,
 	})
@@ -488,14 +478,11 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-
 	// If password already set, require current password
 	if s.auth.hasPassword() {
 		cookie, err := r.Cookie(sessionCookieName)
 		if err != nil || !s.auth.validateSession(cookie.Value) {
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Authentication required"})
+			writeJSONStatus(w, http.StatusUnauthorized, map[string]string{"error": "Authentication required"})
 			return
 		}
 	}
@@ -503,8 +490,7 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, constants.MaxAuthBodySize)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Request too large"})
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "Request too large"})
 		return
 	}
 
@@ -514,14 +500,12 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 		SetupToken      string `json:"setup_token"` // Required for initial setup
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request"})
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
 		return
 	}
 
 	if len(req.Password) < 8 {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Password must be at least 8 characters"})
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "Password must be at least 8 characters"})
 		return
 	}
 
@@ -532,22 +516,19 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 		s.auth.mu.RUnlock()
 
 		if !validToken {
-			w.WriteHeader(http.StatusForbidden)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid setup token. Check console for the token."})
+			writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Invalid setup token. Check console for the token."})
 			return
 		}
 	}
 
 	// If changing password, verify current
 	if s.auth.hasPassword() && !s.auth.checkPassword(req.CurrentPassword) {
-		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Current password is incorrect"})
+		writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Current password is incorrect"})
 		return
 	}
 
 	if err := s.auth.setPassword(req.Password); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to set password"})
+		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "Failed to set password"})
 		return
 	}
 
@@ -566,7 +547,7 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 	token := s.auth.createSession()
 	setSessionCookie(w, token)
 
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	writeJSON(w, map[string]interface{}{"success": true})
 }
 
 func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
@@ -574,8 +555,6 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
 
 	// Get client IP for rate limiting
 	// SECURITY: Only trust X-Forwarded-For if explicitly behind a trusted proxy
@@ -592,23 +571,21 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	allowed, retryAfter := s.auth.checkRateLimit(clientIP)
 	if !allowed {
 		w.Header().Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())))
-		w.WriteHeader(http.StatusTooManyRequests)
-		json.NewEncoder(w).Encode(map[string]string{
+		writeJSONStatus(w, http.StatusTooManyRequests, map[string]string{
 			"error": fmt.Sprintf("Too many failed attempts. Try again in %d seconds.", int(retryAfter.Seconds())),
 		})
 		return
 	}
 
 	if !s.auth.hasPassword() {
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+		writeJSON(w, map[string]interface{}{"success": true})
 		return
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, constants.MaxAuthBodySize)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Request too large"})
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "Request too large"})
 		return
 	}
 
@@ -616,8 +593,7 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request"})
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
 		return
 	}
 
@@ -626,13 +602,11 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		delay := s.auth.recordFailedLogin(clientIP)
 		if delay > 0 {
 			w.Header().Set("Retry-After", fmt.Sprintf("%d", int(delay.Seconds())+1))
-			w.WriteHeader(http.StatusTooManyRequests)
-			json.NewEncoder(w).Encode(map[string]string{
+			writeJSONStatus(w, http.StatusTooManyRequests, map[string]string{
 				"error": fmt.Sprintf("Incorrect password. Try again in %d seconds.", int(delay.Seconds())+1),
 			})
 		} else {
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Incorrect password"})
+			writeJSONStatus(w, http.StatusUnauthorized, map[string]string{"error": "Incorrect password"})
 		}
 		return
 	}
@@ -643,7 +617,7 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	token := s.auth.createSession()
 	setSessionCookie(w, token)
 
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	writeJSON(w, map[string]interface{}{"success": true})
 }
 
 func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
@@ -658,8 +632,7 @@ func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	clearSessionCookie(w)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	writeJSON(w, map[string]interface{}{"success": true})
 }
 
 func (s *Server) handleAuthRemovePassword(w http.ResponseWriter, r *http.Request) {
@@ -668,21 +641,17 @@ func (s *Server) handleAuthRemovePassword(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-
 	// Must be authenticated to remove password
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil || !s.auth.validateSession(cookie.Value) {
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Authentication required"})
+		writeJSONStatus(w, http.StatusUnauthorized, map[string]string{"error": "Authentication required"})
 		return
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, constants.MaxAuthBodySize)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to read request"})
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "Failed to read request"})
 		return
 	}
 
@@ -690,19 +659,16 @@ func (s *Server) handleAuthRemovePassword(w http.ResponseWriter, r *http.Request
 		Password string `json:"password"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid request"})
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
 		return
 	}
 	if !s.auth.checkPassword(req.Password) {
-		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Incorrect password"})
+		writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Incorrect password"})
 		return
 	}
 
 	if err := s.auth.removePassword(); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to remove password"})
+		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "Failed to remove password"})
 		return
 	}
 
@@ -712,5 +678,5 @@ func (s *Server) handleAuthRemovePassword(w http.ResponseWriter, r *http.Request
 	}
 
 	clearSessionCookie(w)
-	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+	writeJSON(w, map[string]interface{}{"success": true})
 }

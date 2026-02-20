@@ -115,6 +115,11 @@ subdomain = "{{ tomlEscape .Subdomain }}"
 {{ end }}
 `
 
+// frpcTmpl is parsed once at package init, not per writeConfigLocked() call
+var frpcTmpl = template.Must(template.New("frpc").Funcs(template.FuncMap{
+	"tomlEscape": tomlEscape,
+}).Parse(frpcTemplate))
+
 func New(cfg Config) *Client {
 	configPath := filepath.Join(paths.DataDir(), "frpc.toml")
 	log.Printf("[FRP] Config path: %s", configPath)
@@ -317,13 +322,6 @@ func (c *Client) writeConfigLocked() error {
 	}
 	defer f.Close()
 
-	tmpl, err := template.New("frpc").Funcs(template.FuncMap{
-		"tomlEscape": tomlEscape,
-	}).Parse(frpcTemplate)
-	if err != nil {
-		return fmt.Errorf("failed to parse template: %w", err)
-	}
-
 	// Translate localhost addresses for Docker compatibility
 	translatedServices := make([]Service, len(c.services))
 	for i, svc := range c.services {
@@ -356,7 +354,7 @@ func (c *Client) writeConfigLocked() error {
 		Services:     translatedServices,
 	}
 
-	if err := tmpl.Execute(f, data); err != nil {
+	if err := frpcTmpl.Execute(f, data); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 
@@ -555,6 +553,8 @@ func isAllowedFRPDomain(addr string) bool {
 }
 
 func (c *Client) Restart() error {
-	c.Stop()
+	if err := c.Stop(); err != nil {
+		log.Printf("[FRP] Stop error during restart (proceeding): %v", err)
+	}
 	return c.Start()
 }

@@ -36,8 +36,6 @@ const (
 	StatusPollInterval = 10 * time.Second
 	// ServicePollInterval is how often to poll for service changes
 	ServicePollInterval = 30 * time.Second
-	// DisconnectPollTimeout is the maximum time to wait for disconnect confirmation
-	DisconnectPollTimeout = 10 * time.Minute
 	// StartupDelay is the initial delay before starting background tasks
 	StartupDelay = 5 * time.Second
 )
@@ -82,8 +80,6 @@ var AllowedFRPDomains = allowedFRPDomains
 const (
 	// BcryptCost is the bcrypt work factor for password hashing
 	BcryptCost = 12
-	// BruteForceDelay is the delay after a failed login attempt to slow brute force attacks
-	BruteForceDelay = 500 * time.Millisecond
 )
 
 // HTTP server timeouts for the client web UI
