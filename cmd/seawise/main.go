@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strconv"
 
 	"github.com/seawise/client/cmd/seawise/cmd"
 	"github.com/seawise/client/cmd/seawise/server"
@@ -11,7 +12,13 @@ import (
 func main() {
 	// If no arguments provided, run the server (backwards compatible)
 	if len(os.Args) == 1 {
-		server.Run(constants.DefaultWebPort)
+		port := constants.DefaultWebPort
+		if envPort := os.Getenv("SEAWISE_PORT"); envPort != "" {
+			if p, err := strconv.Atoi(envPort); err == nil && p > 0 && p <= 65535 {
+				port = p
+			}
+		}
+		server.Run(port)
 		return
 	}
 

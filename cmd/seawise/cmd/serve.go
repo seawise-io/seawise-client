@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"os"
+	"strconv"
+
 	"github.com/seawise/client/cmd/seawise/server"
 	"github.com/seawise/client/internal/constants"
 	"github.com/spf13/cobra"
@@ -18,6 +21,12 @@ var serveCmd = &cobra.Command{
 }
 
 func init() {
-	serveCmd.Flags().IntVarP(&servePort, "port", "p", constants.DefaultWebPort, "Port for the web UI")
+	defaultPort := constants.DefaultWebPort
+	if envPort := os.Getenv("SEAWISE_PORT"); envPort != "" {
+		if p, err := strconv.Atoi(envPort); err == nil && p > 0 && p <= 65535 {
+			defaultPort = p
+		}
+	}
+	serveCmd.Flags().IntVarP(&servePort, "port", "p", defaultPort, "Port for the web UI (env: SEAWISE_PORT)")
 	rootCmd.AddCommand(serveCmd)
 }
