@@ -403,14 +403,17 @@ func (s *Server) sendHeartbeat() {
 			// SECURITY: Validate the migration target before updating
 			if err := client.UpdateServer(migrate.FRPServerAddr, migrate.FRPServerPort); err != nil {
 				log.Printf("[Heartbeat] SECURITY: Rejected migration to untrusted server: %v", err)
-			} else if err := client.Restart(); err != nil {
-				log.Printf("[Heartbeat] Migration restart failed: %v", err)
 			} else {
-				log.Printf("[Heartbeat] Migration complete → connected to shard %s", migrate.ShardID)
-				// Clear health cache so services get re-reported
-				s.mu.Lock()
-				s.lastHealthStatus = make(map[string]string)
-				s.mu.Unlock()
+				client.ResetConnectionID() // New shard = new session
+				if err := client.Restart(); err != nil {
+					log.Printf("[Heartbeat] Migration restart failed: %v", err)
+				} else {
+					log.Printf("[Heartbeat] Migration complete → connected to shard %s", migrate.ShardID)
+					// Clear health cache so services get re-reported
+					s.mu.Lock()
+					s.lastHealthStatus = make(map[string]string)
+					s.mu.Unlock()
+				}
 			}
 		}
 		return
@@ -442,6 +445,7 @@ func (s *Server) sendHeartbeat() {
 				}
 				s.mu.Unlock()
 
+				client.ResetConnectionID() // New shard address = new session
 				if err := client.Restart(); err != nil {
 					log.Printf("[Heartbeat] FRP restart after address update failed: %v", err)
 				} else {
@@ -853,8 +857,9 @@ func (s *Server) handleFRPCrash() {
 		}
 	}
 
-	// Stop and restart FRP
+	// Stop and restart FRP with fresh connection ID (crash = new session)
 	client.Stop()
+	client.ResetConnectionID()
 	if err := client.Start(); err != nil {
 		log.Printf("[FRP Recovery] Restart failed: %v", err)
 		// Will be retried on next heartbeat cycle
@@ -882,6 +887,7 @@ func (s *Server) reconnectFRP() error {
 		return nil
 	}
 	client.Stop()
+	client.ResetConnectionID() // New session — need fresh connection ID
 	if err := client.Start(); err != nil {
 		return err
 	}

@@ -167,6 +167,15 @@ func (c *Client) ConnectionID() string {
 	return c.connectionID
 }
 
+// ResetConnectionID clears the connection ID so the next Start() generates a fresh one.
+// Call this on true reconnections (after superseded, offline recovery, etc.) — NOT on
+// service-change restarts where we want to keep the same session identity.
+func (c *Client) ResetConnectionID() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.connectionID = ""
+}
+
 func (c *Client) setState(newState ProcessState) {
 	c.mu.Lock()
 	oldState := c.state
@@ -365,15 +374,21 @@ func (c *Client) writeConfigLocked() error {
 func (c *Client) Start() error {
 	c.mu.Lock()
 
-	// Generate new connection ID for this session
-	// This allows the server to detect when a newer client takes over
-	connIDBytes := make([]byte, 16)
-	if _, err := rand.Read(connIDBytes); err != nil {
-		c.mu.Unlock()
-		return fmt.Errorf("failed to generate connection ID: %w", err)
+	// Reuse existing connection ID within a session (e.g., restart to add services).
+	// Only generate a new one on first start or after a forced reconnect.
+	// Generating a new ID on every restart causes a race: heartbeat sends the new ID
+	// before FRP Login stores it in the DB, triggering a self-superseded error.
+	if c.connectionID == "" {
+		connIDBytes := make([]byte, 16)
+		if _, err := rand.Read(connIDBytes); err != nil {
+			c.mu.Unlock()
+			return fmt.Errorf("failed to generate connection ID: %w", err)
+		}
+		c.connectionID = hex.EncodeToString(connIDBytes)
+		log.Printf("[FRP] New connection ID: %s", c.connectionID)
+	} else {
+		log.Printf("[FRP] Reusing connection ID: %s", c.connectionID)
 	}
-	c.connectionID = hex.EncodeToString(connIDBytes)
-	log.Printf("[FRP] New connection ID: %s", c.connectionID)
 
 	if len(c.services) == 0 {
 		log.Printf("[FRP] No services to proxy, skipping start")
