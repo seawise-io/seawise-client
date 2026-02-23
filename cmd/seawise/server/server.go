@@ -995,11 +995,9 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	if err := indexTemplate.Execute(w, struct {
-		WebAppURL  string
-		SetupToken string
+		WebAppURL string
 	}{
-		WebAppURL:  config.GetWebURL(),
-		SetupToken: s.auth.getSetupToken(),
+		WebAppURL: config.GetWebURL(),
 	}); err != nil {
 		log.Printf("[WebUI] Template render error: %v", err)
 	}

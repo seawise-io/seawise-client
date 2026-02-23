@@ -888,7 +888,6 @@
         let isAuthenticated = false;
         let passwordSet = false;
         const WEB_APP_URL = '{{.WebAppURL}}';
-        const SETUP_TOKEN = '{{.SetupToken}}';
 
         // --- Toast Notifications ---
         function showToast(message, type = 'error') {
@@ -1045,13 +1044,10 @@
             if (pw !== confirm) { errorEl.textContent = 'Passwords do not match'; errorEl.classList.remove('hidden'); return; }
 
             try {
-                const body = { password: pw };
-                if (SETUP_TOKEN) body.setup_token = SETUP_TOKEN;
-
                 const resp = await fetch('/api/auth/set-password', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
+                    body: JSON.stringify({ password: pw })
                 });
                 const data = await resp.json();
                 if (data.error) { errorEl.textContent = data.error; errorEl.classList.remove('hidden'); return; }

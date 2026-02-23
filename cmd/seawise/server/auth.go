@@ -2,7 +2,6 @@ package server
 
 import (
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -44,7 +43,6 @@ type authManager struct {
 	passwordHash []byte               // bcrypt hash loaded from disk
 	sessions     map[string]time.Time // token -> expiry
 	passwordFile string
-	setupToken   string // One-time token for initial password setup
 	rateLimits   map[string]*rateLimitEntry // IP -> rate limit state
 	stopChan     chan struct{} // Signal cleanup goroutine to exit
 	stopOnce     sync.Once    // Prevents double-close panic on stopChan
@@ -66,25 +64,7 @@ func newAuthManager() *authManager {
 		am.passwordHash = data
 		log.Printf("[Auth] Password protection enabled")
 	} else {
-		// Generate a one-time setup token for initial password creation
-		// SECURITY: This prevents unauthorized password setting by attackers
-		tokenBytes := make([]byte, 16)
-		if _, err := rand.Read(tokenBytes); err == nil {
-			am.setupToken = hex.EncodeToString(tokenBytes)
-			// SECURITY: Write token to file instead of logging (prevents exposure in centralized logs)
-			tokenFile := auth.SetupTokenFile()
-			if writeErr := os.WriteFile(tokenFile, []byte(am.setupToken), 0600); writeErr == nil {
-				log.Printf("[Auth] No password set — setup token written to: %s", tokenFile)
-				log.Printf("[Auth] Use this token at http://localhost:8082 to set your password")
-			} else {
-				// SECURITY: Don't log the token — centralized logging would expose it.
-				// Tell user to fix file system or use CLI instead.
-				log.Printf("[Auth] WARNING: Could not write setup token to %s: %v", tokenFile, writeErr)
-				log.Printf("[Auth] Fix file permissions and restart, or set password via CLI: seawise password set")
-			}
-		} else {
-			log.Printf("[Auth] Failed to generate setup token: %v", err)
-		}
+		log.Printf("[Auth] No password set — set one at http://localhost:8082 via Settings")
 	}
 
 	// Start background cleanup of expired sessions
@@ -295,38 +275,15 @@ func (am *authManager) clearRateLimit(ip string) {
 	delete(am.rateLimits, ip)
 }
 
-// getSetupToken returns the current setup token (empty string if already used or password is set).
-func (am *authManager) getSetupToken() string {
-	am.mu.RLock()
-	defer am.mu.RUnlock()
-	return am.setupToken
-}
-
-// removePassword deletes the stored password, clears all sessions, and regenerates a setup token.
+// removePassword deletes the stored password and clears all sessions.
 func (am *authManager) removePassword() error {
-	// Generate new setup token BEFORE clearing state (so it's ready immediately)
-	tokenBytes := make([]byte, 16)
-	var newToken string
-	if _, err := rand.Read(tokenBytes); err == nil {
-		newToken = hex.EncodeToString(tokenBytes)
-	}
-
 	am.mu.Lock()
 	am.passwordHash = nil
 	am.sessions = make(map[string]time.Time)
-	am.setupToken = newToken
 	am.mu.Unlock()
 
 	if err := os.Remove(am.passwordFile); err != nil && !os.IsNotExist(err) {
 		return err
-	}
-
-	// Write new setup token to file
-	if newToken != "" {
-		tokenFile := auth.SetupTokenFile()
-		if err := os.WriteFile(tokenFile, []byte(newToken), 0600); err != nil {
-			log.Printf("[Auth] Warning: failed to write new setup token: %v", err)
-		}
 	}
 
 	log.Printf("[Auth] Password removed — web UI is unprotected")
@@ -498,7 +455,6 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Password        string `json:"password"`
 		CurrentPassword string `json:"current_password"`
-		SetupToken      string `json:"setup_token"` // Required for initial setup
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
@@ -508,18 +464,6 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 	if len(req.Password) < 8 {
 		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "Password must be at least 8 characters"})
 		return
-	}
-
-	// SECURITY: If setting initial password, require setup token from console
-	if !s.auth.hasPassword() {
-		s.auth.mu.RLock()
-		validToken := s.auth.setupToken != "" && subtle.ConstantTimeCompare([]byte(req.SetupToken), []byte(s.auth.setupToken)) == 1
-		s.auth.mu.RUnlock()
-
-		if !validToken {
-			writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Invalid setup token. Check console for the token."})
-			return
-		}
 	}
 
 	// If changing password, verify current
@@ -532,11 +476,6 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "Failed to set password"})
 		return
 	}
-
-	// Clear setup token after successful password set
-	s.auth.mu.Lock()
-	s.auth.setupToken = ""
-	s.auth.mu.Unlock()
 
 	// Clear CLI session (force re-auth with new password)
 	if err := auth.ClearCLISession(); err != nil {

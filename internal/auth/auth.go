@@ -29,12 +29,6 @@ func PasswordFile() string {
 	return filepath.Join(paths.DataDir(), "password.hash")
 }
 
-// SetupTokenFile returns the path to the setup token file
-// SECURITY: Token is written here instead of logged to prevent exposure in centralized logs
-func SetupTokenFile() string {
-	return filepath.Join(paths.DataDir(), "setup-token")
-}
-
 // cliSessionFile returns the path to the CLI session file (in /tmp so it's cleared on reboot)
 func cliSessionFile() string {
 	return fmt.Sprintf("/tmp/seawise-cli-session-%d", os.Getuid())
