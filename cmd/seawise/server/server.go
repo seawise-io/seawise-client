@@ -70,7 +70,8 @@ type Server struct {
 	pairingCode       string // user_code (shown to user)
 	pairingDeviceCode string // device_code (used for polling, never shown)
 	pairingState      string // "none", "pending", "approved", "paired"
-	e2eTLSEnabled bool   // Whether the server supports E2E TLS
+	e2eTLSEnabled  bool   // Whether the server supports E2E TLS
+	latestVersion  string // Latest available version from GitHub Releases
 
 	// Health check caches - only report changes to minimize API calls
 	serviceCache     map[string]string // subdomain → serviceID
@@ -288,6 +289,9 @@ func (s *Server) startServices(ctx context.Context) {
 
 	// Start service health check loop
 	go s.serviceHealthLoop(ctx)
+
+	// Start update checker (checks GitHub Releases every 24h)
+	go s.checkForUpdates(ctx)
 }
 
 // heartbeatLoop sends heartbeats and handles responses.
@@ -571,6 +575,71 @@ func (s *Server) checkAndReportHealth() {
 			}
 			s.mu.Unlock()
 		}
+	}
+}
+
+// checkForUpdates periodically checks GitHub Releases for a newer client version.
+// Checks once after 30s startup delay, then every 24 hours. Skips dev builds.
+func (s *Server) checkForUpdates(ctx context.Context) {
+	// Skip for dev builds
+	if constants.Version == "dev" || strings.HasPrefix(constants.Version, "dev-") {
+		return
+	}
+
+	// Don't hit GitHub immediately on startup
+	select {
+	case <-time.After(30 * time.Second):
+	case <-ctx.Done():
+		return
+	}
+
+	s.fetchLatestVersion()
+
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			s.fetchLatestVersion()
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (s *Server) fetchLatestVersion() {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET",
+		"https://api.github.com/repos/seawise-io/seawise-client/releases/latest", nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return
+	}
+	defer resp.Body.Close()
+
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&release) != nil {
+		return
+	}
+
+	if release.TagName != "" && release.TagName != constants.Version {
+		s.mu.Lock()
+		s.latestVersion = release.TagName
+		s.mu.Unlock()
+		log.Printf("[Update] New version available: %s (current: %s)", release.TagName, constants.Version)
 	}
 }
 
@@ -953,6 +1022,9 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"pairing_code":     s.pairingCode,
 		"default_hostname": hostname,
 		"version":          constants.Version,
+	}
+	if s.latestVersion != "" {
+		status["latest_version"] = s.latestVersion
 	}
 
 	// Add connection state info

@@ -71,6 +71,37 @@
             color: #0A0A0A;
             opacity: 0.4;
         }
+        .update-banner {
+            position: fixed;
+            bottom: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1E3A5F;
+            color: #FFFFFF;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 100;
+        }
+        .update-banner a {
+            color: #60A5FA;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .update-banner a:hover { text-decoration: underline; }
+        .update-banner .dismiss {
+            background: none;
+            border: none;
+            color: #94A3B8;
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 0 0.25rem;
+            line-height: 1;
+        }
         .disconnect-btn {
             background: #FEF2F2;
             color: #DC2626;
@@ -752,6 +783,13 @@
         </div>
     </div>
 
+    <!-- Update banner -->
+    <div class="update-banner hidden" id="update-banner">
+        <span>Update available: <strong id="update-version"></strong></span>
+        <a href="https://github.com/seawise-io/seawise-client/releases" target="_blank" rel="noopener">View release</a>
+        <button class="dismiss" onclick="document.getElementById('update-banner').classList.add('hidden')" title="Dismiss">&times;</button>
+    </div>
+
     <!-- Footer (shown when paired) -->
     <div class="server-id-footer hidden" id="server-id-footer"></div>
     <div class="version-footer" id="version-footer"></div>
@@ -1037,6 +1075,12 @@
                 const versionFooter = document.getElementById('version-footer');
                 if (data.version) {
                     versionFooter.textContent = data.version;
+                }
+
+                // Show update banner if newer version available
+                if (data.latest_version) {
+                    document.getElementById('update-version').textContent = data.latest_version;
+                    document.getElementById('update-banner').classList.remove('hidden');
                 }
 
                 if (data.pairing_state === 'paired') {
