@@ -402,8 +402,9 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 			}
 		}
 
-		// Auth endpoints are always accessible (after CSRF check)
-		if path == "/api/auth/status" || path == "/api/auth/login" || path == "/api/auth/set-password" {
+		// Auth endpoints + status are always accessible (after CSRF check)
+		// /api/status is whitelisted so the status badge updates even when locked
+		if path == "/api/auth/status" || path == "/api/auth/login" || path == "/api/auth/set-password" || path == "/api/status" {
 			next.ServeHTTP(w, r)
 			return
 		}

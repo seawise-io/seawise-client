@@ -932,6 +932,7 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/pair/start", s.handlePairStart)
 	mux.HandleFunc("/api/pair/poll", s.handlePairPoll)
+	mux.HandleFunc("/api/pair/cancel", s.handlePairCancel)
 	mux.HandleFunc("/api/services/add", s.handleAddService)
 	mux.HandleFunc("/api/services/list", s.handleListServices)
 	mux.HandleFunc("/api/services/delete", s.handleDeleteService)
@@ -1122,6 +1123,15 @@ func (s *Server) pollForApproval(deviceCode string) {
 			s.mu.Unlock()
 			return
 		case <-ticker.C:
+			// Check if pairing was cancelled
+			s.mu.RLock()
+			currentState := s.pairingState
+			s.mu.RUnlock()
+			if currentState != "pending" {
+				log.Println("[Pairing] Poll stopped (cancelled)")
+				return
+			}
+
 			status, err := currentAPIClient.PollPairingStatus(deviceCode)
 			if err != nil {
 				continue
@@ -1181,6 +1191,22 @@ func (s *Server) pollForApproval(deviceCode string) {
 			}
 		}
 	}
+}
+
+func (s *Server) handlePairCancel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.mu.Lock()
+	s.pairingState = "none"
+	s.pairingCode = ""
+	s.pairingDeviceCode = ""
+	s.mu.Unlock()
+
+	log.Println("[Pairing] Cancelled by user")
+	writeJSON(w, map[string]string{"status": "cancelled"})
 }
 
 func (s *Server) handlePairPoll(w http.ResponseWriter, r *http.Request) {

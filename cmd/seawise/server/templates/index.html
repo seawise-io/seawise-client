@@ -617,6 +617,34 @@
             font-size: 0.8rem;
             margin-bottom: 0.5rem;
         }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 200;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            pointer-events: none;
+        }
+        .toast {
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            color: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: toastIn 0.2s ease-out;
+            pointer-events: auto;
+            max-width: 360px;
+        }
+        .toast.error { background: #DC2626; }
+        .toast.success { background: #059669; }
+        .toast.warning { background: #D97706; }
+        .toast.fade-out { animation: toastOut 0.2s ease-in forwards; }
+        @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
     </style>
 </head>
 <body>
@@ -783,6 +811,9 @@
         </div>
     </div>
 
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toast-container"></div>
+
     <!-- Update banner -->
     <div class="update-banner hidden" id="update-banner">
         <span>Update available: <strong id="update-version"></strong></span>
@@ -858,6 +889,19 @@
         let passwordSet = false;
         const WEB_APP_URL = '{{.WebAppURL}}';
         const SETUP_TOKEN = '{{.SetupToken}}';
+
+        // --- Toast Notifications ---
+        function showToast(message, type = 'error') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast ' + type;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.add('fade-out');
+                setTimeout(() => toast.remove(), 200);
+            }, 4000);
+        }
 
         // --- Auth Functions ---
         function updateLockButton() {
@@ -1056,12 +1100,6 @@
         async function checkStatus() {
             try {
                 const resp = await fetch('/api/status');
-                if (resp.status === 401) {
-                    // Session expired, show login
-                    isAuthenticated = false;
-                    await checkAuth();
-                    return;
-                }
                 const data = await resp.json();
                 const badge = document.getElementById('status-badge');
                 const statusText = document.getElementById('status-text');
@@ -1123,7 +1161,7 @@
                 });
                 const data = await resp.json();
                 if (data.error) {
-                    alert('Error: ' + data.error);
+                    showToast(data.error);
                     return;
                 }
                 currentCode = data.code;
@@ -1132,13 +1170,14 @@
                 window.open(`${WEB_APP_URL}/connect?code=${data.code}`, '_blank');
                 startPolling();
             } catch (err) {
-                alert('Failed to connect: ' + err.message);
+                showToast('Failed to connect');
             }
         }
 
-        function cancelPairing() {
+        async function cancelPairing() {
             if (pollInterval) clearInterval(pollInterval);
             currentCode = '';
+            try { await fetch('/api/pair/cancel', { method: 'POST' }); } catch {}
             document.getElementById('connect-form').classList.remove('hidden');
             document.getElementById('waiting-approval').classList.add('hidden');
         }
@@ -1159,10 +1198,10 @@
                 if (data.success) {
                     checkStatus();
                 } else {
-                    alert('Error: ' + (data.error || 'Failed to disconnect'));
+                    showToast(data.error || 'Failed to disconnect');
                 }
             } catch (err) {
-                alert('Failed to disconnect: ' + err.message);
+                showToast('Failed to disconnect');
             }
         }
 
@@ -1177,7 +1216,7 @@
                     } else if (data.state === 'none' || data.state === 'expired') {
                         clearInterval(pollInterval);
                         cancelPairing();
-                        alert('Authorization expired. Please try again.');
+                        showToast('Authorization expired. Please try again.', 'warning');
                     }
                 } catch (err) {
                     console.error('Poll failed:', err);
@@ -1190,8 +1229,8 @@
             const host = document.getElementById('service-host').value.trim() || 'localhost';
             const port = parseInt(document.getElementById('service-port').value);
 
-            if (!name) { alert('Please enter a service name'); return; }
-            if (!port || port < 1 || port > 65535) { alert('Please enter a valid port (1-65535)'); return; }
+            if (!name) { showToast('Please enter a service name', 'warning'); return; }
+            if (!port || port < 1 || port > 65535) { showToast('Please enter a valid port (1-65535)', 'warning'); return; }
 
             try {
                 const resp = await fetch('/api/services/add', {
@@ -1200,7 +1239,7 @@
                     body: JSON.stringify({ name, host, port })
                 });
                 const data = await resp.json();
-                if (data.error) { alert('Error: ' + data.error); return; }
+                if (data.error) { showToast(data.error); return; }
 
                 addedServices.push({
                     id: data.service?.id || '',
@@ -1212,7 +1251,7 @@
                 document.getElementById('service-host').value = 'localhost';
                 document.getElementById('service-port').value = '';
             } catch (err) {
-                alert('Failed to add service: ' + err.message);
+                showToast('Failed to add service');
             }
         }
 
@@ -1241,11 +1280,11 @@
                     body: JSON.stringify({ service_id: serviceId, service_name: serviceName })
                 });
                 const data = await resp.json();
-                if (data.error) { alert('Error: ' + data.error); return; }
+                if (data.error) { showToast(data.error); return; }
                 addedServices = addedServices.filter(svc => svc.id !== serviceId);
                 renderServices();
             } catch (err) {
-                alert('Failed to delete: ' + err.message);
+                showToast('Failed to delete service');
             }
         }
 
@@ -1312,10 +1351,7 @@
             const authed = await checkAuth();
             if (authed) checkStatus();
         })();
-        setInterval(async () => {
-            if (passwordSet && !isAuthenticated) return;
-            checkStatus();
-        }, 5000);
+        setInterval(() => { checkStatus(); }, 5000);
     </script>
 </body>
 </html>
