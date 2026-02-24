@@ -400,7 +400,8 @@ func (c *Client) Heartbeat(serverID string, frpConnected bool, serviceCount int,
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return HeartbeatResult{
-			Success: true, // Request succeeded even if parse failed
+			Success: false,
+			Error:   fmt.Errorf("parse heartbeat response: %w", err),
 		}
 	}
 
