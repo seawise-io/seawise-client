@@ -329,7 +329,6 @@ func (c *Client) writeConfigLocked() error {
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
-	defer f.Close()
 
 	// Translate localhost addresses for Docker compatibility
 	translatedServices := make([]Service, len(c.services))
@@ -364,7 +363,12 @@ func (c *Client) writeConfigLocked() error {
 	}
 
 	if err := frpcTmpl.Execute(f, data); err != nil {
+		f.Close()
 		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to flush config file: %w", err)
 	}
 
 	log.Printf("[FRP] Config written with %d services", len(c.services))
@@ -522,7 +526,9 @@ func (c *Client) Stop() error {
 	}
 
 	if c.cmd != nil && c.cmd.Process != nil {
-		c.cmd.Process.Kill()
+		if err := c.cmd.Process.Kill(); err != nil {
+			log.Printf("[FRP] Kill error (process may have already exited): %v", err)
+		}
 		// Don't call cmd.Wait() here — monitorProcess is already waiting.
 		// Calling Wait() twice causes "waitid: no child processes" errors.
 		// Give monitorProcess a moment to detect the kill and exit cleanly.

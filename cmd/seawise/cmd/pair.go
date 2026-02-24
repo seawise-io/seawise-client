@@ -54,7 +54,9 @@ func runPair() {
 
 		// Unpair first
 		fmt.Println("Unpairing...")
-		config.Delete()
+		if err := config.Delete(); err != nil {
+			fmt.Printf("⚠️  Warning: Failed to delete old config: %v\n", err)
+		}
 	}
 
 	// Get server name
@@ -132,7 +134,10 @@ func runPair() {
 			// Check if pairing completed using device_code (not user_code)
 			result, err := apiClient.CompletePairing(codes.DeviceCode)
 			if err != nil {
-				// Not ready yet, continue waiting
+				// "not_approved" is expected during polling — only log unexpected errors
+				if !strings.Contains(err.Error(), "not yet approved") && !strings.Contains(err.Error(), "pending") {
+					fmt.Printf("\r⚠️  Poll error: %v (retrying...)\n", err)
+				}
 				continue
 			}
 
@@ -160,7 +165,10 @@ func runPair() {
 			}
 
 			if err := newCfg.Save(); err != nil {
-				fmt.Printf("⚠️  Warning: Failed to save config: %v\n", err)
+				fmt.Printf("❌ Failed to save pairing config: %v\n", err)
+				fmt.Println("Pairing completed on the server but could not be saved locally.")
+				fmt.Println("Please try again with: seawise pair")
+				os.Exit(1)
 			}
 
 			fmt.Println("🚀 You can now add services with: seawise services add")

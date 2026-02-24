@@ -635,7 +635,8 @@ func (s *Server) fetchLatestVersion() {
 	var release struct {
 		TagName string `json:"tag_name"`
 	}
-	if json.NewDecoder(resp.Body).Decode(&release) != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		log.Printf("[Update] Failed to parse release info: %v", err)
 		return
 	}
 
@@ -1138,6 +1139,7 @@ func (s *Server) pollForApproval(deviceCode string) {
 
 			status, err := currentAPIClient.PollPairingStatus(deviceCode)
 			if err != nil {
+				log.Printf("[Pairing] Poll error: %v", err)
 				continue
 			}
 
@@ -1168,7 +1170,12 @@ func (s *Server) pollForApproval(deviceCode string) {
 					UserEmail:     result.Data.UserEmail,
 				}
 				if err := s.cfg.Save(); err != nil {
-					log.Printf("[Pairing] Failed to save config: %v", err)
+					log.Printf("[Pairing] CRITICAL: Failed to save config, aborting pairing: %v", err)
+					s.pairingState = "none"
+					s.pairingCode = ""
+					s.pairingDeviceCode = ""
+					s.mu.Unlock()
+					return
 				}
 
 				s.apiClient.SetFRPToken(s.cfg.FRPToken)
