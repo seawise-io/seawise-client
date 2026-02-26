@@ -9,12 +9,13 @@ var Version = "dev"
 
 // Timing constants for connection management
 const (
-	// HeartbeatInterval is how often we send heartbeats to the server
-	HeartbeatInterval = 10 * time.Second
+	// HeartbeatInterval is how often we send heartbeats to the server (default).
+	// The API may return a different interval via next_heartbeat_ms in the heartbeat response.
+	HeartbeatInterval = 30 * time.Second
 	// HeartbeatTimeout is how long to wait for a heartbeat response
 	HeartbeatTimeout = 15 * time.Second
-	// ServerTimeout is how long before the server marks a client as offline
-	ServerTimeout = 60 * time.Second
+	// ServerTimeout is how long before the server marks a client as offline (3 × heartbeat interval)
+	ServerTimeout = 90 * time.Second
 	// BaseRetryDelay is the initial delay before retrying a failed connection
 	BaseRetryDelay = 1 * time.Second
 	// MaxRetryDelay caps the exponential backoff for retries
@@ -32,8 +33,8 @@ const (
 	// WebPairTimeout is the maximum time for web UI pairing approval
 	// Longer than CLI because users may need time to navigate to dashboard
 	WebPairTimeout = 10 * time.Minute
-	// StatusPollInterval is how often to poll for status
-	StatusPollInterval = 10 * time.Second
+	// StatusPollInterval is how often to poll for status (matches HeartbeatInterval)
+	StatusPollInterval = 30 * time.Second
 	// ServicePollInterval is how often to poll for service changes
 	ServicePollInterval = 30 * time.Second
 	// StartupDelay is the initial delay before starting background tasks

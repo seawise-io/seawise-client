@@ -301,7 +301,7 @@ func (s *Server) heartbeatLoop(ctx context.Context) {
 	defer ticker.Stop()
 
 	// Initial heartbeat
-	s.sendHeartbeat()
+	s.sendHeartbeat(ticker)
 
 	for {
 		select {
@@ -309,7 +309,7 @@ func (s *Server) heartbeatLoop(ctx context.Context) {
 			log.Println("[Heartbeat] Stopping (shutdown)")
 			return
 		case <-ticker.C:
-			s.sendHeartbeat()
+			s.sendHeartbeat(ticker)
 
 			// Check if we need to restart FRP (crashed state)
 			s.mu.RLock()
@@ -322,7 +322,7 @@ func (s *Server) heartbeatLoop(ctx context.Context) {
 	}
 }
 
-func (s *Server) sendHeartbeat() {
+func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 	s.mu.RLock()
 	currentCfg := s.cfg
 	client := s.frpClient
@@ -377,6 +377,18 @@ func (s *Server) sendHeartbeat() {
 
 	// Success
 	s.connManager.HeartbeatOK()
+
+	// Adopt server-recommended heartbeat interval (clamped to 10s–5min for safety)
+	if result.Response != nil && result.Response.NextHeartbeatMs > 0 {
+		interval := time.Duration(result.Response.NextHeartbeatMs) * time.Millisecond
+		if interval < 10*time.Second {
+			interval = 10 * time.Second
+		}
+		if interval > 5*time.Minute {
+			interval = 5 * time.Minute
+		}
+		ticker.Reset(interval)
+	}
 
 	// Log any gap detected by server
 	if result.Response != nil && result.Response.GapSeconds > 30 {
@@ -488,7 +500,7 @@ func (s *Server) serviceSyncLoop(ctx context.Context) {
 // serviceHealthLoop periodically checks if each service's host:port is reachable
 // and reports the health status to the API.
 func (s *Server) serviceHealthLoop(ctx context.Context) {
-	ticker := time.NewTicker(constants.StatusPollInterval) // 10 seconds
+	ticker := time.NewTicker(constants.StatusPollInterval) // 30 seconds
 	defer ticker.Stop()
 
 	// Wait for initial startup
@@ -949,6 +961,17 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 	bindAddr := os.Getenv("SEAWISE_BIND_ADDR")
 	if bindAddr == "" {
 		bindAddr = "127.0.0.1"
+	}
+
+	// F-025: Warn when binding to all interfaces without password protection
+	if (bindAddr == "0.0.0.0" || bindAddr == "::") && !s.auth.hasPassword() {
+		log.Println("[WARNING] ========================================")
+		log.Println("[WARNING] Web UI is listening on ALL interfaces")
+		log.Println("[WARNING] with NO PASSWORD set. Anyone on your")
+		log.Println("[WARNING] network can access and control this client.")
+		log.Println("[WARNING] Set a password via the web UI or API:")
+		log.Printf("[WARNING]   curl -X POST http://localhost:%d/api/auth/set-password -d '{\"new_password\":\"...\"}'", port)
+		log.Println("[WARNING] ========================================")
 	}
 
 	// Wrap all routes with auth middleware
