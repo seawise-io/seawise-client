@@ -29,7 +29,8 @@ ARG TARGETARCH=amd64
 RUN apk add --no-cache curl tar && \
     curl -L "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_${TARGETARCH}.tar.gz" | \
     tar -xz -C /tmp && \
-    mv /tmp/frp_${FRP_VERSION}_linux_${TARGETARCH}/frpc /frpc
+    mv /tmp/frp_${FRP_VERSION}_linux_${TARGETARCH}/frpc /frpc && \
+    mv /tmp/frp_${FRP_VERSION}_linux_${TARGETARCH}/LICENSE /frp-LICENSE
 
 # Runtime stage
 FROM alpine:3.21
@@ -43,6 +44,9 @@ WORKDIR /app
 
 COPY --from=builder /seawise-client /app/seawise-client
 COPY --from=frp-downloader /frpc /app/frpc
+
+# FRP is Apache 2.0 licensed — include LICENSE for compliance
+COPY --from=frp-downloader /frp-LICENSE /app/licenses/frp-LICENSE
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
