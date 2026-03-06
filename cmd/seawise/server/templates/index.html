@@ -76,23 +76,23 @@
             right: 1rem;
             top: 50%;
             transform: translateY(-50%);
-            background: #DC2626;
-            color: #FFFFFF;
-            padding: 0.25rem 0.6rem;
-            border-radius: 4px;
-            font-size: 0.7rem;
-            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            line-height: 1;
             text-decoration: none;
             white-space: nowrap;
-            animation: pulse-red 2s ease-in-out infinite;
+            background: rgba(239, 68, 68, 0.15);
+            color: #F87171;
+            border: 1px solid rgba(239, 68, 68, 0.2);
         }
         .update-badge:hover {
-            background: #B91C1C;
+            background: rgba(239, 68, 68, 0.25);
             text-decoration: none;
-        }
-        @keyframes pulse-red {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
         }
         .update-banner-legacy .dismiss {
             background: none;
@@ -690,7 +690,7 @@
                 </div>
             </div>
         </div>
-        <a href="https://github.com/seawise-io/seawise-client/releases" target="_blank" rel="noopener" class="update-badge hidden" id="update-badge">&#x26A0; Update Available</a>
+        <a href="https://github.com/seawise-io/seawise-client/releases" target="_blank" rel="noopener" class="update-badge hidden" id="update-badge">Update Pending</a>
         <button class="lock-btn hidden" id="lock-btn" onclick="lockUI()" title="Lock">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
