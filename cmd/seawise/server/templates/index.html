@@ -658,7 +658,6 @@
                 <div class="subtitle">Service Manager</div>
             </div>
             <div class="header-right">
-                <a href="https://github.com/seawise-io/seawise-client/releases" target="_blank" rel="noopener" class="update-badge hidden" id="update-badge">UPDATE <span id="update-version"></span></a>
                 <div class="status-badge {{if eq .PairingState "paired"}}online{{else}}offline{{end}}" id="status-badge">
                     <span class="status-dot"></span>
                     <span id="status-text">{{if eq .PairingState "paired"}}Connected{{else}}Not Connected{{end}}</span>
@@ -685,6 +684,7 @@
                         </button>
                     </div>
                 </div>
+                <a href="https://github.com/seawise-io/seawise-client/releases" target="_blank" rel="noopener" class="update-badge hidden" id="update-badge">&#x26A0; Update Available</a>
             </div>
         </div>
         <button class="lock-btn hidden" id="lock-btn" onclick="lockUI()" title="Lock">
