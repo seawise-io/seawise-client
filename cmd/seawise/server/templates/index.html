@@ -71,28 +71,32 @@
             color: #0A0A0A;
             opacity: 0.4;
         }
-        .update-badge {
-            position: absolute;
-            right: 1rem;
-            top: 50%;
-            transform: translateY(-50%);
-            display: inline-flex;
+        .update-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            background: #FFFBEB;
+            color: #92400E;
+            border-bottom: 1px solid #FDE68A;
+            padding: 0.5rem 1rem;
+            font-size: 0.85rem;
+            display: flex;
             align-items: center;
-            gap: 0.375rem;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 500;
-            line-height: 1;
-            text-decoration: none;
-            white-space: nowrap;
-            background: rgba(239, 68, 68, 0.15);
-            color: #F87171;
-            border: 1px solid rgba(239, 68, 68, 0.2);
+            justify-content: center;
+            gap: 0.5rem;
         }
-        .update-badge:hover {
-            background: rgba(239, 68, 68, 0.25);
+        .update-banner a {
+            color: #92400E;
+            font-weight: 600;
+            text-decoration: underline;
+        }
+        .update-banner a:hover {
             text-decoration: none;
+        }
+        .update-banner + .header-bar {
+            margin-top: 36px;
         }
         .update-banner-legacy .dismiss {
             background: none;
@@ -654,6 +658,12 @@
     </style>
 </head>
 <body>
+    <!-- Update Banner (shown when newer version available) -->
+    <div class="update-banner hidden" id="update-banner">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>A new version is available.</span>
+        <a href="https://github.com/seawise-io/seawise-client/releases" target="_blank" rel="noopener">Update now</a>
+    </div>
     <!-- Dark Header Bar -->
     <div class="header-bar">
         <div class="header-content">
@@ -690,7 +700,6 @@
                 </div>
             </div>
         </div>
-        <a href="https://github.com/seawise-io/seawise-client/releases" target="_blank" rel="noopener" class="update-badge hidden" id="update-badge">Update Pending</a>
     </div>
         <button class="lock-btn hidden" id="lock-btn" onclick="lockUI()" title="Lock">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
@@ -1125,9 +1134,9 @@
                     versionFooter.textContent = data.version;
                 }
 
-                // Show update badge if newer version available
+                // Show update banner if newer version available
                 if (data.latest_version) {
-                    document.getElementById('update-badge').classList.remove('hidden');
+                    document.getElementById('update-banner').classList.remove('hidden');
                 }
 
                 if (data.pairing_state === 'paired') {
