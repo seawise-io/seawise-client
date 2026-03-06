@@ -71,29 +71,26 @@
             color: #0A0A0A;
             opacity: 0.4;
         }
-        .update-banner {
-            position: fixed;
-            bottom: 1.5rem;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #1E3A5F;
+        .update-badge {
+            background: #DC2626;
             color: #FFFFFF;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            font-size: 0.8rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 100;
-        }
-        .update-banner a {
-            color: #60A5FA;
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
             text-decoration: none;
-            font-weight: 500;
+            white-space: nowrap;
+            animation: pulse-red 2s ease-in-out infinite;
         }
-        .update-banner a:hover { text-decoration: underline; }
-        .update-banner .dismiss {
+        .update-badge:hover {
+            background: #B91C1C;
+            text-decoration: none;
+        }
+        @keyframes pulse-red {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .update-banner-legacy .dismiss {
             background: none;
             border: none;
             color: #94A3B8;
@@ -661,6 +658,7 @@
                 <div class="subtitle">Service Manager</div>
             </div>
             <div class="header-right">
+                <a href="https://github.com/seawise-io/seawise-client/releases" target="_blank" rel="noopener" class="update-badge hidden" id="update-badge">UPDATE <span id="update-version"></span></a>
                 <div class="status-badge {{if eq .PairingState "paired"}}online{{else}}offline{{end}}" id="status-badge">
                     <span class="status-dot"></span>
                     <span id="status-text">{{if eq .PairingState "paired"}}Connected{{else}}Not Connected{{end}}</span>
@@ -819,12 +817,7 @@
     <!-- Toast Notifications -->
     <div class="toast-container" id="toast-container"></div>
 
-    <!-- Update banner -->
-    <div class="update-banner hidden" id="update-banner">
-        <span>Update available: <strong id="update-version"></strong></span>
-        <a href="https://github.com/seawise-io/seawise-client/releases" target="_blank" rel="noopener">View release</a>
-        <button class="dismiss" onclick="document.getElementById('update-banner').classList.add('hidden')" title="Dismiss">&times;</button>
-    </div>
+    <!-- Update banner (legacy placeholder, replaced by header badge) -->
 
     <!-- Footer (shown when paired) -->
     <div class="server-id-footer {{if ne .PairingState "paired"}}hidden{{end}}" id="server-id-footer">{{.ServerID}}</div>
@@ -1130,7 +1123,7 @@
                 // Show update banner if newer version available
                 if (data.latest_version) {
                     document.getElementById('update-version').textContent = data.latest_version;
-                    document.getElementById('update-banner').classList.remove('hidden');
+                    document.getElementById('update-badge').classList.remove('hidden');
                 }
 
                 if (data.pairing_state === 'paired') {
