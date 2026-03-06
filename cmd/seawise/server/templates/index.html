@@ -1125,9 +1125,8 @@
                     versionFooter.textContent = data.version;
                 }
 
-                // Show update banner if newer version available
+                // Show update badge if newer version available
                 if (data.latest_version) {
-                    document.getElementById('update-version').textContent = data.latest_version;
                     document.getElementById('update-badge').classList.remove('hidden');
                 }
 
