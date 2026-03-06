@@ -661,9 +661,9 @@
                 <div class="subtitle">Service Manager</div>
             </div>
             <div class="header-right">
-                <div class="status-badge offline" id="status-badge">
+                <div class="status-badge {{if eq .PairingState "paired"}}online{{else}}offline{{end}}" id="status-badge">
                     <span class="status-dot"></span>
-                    <span id="status-text">Not Connected</span>
+                    <span id="status-text">{{if eq .PairingState "paired"}}Connected{{else}}Not Connected{{end}}</span>
                 </div>
                 <div class="settings-wrapper">
                     <button class="settings-btn" onclick="toggleSettingsDropdown(event)" title="Settings">
@@ -721,7 +721,7 @@
     <div class="container" id="main-container">
 
         <!-- Connect Card (shown when not paired) - centered single column -->
-        <div class="card" id="connect-card" style="max-width: 450px; margin: 0 auto; border: 2px solid #F97316;">
+        <div class="card {{if eq .PairingState "paired"}}hidden{{end}}" id="connect-card" style="max-width: 450px; margin: 0 auto; border: 2px solid #F97316;">
             <div class="card-header">
                 <div class="card-icon orange">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
@@ -751,7 +751,7 @@
         </div>
 
         <!-- Main Content (shown when paired) -->
-        <div class="hidden" id="main-content">
+        <div class="{{if ne .PairingState "paired"}}hidden{{end}}" id="main-content">
             <!-- Top Row: Server Info + Disconnect -->
             <div class="top-row">
                 <div class="server-info">
@@ -761,9 +761,9 @@
                         </svg>
                     </div>
                     <div class="server-details">
-                        <div class="server-name" id="server-name">My Server</div>
+                        <div class="server-name" id="server-name">{{if .ServerName}}{{.ServerName}}{{else}}My Server{{end}}</div>
                         <div class="server-meta">
-                            <span id="user-email">-</span>
+                            <span id="user-email">{{if .UserEmail}}{{.UserEmail}}{{else}}-{{end}}</span>
                         </div>
                     </div>
                 </div>
@@ -827,8 +827,8 @@
     </div>
 
     <!-- Footer (shown when paired) -->
-    <div class="server-id-footer hidden" id="server-id-footer"></div>
-    <div class="version-footer" id="version-footer"></div>
+    <div class="server-id-footer {{if ne .PairingState "paired"}}hidden{{end}}" id="server-id-footer">{{.ServerID}}</div>
+    <div class="version-footer" id="version-footer">{{.Version}}</div>
 
     <!-- Delete Service Confirmation Modal -->
     <div class="modal-overlay" id="delete-service-modal" onclick="if(event.target === this) hideDeleteServiceModal()">

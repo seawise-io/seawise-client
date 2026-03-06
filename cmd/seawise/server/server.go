@@ -1024,11 +1024,27 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
-	if err := indexTemplate.Execute(w, struct {
-		WebAppURL string
+	s.mu.RLock()
+	data := struct {
+		WebAppURL    string
+		PairingState string
+		ServerName   string
+		UserEmail    string
+		ServerID     string
+		Version      string
 	}{
-		WebAppURL: config.GetWebURL(),
-	}); err != nil {
+		WebAppURL:    config.GetWebURL(),
+		PairingState: s.pairingState,
+		Version:      constants.Version,
+	}
+	if s.cfg != nil {
+		data.ServerName = s.cfg.ServerName
+		data.UserEmail = s.cfg.UserEmail
+		data.ServerID = s.cfg.ServerID
+	}
+	s.mu.RUnlock()
+
+	if err := indexTemplate.Execute(w, data); err != nil {
 		log.Printf("[WebUI] Template render error: %v", err)
 	}
 }
