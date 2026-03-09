@@ -101,7 +101,7 @@ func refreshCLISession() {
 	// Keep the same token, update expiry
 	expiry := time.Now().Add(cliSessionDuration).Unix()
 	content := fmt.Sprintf("%s:%d", parts[0], expiry)
-	if err := os.WriteFile(cliSessionFile(), []byte(content), 0600); err != nil {
+	if err := os.WriteFile(cliSessionFile(), []byte(content), 0600); err != nil { // nosec G703 — cliSessionFile() is a hardcoded path, not user input
 		// Log but don't fail - session refresh is best-effort
 		// Next CLI command will just re-authenticate
 		log.Printf("[auth] Warning: failed to refresh CLI session: %v", err)

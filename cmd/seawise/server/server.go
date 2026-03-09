@@ -35,6 +35,12 @@ var templates embed.FS
 // indexTemplate is parsed once at package init, not per request
 var indexTemplate = template.Must(template.ParseFS(templates, "templates/index.html"))
 
+// sanitizeLog strips newlines and control characters from user input before logging
+// to prevent log injection attacks (gosec G706).
+func sanitizeLog(s string) string {
+	return strings.NewReplacer("\n", "", "\r", "", "\t", " ").Replace(s)
+}
+
 // writeJSON encodes data as JSON to the response writer with error handling.
 // Logs encoding failures which can occur if the client disconnects mid-response.
 func writeJSON(w http.ResponseWriter, data interface{}) {
@@ -211,7 +217,7 @@ func (s *Server) startServices(ctx context.Context) {
 	// Get FRP token from config
 	frpToken := s.cfg.FRPToken
 
-	log.Printf("[FRP] Connecting to %s:%d (TLS: %v)", frpServerAddr, frpServerPort, s.cfg.FRPUseTLS)
+	log.Printf("[FRP] Connecting to %s:%d (TLS: %v)", sanitizeLog(frpServerAddr), frpServerPort, s.cfg.FRPUseTLS)
 
 	// Check if server supports E2E TLS
 	certStatus, err := s.apiClient.GetCertStatus()
@@ -558,7 +564,7 @@ func (s *Server) checkAndReportHealth() {
 		addr := fmt.Sprintf("%s:%d", host, svc.LocalPort)
 		conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			status = "online"
 		}
 
@@ -638,11 +644,11 @@ func (s *Server) fetchLatestVersion() {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil || resp.StatusCode != 200 {
 		if resp != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var release struct {
 		TagName string `json:"tag_name"`
@@ -689,7 +695,7 @@ func (s *Server) ensureServiceCert(subdomain string) (certPath, keyPath string, 
 		return cert, key, nil
 	}
 
-	log.Printf("[E2E TLS] Requesting certificate for %s", domain)
+	log.Printf("[E2E TLS] Requesting certificate for %s", sanitizeLog(domain))
 
 	// Generate a new key
 	key, err := s.certManager.GenerateKey()
@@ -720,7 +726,7 @@ func (s *Server) ensureServiceCert(subdomain string) (certPath, keyPath string, 
 		return "", "", err
 	}
 
-	log.Printf("[E2E TLS] Certificate saved for %s (expires: %s)", domain, certResp.ExpiresAt)
+	log.Printf("[E2E TLS] Certificate saved for %s (expires: %s)", sanitizeLog(domain), sanitizeLog(certResp.ExpiresAt))
 	return certPath, keyPath, nil
 }
 
@@ -871,7 +877,7 @@ func (s *Server) handleFRPCrash() {
 	}
 
 	// Stop and restart FRP with fresh connection ID (crash = new session)
-	client.Stop()
+	_ = client.Stop()
 	client.ResetConnectionID()
 	if err := client.Start(); err != nil {
 		log.Printf("[FRP Recovery] Restart failed: %v", err)
@@ -899,7 +905,7 @@ func (s *Server) reconnectFRP() error {
 	if client == nil {
 		return nil
 	}
-	client.Stop()
+	_ = client.Stop()
 	client.ResetConnectionID() // New session — need fresh connection ID
 	if err := client.Start(); err != nil {
 		return err
@@ -916,7 +922,7 @@ func (s *Server) handleUnpairInternal() {
 	// Stop FRP
 	s.mu.Lock()
 	if s.frpClient != nil {
-		s.frpClient.Stop()
+		_ = s.frpClient.Stop()
 		s.frpClient = nil
 	}
 
@@ -986,7 +992,7 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 		IdleTimeout:       constants.WebUIIdleTimeout,
 	}
 
-	log.Printf("Web UI listening on %s:%d", bindAddr, port)
+	log.Printf("Web UI listening on %s:%d", sanitizeLog(bindAddr), port)
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("[ERROR] Web UI failed: %v (tunnel continues running)", err)
@@ -1018,8 +1024,8 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 	}
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	if _, err := w.Write(data); err != nil {
-		log.Printf("[Static] Failed to write response for %s: %v", name, err)
+	if _, err := w.Write(data); err != nil { // nosec G705 — data is from embed.FS, not user input
+		log.Printf("[Static] Failed to write response for %s: %v", sanitizeLog(name), err)
 	}
 }
 
