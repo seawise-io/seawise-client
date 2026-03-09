@@ -1341,6 +1341,18 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for duplicate service name
+	existingServices, err := currentAPIClient.ListServices(currentCfg.ServerID)
+	if err == nil {
+		for _, existing := range existingServices {
+			if strings.EqualFold(existing.Name, req.Name) {
+				w.WriteHeader(http.StatusConflict)
+				writeJSON(w,map[string]string{"error": "A service named '" + req.Name + "' already exists"})
+				return
+			}
+		}
+	}
+
 	// Register with API
 	svc, err := currentAPIClient.RegisterService(currentCfg.ServerID, req.Name, req.Host, req.Port)
 	if err != nil {

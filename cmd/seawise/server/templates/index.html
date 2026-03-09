@@ -890,6 +890,8 @@
         let addedServices = [];
         let isAuthenticated = false;
         let passwordSet = false;
+        let lastPairingState = '';
+        let lastFrpState = '';
         const WEB_APP_URL = '{{.WebAppURL}}';
 
         // --- Toast Notifications ---
@@ -1130,6 +1132,17 @@
                     document.getElementById('update-banner').classList.remove('hidden');
                 }
 
+                // Track FRP connection state changes
+                const frpState = data.frp_state || '';
+                if (lastFrpState && frpState !== lastFrpState) {
+                    if (frpState === 'running' && lastFrpState !== 'running') {
+                        showToast('Tunnel connected', 'success');
+                    } else if (lastFrpState === 'running' && frpState !== 'running') {
+                        showToast('Tunnel disconnected — reconnecting...', 'warning');
+                    }
+                }
+                lastFrpState = frpState;
+
                 if (data.pairing_state === 'paired') {
                     badge.className = 'status-badge online';
                     statusText.textContent = 'Connected';
@@ -1145,6 +1158,9 @@
                     badge.className = 'status-badge pending';
                     statusText.textContent = 'Authorizing...';
                 } else {
+                    if (lastPairingState === 'paired') {
+                        showToast('Disconnected from SeaWise', 'warning');
+                    }
                     badge.className = 'status-badge offline';
                     statusText.textContent = 'Not Connected';
                     document.getElementById('connect-card').classList.remove('hidden');
@@ -1155,6 +1171,7 @@
                     addedServices = [];
                     renderServices();
                 }
+                lastPairingState = data.pairing_state;
             } catch (err) {
                 console.error('Status check failed:', err);
             }
@@ -1259,8 +1276,14 @@
                 document.getElementById('service-name').value = '';
                 document.getElementById('service-host').value = 'localhost';
                 document.getElementById('service-port').value = '';
+
+                if (data.warning) {
+                    showToast(data.warning, 'warning');
+                } else {
+                    showToast('Service added: ' + name, 'success');
+                }
             } catch (err) {
-                showToast('Failed to add service');
+                showToast('Failed to add service — check your connection');
             }
         }
 
@@ -1292,8 +1315,9 @@
                 if (data.error) { showToast(data.error); return; }
                 addedServices = addedServices.filter(svc => svc.id !== serviceId);
                 renderServices();
+                showToast('Removed ' + serviceName, 'success');
             } catch (err) {
-                showToast('Failed to delete service');
+                showToast('Failed to remove ' + serviceName + ' — try again');
             }
         }
 
