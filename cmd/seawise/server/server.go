@@ -1025,7 +1025,7 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	if _, err := w.Write(data); err != nil { // #nosec G705 — data is from embed.FS, not user input
-		log.Printf("[Static] Failed to write response for %q: %v", name, err) // #nosec G706 — %q quotes the string, preventing injection
+		log.Printf("[Static] Failed to write response: %v", err)
 	}
 }
 
