@@ -139,7 +139,7 @@ func (m *CertManager) LoadKey(domain string) (*ecdsa.PrivateKey, error) {
 	}
 	keyPath := filepath.Join(m.certsDir, domain+".key")
 
-	keyPEM, err := os.ReadFile(keyPath) // nosec G304 — domain validated by validateDomain()
+	keyPEM, err := os.ReadFile(keyPath) // #nosec G304 — domain validated by validateDomain()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read private key: %w", err)
 	}
@@ -165,7 +165,7 @@ func (m *CertManager) LoadCert(domain string) (*CertInfo, error) {
 	certPath := filepath.Join(m.certsDir, domain+".crt")
 	keyPath := filepath.Join(m.certsDir, domain+".key")
 
-	certPEM, err := os.ReadFile(certPath) // nosec G304 — domain validated by validateDomain()
+	certPEM, err := os.ReadFile(certPath) // #nosec G304 — domain validated by validateDomain()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read certificate: %w", err)
 	}

@@ -217,7 +217,7 @@ func (s *Server) startServices(ctx context.Context) {
 	// Get FRP token from config
 	frpToken := s.cfg.FRPToken
 
-	log.Printf("[FRP] Connecting to %s:%d (TLS: %v)", sanitizeLog(frpServerAddr), frpServerPort, s.cfg.FRPUseTLS)
+	log.Printf("[FRP] Connecting to %s:%d (TLS: %v)", sanitizeLog(frpServerAddr), frpServerPort, s.cfg.FRPUseTLS) // #nosec G706 — sanitized
 
 	// Check if server supports E2E TLS
 	certStatus, err := s.apiClient.GetCertStatus()
@@ -695,7 +695,7 @@ func (s *Server) ensureServiceCert(subdomain string) (certPath, keyPath string, 
 		return cert, key, nil
 	}
 
-	log.Printf("[E2E TLS] Requesting certificate for %s", sanitizeLog(domain))
+	log.Printf("[E2E TLS] Requesting certificate for %s", sanitizeLog(domain)) // #nosec G706 — sanitized
 
 	// Generate a new key
 	key, err := s.certManager.GenerateKey()
@@ -726,7 +726,7 @@ func (s *Server) ensureServiceCert(subdomain string) (certPath, keyPath string, 
 		return "", "", err
 	}
 
-	log.Printf("[E2E TLS] Certificate saved for %s (expires: %s)", sanitizeLog(domain), sanitizeLog(certResp.ExpiresAt))
+	log.Printf("[E2E TLS] Certificate saved for %s (expires: %s)", sanitizeLog(domain), sanitizeLog(certResp.ExpiresAt)) // #nosec G706 — sanitized
 	return certPath, keyPath, nil
 }
 
@@ -992,7 +992,7 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 		IdleTimeout:       constants.WebUIIdleTimeout,
 	}
 
-	log.Printf("Web UI listening on %s:%d", sanitizeLog(bindAddr), port)
+	log.Printf("Web UI listening on %s:%d", sanitizeLog(bindAddr), port) // #nosec G706 — sanitized
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("[ERROR] Web UI failed: %v (tunnel continues running)", err)
@@ -1024,8 +1024,8 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 	}
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	if _, err := w.Write(data); err != nil { // nosec G705 — data is from embed.FS, not user input
-		log.Printf("[Static] Failed to write response for %s: %v", sanitizeLog(name), err)
+	if _, err := w.Write(data); err != nil { // #nosec G705 — data is from embed.FS, not user input
+		log.Printf("[Static] Failed to write response for %s: %v", sanitizeLog(name), err) // #nosec G706 — sanitized
 	}
 }
 

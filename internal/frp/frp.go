@@ -431,7 +431,7 @@ func (c *Client) Start() error {
 	log.Printf("[FRP] Starting frpc: %s -c %s", frpcPath, c.configPath)
 
 	c.mu.Lock()
-	c.cmd = exec.Command(frpcPath, "-c", c.configPath) // nosec G204 — frpcPath is from known filesystem locations, not user input
+	c.cmd = exec.Command(frpcPath, "-c", c.configPath) // #nosec G204 — frpcPath is from known filesystem locations, not user input
 	c.cmd.Stdout = os.Stdout
 	c.cmd.Stderr = os.Stderr
 	c.lastStartTime = time.Now()
