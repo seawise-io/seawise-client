@@ -11,6 +11,9 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "deps"
+    groups:
+      all-go-deps:
+        patterns: ["*"]
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
@@ -23,3 +26,6 @@ updates:
       - "ci"
     commit-message:
       prefix: "deps(ci)"
+    groups:
+      all-actions:
+        patterns: ["*"]
