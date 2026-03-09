@@ -1,24 +1,18 @@
-# Build and Release
-#
-# Push to main or tag → build, test, push Docker image.
-# Tag push (v*) → also cross-compile binaries and create GitHub release.
+# Release — runs only on version tag push (v*).
+# Builds multi-arch Docker image, pushes to GHCR, signs with cosign,
+# scans for vulnerabilities, generates SBOM, and creates GitHub Release.
 # All 3rd-party actions pinned to exact commit SHAs.
 
-name: Build and Release
+name: Release
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -26,17 +20,10 @@ env:
   IMAGE_NAME: seawise-io/seawise-client
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      id-token: write     # Keyless cosign signing via GitHub OIDC
-
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-        with:
-          fetch-depth: 0 # Fetch all tags for git describe
 
       - name: Set up Go
         uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
@@ -46,11 +33,21 @@ jobs:
       - name: Run tests
         run: go test -v ./...
 
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write     # Keyless cosign signing via GitHub OIDC
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Log in to Container Registry
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -64,21 +61,9 @@ jobs:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Extract version
-        id: version
-        run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          else
-            # Use latest release tag so users never see "dev-" prefix
-            echo "version=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")" >> $GITHUB_OUTPUT
-          fi
+            type=raw,value=latest
 
       - name: Build and push
         id: build-and-push
@@ -86,24 +71,21 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ steps.version.outputs.version }}
+            VERSION=${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Install cosign
-        if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
 
       - name: Sign image with cosign (keyless)
-        if: github.event_name != 'pull_request'
         run: cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}
 
       - name: Scan image for vulnerabilities
-        if: github.event_name != 'pull_request'
         continue-on-error: true
         uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # 0.28.0
         with:
@@ -114,7 +96,6 @@ jobs:
           ignore-unfixed: true
 
       - name: Generate SBOM
-        if: github.event_name != 'pull_request'
         uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11 # v0.23.0
         with:
           image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}
@@ -122,13 +103,11 @@ jobs:
           output-file: sbom.spdx.json
 
       - name: Attach SBOM attestation to image
-        if: github.event_name != 'pull_request'
         run: cosign attest --yes --predicate sbom.spdx.json --type spdxjson ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}
 
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
