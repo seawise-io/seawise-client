@@ -74,7 +74,8 @@ jobs:
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           else
-            echo "version=dev-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+            # Use latest release tag so users never see "dev-" prefix
+            echo "version=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")" >> $GITHUB_OUTPUT
           fi
 
       - name: Build and push
