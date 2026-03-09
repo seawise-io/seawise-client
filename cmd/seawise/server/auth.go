@@ -60,7 +60,7 @@ func newAuthManager() *authManager {
 	}
 
 	// Load existing password hash
-	if data, err := os.ReadFile(pwFile); err == nil && len(data) > 0 {
+	if data, err := os.ReadFile(pwFile); err == nil && len(data) > 0 { // #nosec G304 — path from auth.PasswordFile(), not user input
 		am.passwordHash = data
 		log.Printf("[Auth] Password protection enabled")
 	} else {
@@ -251,8 +251,12 @@ func (am *authManager) recordFailedLogin(ip string) time.Duration {
 	entry.failures++
 	entry.lastFail = now
 
-	// Calculate exponential backoff delay
-	delay := rateLimitBaseDelay * time.Duration(1<<uint(entry.failures-1))
+	// Calculate exponential backoff delay (cap shift to prevent overflow)
+	shift := entry.failures - 1
+	if shift > 30 {
+		shift = 30
+	}
+	delay := rateLimitBaseDelay * time.Duration(1<<uint(shift))
 	if delay > rateLimitMaxDelay {
 		delay = rateLimitMaxDelay
 	}
@@ -260,7 +264,7 @@ func (am *authManager) recordFailedLogin(ip string) time.Duration {
 	// Lock out for the delay period (enforced by checkRateLimit on next request)
 	if entry.failures >= rateLimitMaxFails {
 		entry.lockedUntil = now.Add(rateLimitWindow)
-		log.Printf("[Auth] IP %s locked out for %v after %d failed attempts", ip, rateLimitWindow, entry.failures)
+		log.Printf("[Auth] IP %s locked out for %v after %d failed attempts", sanitizeLog(ip), rateLimitWindow, entry.failures) // #nosec G706 — sanitized
 	} else if delay > 0 {
 		entry.lockedUntil = now.Add(delay)
 	}
@@ -321,7 +325,7 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 					}
 				}
 				if !isValidOrigin {
-					log.Printf("[CSRF] Blocked request from origin: %s to %s", origin, path)
+					log.Printf("[CSRF] Blocked request from origin: %s to %s", sanitizeLog(origin), sanitizeLog(path)) // #nosec G706 — sanitized
 										writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
 					return
 				}
@@ -346,14 +350,14 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 					}
 				}
 				if !isValidReferer {
-					log.Printf("[CSRF] Blocked request with referer: %s to %s", referer, path)
+					log.Printf("[CSRF] Blocked request with referer: %s to %s", sanitizeLog(referer), sanitizeLog(path)) // #nosec G706 — sanitized
 										writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
 					return
 				}
 			} else {
 				// SECURITY: Block requests with no Origin AND no Referer
 				// This prevents CSRF via curl/wget-style attacks
-				log.Printf("[CSRF] Blocked request with no origin/referer to %s", path)
+				log.Printf("[CSRF] Blocked request with no origin/referer to %s", sanitizeLog(path)) // #nosec G706 — sanitized
 								writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Origin or Referer header required"})
 				return
 			}

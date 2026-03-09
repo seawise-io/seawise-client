@@ -3,7 +3,8 @@ package connection
 import (
 	"log"
 	"math"
-	"math/rand"
+	crand "crypto/rand"
+	"encoding/binary"
 	"sync"
 	"time"
 
@@ -175,7 +176,9 @@ func (m *Manager) CalculateBackoff() time.Duration {
 	}
 
 	// Add jitter (0-100% of delay) to prevent thundering herd
-	jitter := rand.Float64() * delay
+	var b [8]byte
+	_, _ = crand.Read(b[:])
+	jitter := float64(binary.LittleEndian.Uint64(b[:])) / float64(math.MaxUint64) * delay
 	finalDelay := time.Duration(delay + jitter)
 
 	// Cap the final delay after adding jitter to ensure we never exceed maxRetryDelay
