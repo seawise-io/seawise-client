@@ -109,7 +109,11 @@ func (s *Server) run(port int) {
 	s.cancel = cancel
 
 	// Initialize API client
-	s.apiClient = api.New(config.GetAPIURL(nil))
+	apiClient, err := api.New(config.GetAPIURL(nil))
+	if err != nil {
+		log.Fatalf("Invalid API URL: %v", err)
+	}
+	s.apiClient = apiClient
 
 	// Initialize connection manager with production-ready defaults
 	s.connManager = connection.NewManager(connection.DefaultConfig())
@@ -138,7 +142,12 @@ func (s *Server) run(port int) {
 		} else {
 			log.Printf("Already paired as server: %s (ID: %s)", s.cfg.ServerName, s.cfg.ServerID)
 			// Re-initialize API client with the stored URL (may differ from default)
-			s.apiClient = api.New(s.cfg.APIURL)
+			storedClient, apiErr := api.New(s.cfg.APIURL)
+			if apiErr != nil {
+				log.Printf("Warning: Invalid stored API URL: %v", apiErr)
+			} else {
+				s.apiClient = storedClient
+			}
 			s.apiClient.SetFRPToken(s.cfg.FRPToken)
 			s.pairingState = "paired"
 			s.connManager.SetState(connection.StateConnecting)

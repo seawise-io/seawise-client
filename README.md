@@ -53,6 +53,14 @@ volumes:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `SEAWISE_API_URL` | SeaWise API endpoint | `https://api.seawise.io` |
+| `SEAWISE_WEB_URL` | SeaWise dashboard URL (for pairing redirect) | `https://seawise.io` |
+| `SEAWISE_PORT` | Web UI port | `8082` |
+| `SEAWISE_BIND_ADDR` | Web UI bind address | `127.0.0.1` |
+| `SEAWISE_DATA_DIR` | Persistent data directory (config, certs) | `~/.seawise` |
+| `SEAWISE_TRUST_PROXY` | Trust `X-Forwarded-For` header (`true`/`false`) | `false` |
+| `SEAWISE_HOST_NETWORK` | Skip Docker host translation (`true`/`false`) | `false` |
+| `FRP_SERVER_ADDR` | FRP server address override | From API pairing response |
+| `SUBDOMAIN_HOST` | Subdomain host for service URLs | `seawise.dev` |
 
 ## Development
 

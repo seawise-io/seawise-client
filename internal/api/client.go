@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -23,19 +22,17 @@ type Client struct {
 	frpToken   string
 }
 
-func New(baseURL string) *Client {
-	// Validate URL uses HTTPS in production (non-localhost)
-	// Log warning but don't fail - allows gradual enforcement
+func New(baseURL string) (*Client, error) {
+	// SECURITY: FRP tokens are sent in headers — MUST use HTTPS for non-localhost
 	if err := ValidateBaseURL(baseURL); err != nil {
-		// Import log is already available via other usages
-		log.Printf("[API] WARNING: %v", err)
+		return nil, err
 	}
 	return &Client{
 		baseURL: baseURL,
 		httpClient: &http.Client{
 			Timeout: constants.HTTPClientTimeout,
 		},
-	}
+	}, nil
 }
 
 // ValidateBaseURL checks that the API URL uses HTTPS in production

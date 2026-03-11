@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"os"
 	"strconv"
 
@@ -16,6 +17,8 @@ func main() {
 		if envPort := os.Getenv("SEAWISE_PORT"); envPort != "" {
 			if p, err := strconv.Atoi(envPort); err == nil && p > 0 && p <= 65535 {
 				port = p
+			} else {
+				log.Printf("[WARN] Invalid SEAWISE_PORT=%q (must be 1-65535), using default %d", envPort, port)
 			}
 		}
 		server.Run(port)

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/seawise/client/internal/api"
 	"github.com/seawise/client/internal/config"
@@ -35,7 +36,11 @@ func runStatus() {
 	}
 
 	// Get service count from API
-	apiClient := api.New(cfg.APIURL)
+	apiClient, err := api.New(cfg.APIURL)
+	if err != nil {
+		fmt.Printf("❌ Invalid API URL: %v\n", err)
+		os.Exit(1)
+	}
 	apiClient.SetFRPToken(cfg.FRPToken)
 	services, err := apiClient.ListServices(cfg.ServerID)
 	serviceCount := 0
