@@ -80,7 +80,11 @@ func runPair() {
 
 	// Initialize API client
 	apiURL := config.GetAPIURL(nil)
-	apiClient := api.New(apiURL)
+	apiClient, err := api.New(apiURL)
+	if err != nil {
+		fmt.Printf("❌ Invalid API URL: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Get pairing codes (OAuth Device Flow: user_code + device_code)
 	fmt.Println()

@@ -68,10 +68,14 @@ func runUnpair() {
 	fmt.Println("Unpairing...")
 
 	// Notify API to remove the server from the dashboard
-	apiClient := api.New(config.GetAPIURL(cfg))
-	apiClient.SetFRPToken(cfg.FRPToken)
-	if err := apiClient.DeleteServer(cfg.ServerID); err != nil {
-		fmt.Printf("⚠️  Warning: Failed to notify server: %v\n", err)
+	apiClient, apiErr := api.New(config.GetAPIURL(cfg))
+	if apiErr != nil {
+		fmt.Printf("⚠️  Warning: Invalid API URL: %v\n", apiErr)
+	} else {
+		apiClient.SetFRPToken(cfg.FRPToken)
+		if err := apiClient.DeleteServer(cfg.ServerID); err != nil {
+			fmt.Printf("⚠️  Warning: Failed to notify server: %v\n", err)
+		}
 	}
 
 	if err := config.Delete(); err != nil {
