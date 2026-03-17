@@ -1,10 +1,10 @@
 package connection
 
 import (
-	"log"
-	"math"
 	crand "crypto/rand"
 	"encoding/binary"
+	"log"
+	"math"
 	"sync"
 	"time"
 
@@ -26,9 +26,9 @@ const (
 type Manager struct {
 	mu sync.RWMutex
 
-	state           State
-	lastHeartbeat   time.Time
-	lastHeartbeatOK bool
+	state            State
+	lastHeartbeat    time.Time
+	lastHeartbeatOK  bool
 	consecutiveFails int
 	reconnectAttempt int
 
@@ -215,11 +215,11 @@ func (m *Manager) ConsecutiveFails() int {
 }
 
 // GetStatus returns a status map for the UI
-func (m *Manager) GetStatus() map[string]interface{} {
+func (m *Manager) GetStatus() map[string]any {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	status := map[string]interface{}{
+	status := map[string]any{
 		"state":             string(m.state),
 		"consecutive_fails": m.consecutiveFails,
 		"reconnect_attempt": m.reconnectAttempt,

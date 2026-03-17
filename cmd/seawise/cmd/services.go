@@ -91,8 +91,7 @@ func checkPaired() (*config.Config, *api.Client) {
 }
 
 func runServicesList() {
-	cfg, apiClient := checkPaired()
-	apiClient.SetFRPToken(cfg.FRPToken)
+	cfg, apiClient := checkPaired() // SetFRPToken called inside checkPaired
 
 	services, err := apiClient.ListServices(cfg.ServerID)
 	if err != nil {
@@ -146,7 +145,6 @@ func runServicesAdd(name, host string, port int) {
 	}
 
 	cfg, apiClient := checkPaired()
-	apiClient.SetFRPToken(cfg.FRPToken)
 
 	fmt.Printf("Adding service '%s' (%s:%d)...\n", name, host, port)
 
@@ -224,7 +222,6 @@ func runServicesAddInteractive() {
 
 func runServicesRemove(name string) {
 	cfg, apiClient := checkPaired()
-	apiClient.SetFRPToken(cfg.FRPToken)
 
 	// Find service by name
 	services, err := apiClient.ListServices(cfg.ServerID)
@@ -260,7 +257,6 @@ func runServicesRemove(name string) {
 
 func runServicesRemoveInteractive() {
 	cfg, apiClient := checkPaired()
-	apiClient.SetFRPToken(cfg.FRPToken)
 
 	services, err := apiClient.ListServices(cfg.ServerID)
 	if err != nil {

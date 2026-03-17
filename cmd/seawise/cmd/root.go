@@ -36,6 +36,7 @@ Use subcommands for CLI-based management.`,
 
 // Execute runs the root command
 func Execute() {
+	rootCmd.SilenceErrors = true // Cobra prints errors by default — avoid double printing
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

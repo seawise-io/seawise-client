@@ -60,8 +60,8 @@ func isSuccessStatus(code int) bool {
 
 // PairingCodes holds both codes from pairing request
 type PairingCodes struct {
-	UserCode   string    // Show to user (10 chars)
-	DeviceCode string    // Keep secret, use for polling (32 chars)
+	UserCode   string // Show to user (10 chars)
+	DeviceCode string // Keep secret, use for polling (32 chars)
 	ExpiresAt  time.Time
 }
 
@@ -339,7 +339,7 @@ type HeartbeatResult struct {
 
 func (c *Client) Heartbeat(serverID string, frpConnected bool, serviceCount int, clientVersion string, connectionID string) HeartbeatResult {
 	// Build request with client status
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"frp_connected":  frpConnected,
 		"service_count":  serviceCount,
 		"client_version": clientVersion,
@@ -446,7 +446,7 @@ type ServiceHealthStatus struct {
 }
 
 func (c *Client) ReportServiceHealth(serverID string, statuses []ServiceHealthStatus) error {
-	payload, err := json.Marshal(map[string]interface{}{
+	payload, err := json.Marshal(map[string]any{
 		"services": statuses,
 	})
 	if err != nil {

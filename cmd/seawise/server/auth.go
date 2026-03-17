@@ -32,8 +32,8 @@ const (
 
 // rateLimitEntry tracks failed login attempts per IP
 type rateLimitEntry struct {
-	failures int
-	lastFail time.Time
+	failures    int
+	lastFail    time.Time
 	lockedUntil time.Time
 }
 
@@ -44,8 +44,8 @@ type authManager struct {
 	sessions     map[string]time.Time // token -> expiry
 	passwordFile string
 	rateLimits   map[string]*rateLimitEntry // IP -> rate limit state
-	stopChan     chan struct{} // Signal cleanup goroutine to exit
-	stopOnce     sync.Once    // Prevents double-close panic on stopChan
+	stopChan     chan struct{}              // Signal cleanup goroutine to exit
+	stopOnce     sync.Once                  // Prevents double-close panic on stopChan
 }
 
 func newAuthManager() *authManager {
@@ -326,7 +326,7 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 				}
 				if !isValidOrigin {
 					log.Printf("[CSRF] Blocked request from origin: %s to %s", sanitizeLog(origin), sanitizeLog(path)) // #nosec G706 — sanitized
-										writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
+					writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
 					return
 				}
 			} else if referer != "" {
@@ -351,14 +351,14 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 				}
 				if !isValidReferer {
 					log.Printf("[CSRF] Blocked request with referer: %s to %s", sanitizeLog(referer), sanitizeLog(path)) // #nosec G706 — sanitized
-										writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
+					writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
 					return
 				}
 			} else {
 				// SECURITY: Block requests with no Origin AND no Referer
 				// This prevents CSRF via curl/wget-style attacks
 				log.Printf("[CSRF] Blocked request with no origin/referer to %s", sanitizeLog(path)) // #nosec G706 — sanitized
-								writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Origin or Referer header required"})
+				writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Origin or Referer header required"})
 				return
 			}
 		}
@@ -381,7 +381,7 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 		if err != nil || !am.validateSession(cookie.Value) {
 			// For API calls, return 401 JSON
 			if len(path) > 4 && path[:5] == "/api/" {
-								writeJSONStatus(w, http.StatusUnauthorized, map[string]string{"error": "Authentication required"})
+				writeJSONStatus(w, http.StatusUnauthorized, map[string]string{"error": "Authentication required"})
 				return
 			}
 			// For page requests, serve the page (JS will handle showing login)
@@ -428,7 +428,7 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, map[string]interface{}{
+	writeJSON(w, map[string]any{
 		"password_set":  s.auth.hasPassword(),
 		"authenticated": authenticated,
 	})
@@ -491,7 +491,7 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 	token := s.auth.createSession()
 	setSessionCookie(w, token)
 
-	writeJSON(w, map[string]interface{}{"success": true})
+	writeJSON(w, map[string]any{"success": true})
 }
 
 func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
@@ -522,7 +522,7 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !s.auth.hasPassword() {
-		writeJSON(w, map[string]interface{}{"success": true})
+		writeJSON(w, map[string]any{"success": true})
 		return
 	}
 
@@ -561,7 +561,7 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	token := s.auth.createSession()
 	setSessionCookie(w, token)
 
-	writeJSON(w, map[string]interface{}{"success": true})
+	writeJSON(w, map[string]any{"success": true})
 }
 
 func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
@@ -576,7 +576,7 @@ func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	clearSessionCookie(w)
 
-	writeJSON(w, map[string]interface{}{"success": true})
+	writeJSON(w, map[string]any{"success": true})
 }
 
 func (s *Server) handleAuthRemovePassword(w http.ResponseWriter, r *http.Request) {
@@ -622,5 +622,5 @@ func (s *Server) handleAuthRemovePassword(w http.ResponseWriter, r *http.Request
 	}
 
 	clearSessionCookie(w)
-	writeJSON(w, map[string]interface{}{"success": true})
+	writeJSON(w, map[string]any{"success": true})
 }
