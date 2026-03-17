@@ -56,7 +56,7 @@ func (c *Config) Save() error {
 		return fmt.Errorf("write temp config file: %w", err)
 	}
 	if err := os.Rename(tmpPath, configPath); err != nil {
-		os.Remove(tmpPath) // Clean up on rename failure
+		os.Remove(tmpPath) // #nosec G104 — best-effort cleanup, error irrelevant
 		return fmt.Errorf("rename config file: %w", err)
 	}
 	return nil
