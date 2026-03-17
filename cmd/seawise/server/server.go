@@ -2,16 +2,24 @@ package server
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"embed"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"html/template"
 	"io"
 	"log"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -1007,6 +1015,33 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 		IdleTimeout:       constants.WebUIIdleTimeout,
 	}
 
+	// SECURITY: When SEAWISE_TLS=auto, generate a self-signed cert for HTTPS.
+	// This protects passwords and session tokens on the LAN when bound to 0.0.0.0.
+	tlsMode := os.Getenv("SEAWISE_TLS")
+	if tlsMode == "auto" {
+		certFile := filepath.Join(paths.DataDir(), "tls-cert.pem")
+		keyFile := filepath.Join(paths.DataDir(), "tls-key.pem")
+
+		// Generate self-signed cert if it doesn't exist
+		if _, err := os.Stat(certFile); os.IsNotExist(err) {
+			log.Println("Generating self-signed TLS certificate...")
+			if err := generateSelfSignedCert(certFile, keyFile); err != nil {
+				log.Printf("[WARNING] Failed to generate TLS cert: %v — falling back to HTTP", err)
+				tlsMode = ""
+			}
+		}
+
+		if tlsMode == "auto" {
+			log.Printf("Web UI listening on https://%s:%d (self-signed TLS)", sanitizeLog(bindAddr), port) // #nosec G706
+			go func() {
+				if err := srv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
+					log.Printf("[ERROR] Web UI TLS failed: %v (tunnel continues running)", err)
+				}
+			}()
+			return srv
+		}
+	}
+
 	log.Printf("Web UI listening on %s:%d", sanitizeLog(bindAddr), port) // #nosec G706 — sanitized
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -1536,4 +1571,53 @@ func (s *Server) handleUnpair(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w,map[string]interface{}{
 		"success": true,
 	})
+}
+
+// generateSelfSignedCert creates a self-signed ECDSA P-256 certificate for the web UI.
+// Valid for 1 year, covers localhost + common LAN addresses.
+func generateSelfSignedCert(certFile, keyFile string) error {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return fmt.Errorf("generate key: %w", err)
+	}
+
+	tmpl := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "SeaWise Client"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:     []string{"localhost"},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &key.PublicKey, key)
+	if err != nil {
+		return fmt.Errorf("create certificate: %w", err)
+	}
+
+	certOut, err := os.Create(certFile)
+	if err != nil {
+		return fmt.Errorf("create cert file: %w", err)
+	}
+	defer certOut.Close()
+	if err := pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: certDER}); err != nil {
+		return fmt.Errorf("write cert: %w", err)
+	}
+
+	keyBytes, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return fmt.Errorf("marshal key: %w", err)
+	}
+	keyOut, err := os.OpenFile(keyFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return fmt.Errorf("create key file: %w", err)
+	}
+	defer keyOut.Close()
+	if err := pem.Encode(keyOut, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes}); err != nil {
+		return fmt.Errorf("write key: %w", err)
+	}
+
+	return nil
 }

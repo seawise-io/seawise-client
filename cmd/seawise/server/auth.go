@@ -408,13 +408,16 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 }
 
 // setSessionCookie sets the session cookie on the response.
-func setSessionCookie(w http.ResponseWriter, token string) {
+// Secure flag is set when the request came over HTTPS (detected via TLS or X-Forwarded-Proto).
+func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   int(sessionMaxAge.Seconds()),
 		HttpOnly: true,
+		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,
 	})
 }
@@ -503,7 +506,7 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 	// Invalidate old sessions, create new one
 	s.auth.invalidateAllSessions()
 	token := s.auth.createSession()
-	setSessionCookie(w, token)
+	setSessionCookie(w, r, token)
 
 	writeJSON(w, map[string]interface{}{"success": true})
 }
@@ -573,7 +576,7 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	s.auth.clearRateLimit(clientIP)
 
 	token := s.auth.createSession()
-	setSessionCookie(w, token)
+	setSessionCookie(w, r, token)
 
 	writeJSON(w, map[string]interface{}{"success": true})
 }

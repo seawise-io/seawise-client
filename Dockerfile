@@ -1,5 +1,5 @@
-# Build stage
-FROM golang:1.26-alpine AS builder
+# Build stage — pinned to digest for reproducible builds
+FROM golang:1.26-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS builder
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -o /seawise-client ./cmd/seawise
 
 # FRP client download stage (with checksum verification)
-FROM alpine:3.21 AS frp-downloader
+FROM alpine:3.21@sha256:c3f8e73fdb79deaebaa2037150150191b9dcbfba68b4a46d70103204c53f4709 AS frp-downloader
 ARG FRP_VERSION=0.67.0
 ARG TARGETARCH=amd64
 # SHA-256 checksums from https://github.com/fatedier/frp/releases/tag/v0.67.0
@@ -39,7 +39,7 @@ RUN apk add --no-cache curl tar && \
     mv /tmp/frp_${FRP_VERSION}_linux_${TARGETARCH}/LICENSE /frp-LICENSE
 
 # Runtime stage
-FROM alpine:3.21
+FROM alpine:3.21@sha256:c3f8e73fdb79deaebaa2037150150191b9dcbfba68b4a46d70103204c53f4709
 
 RUN apk add --no-cache ca-certificates su-exec
 
