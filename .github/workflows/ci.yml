@@ -27,5 +27,11 @@ jobs:
         with:
           go-version: '1.26'
 
-      - name: Run tests
-        run: go test -v ./...
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)" || (echo "Run 'gofmt -w .' to fix formatting" && gofmt -l . && exit 1)
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Run tests with race detector
+        run: go test -race -v ./...

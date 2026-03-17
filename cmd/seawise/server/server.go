@@ -129,10 +129,6 @@ func (s *Server) run(port int) {
 		func(old, newState connection.State) {
 			log.Printf("[Main] Connection state changed: %s -> %s", old, newState)
 		},
-		func(attempt int) error {
-			log.Printf("[Main] Reconnection attempt %d", attempt)
-			return s.reconnectFRP()
-		},
 		func() {
 			log.Println("[Main] Unpair requested by server")
 			s.handleUnpairInternal()
@@ -260,7 +256,6 @@ func (s *Server) startServices(ctx context.Context) {
 		ServerAddr: frpServerAddr,
 		ServerPort: frpServerPort,
 		Token:      frpToken,
-		UserID:     s.cfg.UserID,
 		ServerID:   s.cfg.ServerID,
 		UseTLS:     s.cfg.FRPUseTLS,
 	})

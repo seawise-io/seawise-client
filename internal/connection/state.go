@@ -26,34 +26,25 @@ const (
 type Manager struct {
 	mu sync.RWMutex
 
-	state           State
-	lastHeartbeat   time.Time
-	lastHeartbeatOK bool
+	state            State
+	lastHeartbeat    time.Time
+	lastHeartbeatOK  bool
 	consecutiveFails int
 	reconnectAttempt int
 
-	// Configuration (based on research)
+	// Configuration
 	heartbeatInterval time.Duration // How often to send heartbeat
-	heartbeatTimeout  time.Duration // Max wait for heartbeat response
-	serverTimeout     time.Duration // When server marks us offline
 	baseRetryDelay    time.Duration // Initial retry delay
 	maxRetryDelay     time.Duration // Maximum retry delay
 
 	// Callbacks
-	onStateChange func(old, new State)
-	onReconnect   func(attempt int) error
+	onStateChange func(old, newState State)
 	onUnpair      func()
-
-	// Control
-	stopChan chan struct{}
-	stopOnce sync.Once
 }
 
 // Config for connection manager
 type Config struct {
 	HeartbeatInterval time.Duration
-	HeartbeatTimeout  time.Duration
-	ServerTimeout     time.Duration
 	BaseRetryDelay    time.Duration
 	MaxRetryDelay     time.Duration
 }
@@ -62,8 +53,6 @@ type Config struct {
 func DefaultConfig() Config {
 	return Config{
 		HeartbeatInterval: constants.HeartbeatInterval,
-		HeartbeatTimeout:  constants.HeartbeatTimeout,
-		ServerTimeout:     constants.ServerTimeout,
 		BaseRetryDelay:    constants.BaseRetryDelay,
 		MaxRetryDelay:     constants.MaxRetryDelay,
 	}
@@ -74,24 +63,19 @@ func NewManager(cfg Config) *Manager {
 	return &Manager{
 		state:             StateDisconnected,
 		heartbeatInterval: cfg.HeartbeatInterval,
-		heartbeatTimeout:  cfg.HeartbeatTimeout,
-		serverTimeout:     cfg.ServerTimeout,
 		baseRetryDelay:    cfg.BaseRetryDelay,
 		maxRetryDelay:     cfg.MaxRetryDelay,
-		stopChan:          make(chan struct{}),
 	}
 }
 
 // SetCallbacks sets the callback functions
 func (m *Manager) SetCallbacks(
-	onStateChange func(old, new State),
-	onReconnect func(attempt int) error,
+	onStateChange func(old, newState State),
 	onUnpair func(),
 ) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.onStateChange = onStateChange
-	m.onReconnect = onReconnect
 	m.onUnpair = onUnpair
 }
 
@@ -121,16 +105,26 @@ func (m *Manager) SetState(newState State) {
 // HeartbeatOK reports a successful heartbeat
 func (m *Manager) HeartbeatOK() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.lastHeartbeat = time.Now()
 	m.lastHeartbeatOK = true
 	m.consecutiveFails = 0
 	m.reconnectAttempt = 0
 
+	var oldState State
+	var changed bool
 	if m.state == StateReconnecting || m.state == StateConnecting {
-		oldState := m.state
+		oldState = m.state
 		m.state = StateConnected
+		changed = true
+	}
+	callback := m.onStateChange
+	m.mu.Unlock()
+
+	if changed {
 		log.Printf("[Connection] State: %s -> connected (heartbeat OK)", oldState)
+		if callback != nil {
+			callback(oldState, StateConnected)
+		}
 	}
 }
 
@@ -233,9 +227,6 @@ func (m *Manager) GetStatus() map[string]interface{} {
 	return status
 }
 
-// Stop stops the connection manager (safe to call multiple times)
-func (m *Manager) Stop() {
-	m.stopOnce.Do(func() {
-		close(m.stopChan)
-	})
-}
+// Stop is a no-op retained for interface compatibility.
+// The Manager has no background goroutines to stop.
+func (m *Manager) Stop() {}

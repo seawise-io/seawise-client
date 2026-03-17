@@ -33,7 +33,6 @@ type Config struct {
 	ServerAddr string
 	ServerPort int
 	Token      string
-	UserID     string
 	ServerID   string
 	UseTLS     bool
 }
@@ -61,6 +60,7 @@ const (
 
 type Client struct {
 	mu         sync.RWMutex
+	restartMu  sync.Mutex // Serializes Restart() to prevent orphaned frpc processes (F-016)
 	config     Config
 	services   []Service
 	configPath string
@@ -199,7 +199,6 @@ func (c *Client) AddService(svc Service) error {
 	return c.Restart()
 }
 
-// MED-6: Fixed race condition - now uses mutex
 func (c *Client) AddServiceWithoutRestart(svc Service) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -526,12 +525,36 @@ func (c *Client) Stop() error {
 	}
 
 	if c.cmd != nil && c.cmd.Process != nil {
-		if err := c.cmd.Process.Kill(); err != nil {
-			log.Printf("[FRP] Kill error (process may have already exited): %v", err)
+		// Graceful shutdown: SIGTERM first, then SIGKILL after timeout.
+		// Allows frpc to close connections cleanly instead of dropping in-flight requests.
+		if err := c.cmd.Process.Signal(os.Interrupt); err != nil {
+			// SIGTERM failed (process may have already exited), try SIGKILL
+			if killErr := c.cmd.Process.Kill(); killErr != nil {
+				log.Printf("[FRP] Kill error (process may have already exited): %v", killErr)
+			}
+		} else {
+			// Wait up to 5 seconds for graceful exit, then force kill
+			done := make(chan struct{})
+			go func() {
+				// monitorProcess is already waiting on cmd.Wait(), so we just
+				// wait for the process to exit by polling.
+				for i := 0; i < 50; i++ {
+					if c.cmd == nil || c.cmd.ProcessState != nil {
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
+				close(done)
+			}()
+			select {
+			case <-done:
+				// Process exited gracefully
+			case <-time.After(5 * time.Second):
+				if c.cmd != nil && c.cmd.Process != nil {
+					c.cmd.Process.Kill()
+				}
+			}
 		}
-		// Don't call cmd.Wait() here — monitorProcess is already waiting.
-		// Calling Wait() twice causes "waitid: no child processes" errors.
-		// Give monitorProcess a moment to detect the kill and exit cleanly.
 		c.cmd = nil
 	}
 	c.state = ProcessStopped
@@ -581,7 +604,11 @@ func isAllowedFRPDomain(addr string) bool {
 	return false
 }
 
+// Restart stops and restarts the FRP process. Uses a dedicated mutex to
+// prevent concurrent restarts from orphaning frpc processes (F-016).
 func (c *Client) Restart() error {
+	c.restartMu.Lock()
+	defer c.restartMu.Unlock()
 	if err := c.Stop(); err != nil {
 		log.Printf("[FRP] Stop error during restart (proceeding): %v", err)
 	}
