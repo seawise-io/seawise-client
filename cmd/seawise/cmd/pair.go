@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -136,7 +137,7 @@ func runPair() {
 			spinIdx = (spinIdx + 1) % len(spinner)
 
 			// Check if pairing completed using device_code (not user_code)
-			result, err := apiClient.CompletePairing(codes.DeviceCode)
+			result, err := apiClient.CompletePairing(context.Background(), codes.DeviceCode)
 			if err != nil {
 				// "not_approved" is expected during polling — only log unexpected errors
 				if !strings.Contains(err.Error(), "not yet approved") && !strings.Contains(err.Error(), "pending") {

@@ -187,7 +187,7 @@ func (s *Server) run(port int) {
 	shutdownAPIClient := s.apiClient
 	s.mu.RUnlock()
 	if shutdownCfg != nil && shutdownAPIClient != nil {
-		if err := shutdownAPIClient.MarkOffline(shutdownCfg.ServerID); err != nil {
+		if err := shutdownAPIClient.MarkOffline(context.Background(), shutdownCfg.ServerID); err != nil {
 			log.Printf("Failed to notify API of shutdown: %v", err)
 		} else {
 			log.Println("Notified API: server going offline")
@@ -229,7 +229,7 @@ func (s *Server) startServices(ctx context.Context) {
 	log.Printf("[FRP] Connecting to %s:%d (TLS: %v)", sanitizeLog(frpServerAddr), frpServerPort, s.cfg.FRPUseTLS) // #nosec G706 — sanitized
 
 	// Check if server supports E2E TLS
-	certStatus, err := s.apiClient.GetCertStatus()
+	certStatus, err := s.apiClient.GetCertStatus(s.shutdownCtx)
 	if err != nil {
 		log.Printf("[E2E TLS] Failed to check status: %v", err)
 		s.e2eTLSEnabled = false
@@ -270,7 +270,7 @@ func (s *Server) startServices(ctx context.Context) {
 	log.Println("FRP client initialized, ready to add services")
 
 	// Load existing services from API and add to FRP
-	services, err := s.apiClient.ListServices(s.cfg.ServerID)
+	services, err := s.apiClient.ListServices(s.shutdownCtx, s.cfg.ServerID)
 	if err != nil {
 		log.Printf("Failed to load services from API: %v", err)
 	} else if len(services) > 0 {
@@ -360,7 +360,7 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 		connectionID = client.ConnectionID()
 	}
 
-	result := currentAPIClient.Heartbeat(currentCfg.ServerID, frpConnected, serviceCount, constants.Version, connectionID)
+	result := currentAPIClient.Heartbeat(s.shutdownCtx, currentCfg.ServerID, frpConnected, serviceCount, constants.Version, connectionID)
 
 	if result.ShouldUnpair {
 		// Server says we should unpair (server was deleted)
@@ -597,7 +597,7 @@ func (s *Server) checkAndReportHealth() {
 	// Only call API if something changed
 	if len(changed) > 0 {
 		log.Printf("[Health] Status changed for %d service(s), reporting", len(changed))
-		if err := currentAPIClient.ReportServiceHealth(currentCfg.ServerID, changed); err != nil {
+		if err := currentAPIClient.ReportServiceHealth(s.shutdownCtx, currentCfg.ServerID, changed); err != nil {
 			log.Printf("[Health] Failed to report: %v", err)
 			// Revert cache on failure so we retry next cycle
 			s.mu.Lock()
@@ -650,7 +650,8 @@ func (s *Server) fetchLatestVersion() {
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
 		if resp != nil {
 			_ = resp.Body.Close()
@@ -770,7 +771,7 @@ func (s *Server) syncServices() {
 	}
 
 	// Fetch services from API
-	apiServices, err := currentAPIClient.ListServices(currentCfg.ServerID)
+	apiServices, err := currentAPIClient.ListServices(s.shutdownCtx, currentCfg.ServerID)
 	if err != nil {
 		log.Printf("[Sync] Failed to fetch services: %v", err)
 		return
@@ -858,14 +859,14 @@ func (s *Server) handleFRPCrash() {
 	s.mu.RUnlock()
 
 	if currentAPIClient != nil {
-		if err := currentAPIClient.MarkOffline(currentCfg.ServerID); err != nil {
+		if err := currentAPIClient.MarkOffline(s.shutdownCtx, currentCfg.ServerID); err != nil {
 			log.Printf("[FRP Recovery] Failed to mark offline: %v", err)
 		}
 	}
 
 	// Reload services from API before restart to ensure fresh state
 	if currentAPIClient != nil {
-		services, err := currentAPIClient.ListServices(currentCfg.ServerID)
+		services, err := currentAPIClient.ListServices(s.shutdownCtx, currentCfg.ServerID)
 		if err != nil {
 			log.Printf("[FRP Recovery] Failed to reload services: %v", err)
 		} else if len(services) > 0 {
@@ -1135,7 +1136,7 @@ func (s *Server) handlePairStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Request pairing codes from API (OAuth Device Flow: user_code + device_code)
-	result, err := s.apiClient.RequestPairing(req.ServerName)
+	result, err := s.apiClient.RequestPairing(s.shutdownCtx, req.ServerName)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to request pairing code")})
@@ -1191,7 +1192,7 @@ func (s *Server) pollForApproval(deviceCode string) {
 				return
 			}
 
-			status, err := currentAPIClient.PollPairingStatus(deviceCode)
+			status, err := currentAPIClient.PollPairingStatus(s.shutdownCtx, deviceCode)
 			if err != nil {
 				log.Printf("[Pairing] Poll error: %v", err)
 				continue
@@ -1200,7 +1201,7 @@ func (s *Server) pollForApproval(deviceCode string) {
 			switch status {
 			case "approved":
 				// Complete pairing using device_code
-				result, err := currentAPIClient.CompletePairing(deviceCode)
+				result, err := currentAPIClient.CompletePairing(s.shutdownCtx, deviceCode)
 				if err != nil {
 					log.Printf("Failed to complete pairing: %v", err)
 					s.mu.Lock()
@@ -1351,7 +1352,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check for duplicate service name
-	existingServices, err := currentAPIClient.ListServices(currentCfg.ServerID)
+	existingServices, err := currentAPIClient.ListServices(s.shutdownCtx, currentCfg.ServerID)
 	if err == nil {
 		for _, existing := range existingServices {
 			if strings.EqualFold(existing.Name, req.Name) {
@@ -1363,7 +1364,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Register with API
-	svc, err := currentAPIClient.RegisterService(currentCfg.ServerID, req.Name, req.Host, req.Port)
+	svc, err := currentAPIClient.RegisterService(s.shutdownCtx, currentCfg.ServerID, req.Name, req.Host, req.Port)
 	if err != nil {
 		log.Printf("Failed to register service %s: %v", req.Name, err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -1418,7 +1419,7 @@ func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	services, err := currentAPIClient.ListServices(currentCfg.ServerID)
+	services, err := currentAPIClient.ListServices(s.shutdownCtx, currentCfg.ServerID)
 	if err != nil {
 		log.Printf("Failed to list services: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -1475,7 +1476,7 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Delete from API
-	if err := currentAPIClient.DeleteService(currentCfg.ServerID, req.ServiceID); err != nil {
+	if err := currentAPIClient.DeleteService(s.shutdownCtx, currentCfg.ServerID, req.ServiceID); err != nil {
 		log.Printf("Failed to delete service %s: %v", req.ServiceID, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to delete service")})
@@ -1517,7 +1518,7 @@ func (s *Server) handleUnpair(w http.ResponseWriter, r *http.Request) {
 
 	// Notify API to delete the server (so it's removed from dashboard)
 	if currentCfg != nil {
-		if err := currentAPIClient.DeleteServer(currentCfg.ServerID); err != nil {
+		if err := currentAPIClient.DeleteServer(s.shutdownCtx, currentCfg.ServerID); err != nil {
 			log.Printf("Warning: Failed to delete server from API: %v", err)
 		} else {
 			log.Println("Server removed from dashboard")

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -93,7 +94,7 @@ func checkPaired() (*config.Config, *api.Client) {
 func runServicesList() {
 	cfg, apiClient := checkPaired() // SetFRPToken called inside checkPaired
 
-	services, err := apiClient.ListServices(cfg.ServerID)
+	services, err := apiClient.ListServices(context.Background(), cfg.ServerID)
 	if err != nil {
 		fmt.Printf("❌ Failed to list services: %v\n", err)
 		os.Exit(1)
@@ -148,7 +149,7 @@ func runServicesAdd(name, host string, port int) {
 
 	fmt.Printf("Adding service '%s' (%s:%d)...\n", name, host, port)
 
-	result, err := apiClient.RegisterService(cfg.ServerID, name, host, port)
+	result, err := apiClient.RegisterService(context.Background(), cfg.ServerID, name, host, port)
 	if err != nil {
 		fmt.Printf("❌ Failed to add service: %v\n", err)
 		os.Exit(1)
@@ -224,7 +225,7 @@ func runServicesRemove(name string) {
 	cfg, apiClient := checkPaired()
 
 	// Find service by name
-	services, err := apiClient.ListServices(cfg.ServerID)
+	services, err := apiClient.ListServices(context.Background(), cfg.ServerID)
 	if err != nil {
 		fmt.Printf("❌ Failed to list services: %v\n", err)
 		os.Exit(1)
@@ -245,7 +246,7 @@ func runServicesRemove(name string) {
 
 	fmt.Printf("Removing service '%s'...\n", serviceToRemove.Name)
 
-	err = apiClient.DeleteService(cfg.ServerID, serviceToRemove.ID)
+	err = apiClient.DeleteService(context.Background(), cfg.ServerID, serviceToRemove.ID)
 	if err != nil {
 		fmt.Printf("❌ Failed to remove service: %v\n", err)
 		os.Exit(1)
@@ -258,7 +259,7 @@ func runServicesRemove(name string) {
 func runServicesRemoveInteractive() {
 	cfg, apiClient := checkPaired()
 
-	services, err := apiClient.ListServices(cfg.ServerID)
+	services, err := apiClient.ListServices(context.Background(), cfg.ServerID)
 	if err != nil {
 		fmt.Printf("❌ Failed to list services: %v\n", err)
 		os.Exit(1)

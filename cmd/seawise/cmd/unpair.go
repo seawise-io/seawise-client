@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -73,7 +74,7 @@ func runUnpair() {
 		fmt.Printf("⚠️  Warning: Invalid API URL: %v\n", apiErr)
 	} else {
 		apiClient.SetFRPToken(cfg.FRPToken)
-		if err := apiClient.DeleteServer(cfg.ServerID); err != nil {
+		if err := apiClient.DeleteServer(context.Background(), cfg.ServerID); err != nil {
 			fmt.Printf("⚠️  Warning: Failed to notify server: %v\n", err)
 		}
 	}

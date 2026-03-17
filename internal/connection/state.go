@@ -40,7 +40,7 @@ type Manager struct {
 	maxRetryDelay     time.Duration // Maximum retry delay
 
 	// Callbacks
-	onStateChange func(old, new State)
+	onStateChange func(old, newState State)
 	onReconnect   func(attempt int) error
 	onUnpair      func()
 
@@ -84,7 +84,7 @@ func NewManager(cfg Config) *Manager {
 
 // SetCallbacks sets the callback functions
 func (m *Manager) SetCallbacks(
-	onStateChange func(old, new State),
+	onStateChange func(old, newState State),
 	onReconnect func(attempt int) error,
 	onUnpair func(),
 ) {
@@ -177,7 +177,7 @@ func (m *Manager) CalculateBackoff() time.Duration {
 
 	// Add jitter (0-100% of delay) to prevent thundering herd
 	var b [8]byte
-	_, _ = crand.Read(b[:])
+	crand.Read(b[:])
 	jitter := float64(binary.LittleEndian.Uint64(b[:])) / float64(math.MaxUint64) * delay
 	finalDelay := time.Duration(delay + jitter)
 

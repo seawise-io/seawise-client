@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -42,7 +43,7 @@ func runStatus() {
 		os.Exit(1)
 	}
 	apiClient.SetFRPToken(cfg.FRPToken)
-	services, err := apiClient.ListServices(cfg.ServerID)
+	services, err := apiClient.ListServices(context.Background(), cfg.ServerID)
 	serviceCount := 0
 	if err == nil {
 		serviceCount = len(services)
