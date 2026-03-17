@@ -32,8 +32,8 @@ const (
 
 // rateLimitEntry tracks failed login attempts per IP
 type rateLimitEntry struct {
-	failures int
-	lastFail time.Time
+	failures    int
+	lastFail    time.Time
 	lockedUntil time.Time
 }
 
@@ -44,8 +44,8 @@ type authManager struct {
 	sessions     map[string]time.Time // token -> expiry
 	passwordFile string
 	rateLimits   map[string]*rateLimitEntry // IP -> rate limit state
-	stopChan     chan struct{} // Signal cleanup goroutine to exit
-	stopOnce     sync.Once    // Prevents double-close panic on stopChan
+	stopChan     chan struct{}              // Signal cleanup goroutine to exit
+	stopOnce     sync.Once                  // Prevents double-close panic on stopChan
 
 	// SECURITY: When true, mutating API calls require authentication even if
 	// no password is set. Prevents LAN attackers from controlling the client
@@ -333,7 +333,7 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 				}
 				if !isValidOrigin {
 					log.Printf("[CSRF] Blocked request from origin: %s to %s", sanitizeLog(origin), sanitizeLog(path)) // #nosec G706 — sanitized
-										writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
+					writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
 					return
 				}
 			} else if referer != "" {
@@ -360,14 +360,14 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 				}
 				if !isValidReferer {
 					log.Printf("[CSRF] Blocked request with referer: %s to %s", sanitizeLog(referer), sanitizeLog(path)) // #nosec G706 — sanitized
-										writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
+					writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
 					return
 				}
 			} else {
 				// SECURITY: Block requests with no Origin AND no Referer
 				// This prevents CSRF via curl/wget-style attacks
 				log.Printf("[CSRF] Blocked request with no origin/referer to %s", sanitizeLog(path)) // #nosec G706 — sanitized
-								writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Origin or Referer header required"})
+				writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Origin or Referer header required"})
 				return
 			}
 		}
@@ -399,7 +399,7 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 		if err != nil || !am.validateSession(cookie.Value) {
 			// For API calls, return 401 JSON
 			if len(path) > 4 && path[:5] == "/api/" {
-								writeJSONStatus(w, http.StatusUnauthorized, map[string]string{"error": "Authentication required"})
+				writeJSONStatus(w, http.StatusUnauthorized, map[string]string{"error": "Authentication required"})
 				return
 			}
 			// For page requests, serve the page (JS will handle showing login)

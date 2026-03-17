@@ -68,5 +68,9 @@ ENV SEAWISE_DATA_DIR=/config
 # Expose web UI port
 EXPOSE 8082
 
+# Health check for Docker/Portainer/Watchtower container health reporting
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --spider -q http://localhost:8082/api/status || exit 1
+
 # Entrypoint handles PUID/PGID, then drops to non-root user
 ENTRYPOINT ["/app/entrypoint.sh"]
