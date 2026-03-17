@@ -81,9 +81,10 @@ type Server struct {
 	certManager *certs.CertManager
 	auth        *authManager
 
-	pairingCode       string // user_code (shown to user)
-	pairingDeviceCode string // device_code (used for polling, never shown)
-	pairingState      string // "none", "pending", "approved", "paired"
+	pairingCode       string             // user_code (shown to user)
+	pairingDeviceCode string             // device_code (used for polling, never shown)
+	pairingState      string             // "none", "pending", "approved", "paired"
+	pairingCancel     context.CancelFunc // Cancels the previous pollForApproval goroutine
 	e2eTLSEnabled  bool   // Whether the server supports E2E TLS
 	latestVersion  string // Latest available version from GitHub Releases
 
@@ -1179,13 +1180,19 @@ func (s *Server) handlePairStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.Lock()
+	// Cancel any previous pairing poll goroutine
+	if s.pairingCancel != nil {
+		s.pairingCancel()
+	}
+	pairingCtx, pairingCancel := context.WithCancel(s.shutdownCtx)
+	s.pairingCancel = pairingCancel
 	s.pairingCode = result.UserCode       // Show to user
 	s.pairingDeviceCode = result.DeviceCode // Keep secret, use for polling
 	s.pairingState = "pending"
 	s.mu.Unlock()
 
 	// Start polling for approval in background using device_code
-	go s.pollForApproval(result.DeviceCode)
+	go s.pollForApproval(pairingCtx, result.DeviceCode)
 
 	writeJSON(w,map[string]interface{}{
 		"code":       result.UserCode, // Only expose user_code to web UI
@@ -1193,8 +1200,9 @@ func (s *Server) handlePairStart(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// pollForApproval polls using device_code (OAuth Device Flow)
-func (s *Server) pollForApproval(deviceCode string) {
+// pollForApproval polls using device_code (OAuth Device Flow).
+// ctx is cancelled when a new pairing starts or the server shuts down.
+func (s *Server) pollForApproval(ctx context.Context, deviceCode string) {
 	ticker := time.NewTicker(constants.PairPollInterval)
 	defer ticker.Stop()
 
@@ -1207,8 +1215,8 @@ func (s *Server) pollForApproval(deviceCode string) {
 
 	for {
 		select {
-		case <-s.shutdownCtx.Done():
-			log.Println("[Pairing] Poll stopped (shutdown)")
+		case <-ctx.Done():
+			log.Println("[Pairing] Poll stopped (cancelled or shutdown)")
 			return
 		case <-timeout:
 			s.mu.Lock()
@@ -1392,7 +1400,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 		for _, existing := range existingServices {
 			if strings.EqualFold(existing.Name, req.Name) {
 				w.WriteHeader(http.StatusConflict)
-				writeJSON(w,map[string]string{"error": "A service named '" + req.Name + "' already exists"})
+				writeJSON(w,map[string]string{"error": "A service with that name already exists"})
 				return
 			}
 		}
@@ -1401,13 +1409,13 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 	// Register with API
 	svc, err := currentAPIClient.RegisterService(currentCfg.ServerID, req.Name, req.Host, req.Port)
 	if err != nil {
-		log.Printf("Failed to register service %s: %v", req.Name, err)
+		log.Printf("Failed to register service %s: %v", sanitizeLog(req.Name), err)
 		w.WriteHeader(http.StatusInternalServerError)
 		writeJSON(w,map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to register service")})
 		return
 	}
 
-	log.Printf("Registered service: %s (subdomain: %s)", req.Name, svc.Subdomain)
+	log.Printf("Registered service: %s (subdomain: %s)", sanitizeLog(req.Name), svc.Subdomain)
 
 	// Add to FRP tunnel
 	var tunnelWarning string
@@ -1512,13 +1520,13 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 
 	// Delete from API
 	if err := currentAPIClient.DeleteService(currentCfg.ServerID, req.ServiceID); err != nil {
-		log.Printf("Failed to delete service %s: %v", req.ServiceID, err)
+		log.Printf("Failed to delete service %s: %v", sanitizeLog(req.ServiceID), err)
 		w.WriteHeader(http.StatusInternalServerError)
 		writeJSON(w,map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to delete service")})
 		return
 	}
 
-	log.Printf("Deleted service: %s (ID: %s)", req.ServiceName, req.ServiceID)
+	log.Printf("Deleted service: %s (ID: %s)", sanitizeLog(req.ServiceName), sanitizeLog(req.ServiceID))
 
 	// Remove from FRP tunnel
 	if client != nil && req.ServiceName != "" {

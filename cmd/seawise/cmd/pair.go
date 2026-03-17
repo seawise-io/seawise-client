@@ -2,9 +2,12 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/seawise/client/internal/api"
@@ -117,6 +120,10 @@ func runPair() {
 	fmt.Println()
 
 	// Poll for pairing completion using device_code (kept secret)
+	// Context handles Ctrl+C gracefully instead of abrupt termination
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	ticker := time.NewTicker(constants.PairPollInterval)
 	defer ticker.Stop()
 
@@ -126,6 +133,9 @@ func runPair() {
 
 	for {
 		select {
+		case <-ctx.Done():
+			fmt.Println("\n\nPairing cancelled.")
+			os.Exit(0)
 		case <-timeout:
 			fmt.Println("\n❌ Pairing timed out. Please try again.")
 			os.Exit(1)
