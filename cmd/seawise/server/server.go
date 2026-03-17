@@ -1597,7 +1597,7 @@ func generateSelfSignedCert(certFile, keyFile string) error {
 		return fmt.Errorf("create certificate: %w", err)
 	}
 
-	certOut, err := os.Create(certFile)
+	certOut, err := os.Create(certFile) // #nosec G304 — certFile is constructed from dataDir, not user input
 	if err != nil {
 		return fmt.Errorf("create cert file: %w", err)
 	}
@@ -1610,7 +1610,7 @@ func generateSelfSignedCert(certFile, keyFile string) error {
 	if err != nil {
 		return fmt.Errorf("marshal key: %w", err)
 	}
-	keyOut, err := os.OpenFile(keyFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	keyOut, err := os.OpenFile(keyFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600) // #nosec G304 — keyFile is constructed from dataDir, not user input
 	if err != nil {
 		return fmt.Errorf("create key file: %w", err)
 	}
