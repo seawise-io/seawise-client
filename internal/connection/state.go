@@ -1,10 +1,10 @@
 package connection
 
 import (
-	"log"
-	"math"
 	crand "crypto/rand"
 	"encoding/binary"
+	"log"
+	"math"
 	"sync"
 	"time"
 

@@ -86,8 +86,8 @@ func isValidUUID(s string) bool {
 
 // PairingCodes holds both codes from pairing request
 type PairingCodes struct {
-	UserCode   string    // Show to user (10 chars)
-	DeviceCode string    // Keep secret, use for polling (32 chars)
+	UserCode   string // Show to user (10 chars)
+	DeviceCode string // Keep secret, use for polling (32 chars)
 	ExpiresAt  time.Time
 }
 

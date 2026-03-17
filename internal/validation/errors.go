@@ -22,14 +22,14 @@ func SanitizeErrorForUI(err error, fallback string) string {
 
 	// If error contains stack traces or internal paths, don't expose it
 	sensitivePatterns := []string{
-		".go:",           // Stack traces
-		"runtime/",       // Go runtime
-		"goroutine",      // Stack traces
-		"panic:",         // Panics
-		"/home/",         // File paths
-		"/app/",          // Container paths
-		"sql:",           // SQL errors
-		"pq:",            // PostgreSQL errors
+		".go:",      // Stack traces
+		"runtime/",  // Go runtime
+		"goroutine", // Stack traces
+		"panic:",    // Panics
+		"/home/",    // File paths
+		"/app/",     // Container paths
+		"sql:",      // SQL errors
+		"pq:",       // PostgreSQL errors
 		"connection refused",
 		"no such host",
 		"context deadline exceeded",

@@ -85,8 +85,8 @@ type Server struct {
 	pairingDeviceCode string             // device_code (used for polling, never shown)
 	pairingState      string             // "none", "pending", "approved", "paired"
 	pairingCancel     context.CancelFunc // Cancels the previous pollForApproval goroutine
-	e2eTLSEnabled  bool   // Whether the server supports E2E TLS
-	latestVersion  string // Latest available version from GitHub Releases
+	e2eTLSEnabled     bool               // Whether the server supports E2E TLS
+	latestVersion     string             // Latest available version from GitHub Releases
 
 	// Health check caches - only report changes to minimize API calls
 	serviceCache     map[string]string // subdomain → serviceID
@@ -1157,7 +1157,7 @@ func (s *Server) handlePairStart(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
-		writeJSON(w,map[string]string{"error": "Request body too large"})
+		writeJSON(w, map[string]string{"error": "Request body too large"})
 		return
 	}
 	var req struct {
@@ -1175,7 +1175,7 @@ func (s *Server) handlePairStart(w http.ResponseWriter, r *http.Request) {
 	result, err := s.apiClient.RequestPairing(req.ServerName)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		writeJSON(w,map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to request pairing code")})
+		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to request pairing code")})
 		return
 	}
 
@@ -1186,7 +1186,7 @@ func (s *Server) handlePairStart(w http.ResponseWriter, r *http.Request) {
 	}
 	pairingCtx, pairingCancel := context.WithCancel(s.shutdownCtx)
 	s.pairingCancel = pairingCancel
-	s.pairingCode = result.UserCode       // Show to user
+	s.pairingCode = result.UserCode         // Show to user
 	s.pairingDeviceCode = result.DeviceCode // Keep secret, use for polling
 	s.pairingState = "pending"
 	s.mu.Unlock()
@@ -1194,7 +1194,7 @@ func (s *Server) handlePairStart(w http.ResponseWriter, r *http.Request) {
 	// Start polling for approval in background using device_code
 	go s.pollForApproval(pairingCtx, result.DeviceCode)
 
-	writeJSON(w,map[string]interface{}{
+	writeJSON(w, map[string]interface{}{
 		"code":       result.UserCode, // Only expose user_code to web UI
 		"expires_at": result.ExpiresAt,
 	})
@@ -1331,7 +1331,7 @@ func (s *Server) handlePairPoll(w http.ResponseWriter, r *http.Request) {
 	response["connection_state"] = string(s.connManager.State())
 	s.mu.RUnlock()
 
-	writeJSON(w,response)
+	writeJSON(w, response)
 }
 
 func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
@@ -1349,7 +1349,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 
 	if !isPaired {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Not paired yet. Connect to SeaWise first."})
+		writeJSON(w, map[string]string{"error": "Not paired yet. Connect to SeaWise first."})
 		return
 	}
 
@@ -1357,7 +1357,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
-		writeJSON(w,map[string]string{"error": "Request body too large"})
+		writeJSON(w, map[string]string{"error": "Request body too large"})
 		return
 	}
 	var req struct {
@@ -1367,30 +1367,30 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Invalid request body"})
+		writeJSON(w, map[string]string{"error": "Invalid request body"})
 		return
 	}
 
 	// Input validation — same rules as CLI (validation package)
 	if !validation.IsValidServiceName(req.Name) {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Invalid service name (must be 1-100 characters)"})
+		writeJSON(w, map[string]string{"error": "Invalid service name (must be 1-100 characters)"})
 		return
 	}
 	if !validation.IsValidHost(req.Host) {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Invalid host format (must be a valid hostname or IP)"})
+		writeJSON(w, map[string]string{"error": "Invalid host format (must be a valid hostname or IP)"})
 		return
 	}
 	// Security: Block internal/private IPs to prevent SSRF attacks
 	if err := validation.ValidateServiceHost(req.Host); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": err.Error()})
+		writeJSON(w, map[string]string{"error": err.Error()})
 		return
 	}
 	if !validation.IsValidPort(req.Port) {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Invalid port (must be 1-65535)"})
+		writeJSON(w, map[string]string{"error": "Invalid port (must be 1-65535)"})
 		return
 	}
 
@@ -1400,7 +1400,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 		for _, existing := range existingServices {
 			if strings.EqualFold(existing.Name, req.Name) {
 				w.WriteHeader(http.StatusConflict)
-				writeJSON(w,map[string]string{"error": "A service with that name already exists"})
+				writeJSON(w, map[string]string{"error": "A service with that name already exists"})
 				return
 			}
 		}
@@ -1411,7 +1411,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Failed to register service %s: %v", sanitizeLog(req.Name), err)
 		w.WriteHeader(http.StatusInternalServerError)
-		writeJSON(w,map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to register service")})
+		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to register service")})
 		return
 	}
 
@@ -1445,7 +1445,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 	if tunnelWarning != "" {
 		response["warning"] = tunnelWarning
 	}
-	writeJSON(w,response)
+	writeJSON(w, response)
 }
 
 func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
@@ -1458,7 +1458,7 @@ func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
 
 	if currentCfg == nil {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Not paired yet"})
+		writeJSON(w, map[string]string{"error": "Not paired yet"})
 		return
 	}
 
@@ -1466,11 +1466,11 @@ func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Failed to list services: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		writeJSON(w,map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to list services")})
+		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to list services")})
 		return
 	}
 
-	writeJSON(w,map[string]interface{}{
+	writeJSON(w, map[string]interface{}{
 		"services": services,
 	})
 }
@@ -1491,7 +1491,7 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 
 	if currentCfg == nil {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Not paired yet"})
+		writeJSON(w, map[string]string{"error": "Not paired yet"})
 		return
 	}
 
@@ -1499,7 +1499,7 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
-		writeJSON(w,map[string]string{"error": "Request body too large"})
+		writeJSON(w, map[string]string{"error": "Request body too large"})
 		return
 	}
 	var req struct {
@@ -1508,13 +1508,13 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Invalid request body"})
+		writeJSON(w, map[string]string{"error": "Invalid request body"})
 		return
 	}
 
 	if req.ServiceID == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "service_id is required"})
+		writeJSON(w, map[string]string{"error": "service_id is required"})
 		return
 	}
 
@@ -1522,7 +1522,7 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 	if err := currentAPIClient.DeleteService(currentCfg.ServerID, req.ServiceID); err != nil {
 		log.Printf("Failed to delete service %s: %v", sanitizeLog(req.ServiceID), err)
 		w.WriteHeader(http.StatusInternalServerError)
-		writeJSON(w,map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to delete service")})
+		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to delete service")})
 		return
 	}
 
@@ -1537,7 +1537,7 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w,map[string]interface{}{
+	writeJSON(w, map[string]interface{}{
 		"success": true,
 	})
 }
@@ -1571,7 +1571,7 @@ func (s *Server) handleUnpair(w http.ResponseWriter, r *http.Request) {
 	// Clean up
 	s.handleUnpairInternal()
 
-	writeJSON(w,map[string]interface{}{
+	writeJSON(w, map[string]interface{}{
 		"success": true,
 	})
 }

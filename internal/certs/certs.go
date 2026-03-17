@@ -25,11 +25,11 @@ type CertManager struct {
 
 // CertInfo contains paths to certificate and key files
 type CertInfo struct {
-	CertPath   string
-	KeyPath    string
-	Domain     string
-	ExpiresAt  time.Time
-	IssuedAt   time.Time
+	CertPath  string
+	KeyPath   string
+	Domain    string
+	ExpiresAt time.Time
+	IssuedAt  time.Time
 }
 
 // New creates a new CertManager
