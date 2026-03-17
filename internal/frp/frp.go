@@ -551,7 +551,7 @@ func (c *Client) Stop() error {
 				// Process exited gracefully
 			case <-time.After(5 * time.Second):
 				if c.cmd != nil && c.cmd.Process != nil {
-					c.cmd.Process.Kill()
+					_ = c.cmd.Process.Kill() // #nosec G104 — best-effort kill after SIGTERM timeout
 				}
 			}
 		}
