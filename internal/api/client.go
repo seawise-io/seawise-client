@@ -67,6 +67,23 @@ func isSuccessStatus(code int) bool {
 	return code >= 200 && code < 300
 }
 
+// isValidUUID checks if a string is a valid UUID format (defense-in-depth for path interpolation).
+func isValidUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return false
+			}
+		} else if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
 // PairingCodes holds both codes from pairing request
 type PairingCodes struct {
 	UserCode   string    // Show to user (10 chars)
@@ -347,6 +364,9 @@ type HeartbeatResult struct {
 }
 
 func (c *Client) Heartbeat(serverID string, frpConnected bool, serviceCount int, clientVersion string, connectionID string) HeartbeatResult {
+	if !isValidUUID(serverID) {
+		return HeartbeatResult{Error: fmt.Errorf("invalid server ID format")}
+	}
 	// Build request with client status
 	payload := map[string]interface{}{
 		"frp_connected":  frpConnected,

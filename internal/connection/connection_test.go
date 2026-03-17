@@ -99,7 +99,6 @@ func TestStateChangeCallback(t *testing.T) {
 			mu.Unlock()
 		},
 		nil,
-		nil,
 	)
 
 	m.SetState(StateConnecting)
@@ -129,7 +128,6 @@ func TestNoCallbackOnSameState(t *testing.T) {
 		func(old, newState State) {
 			callCount++
 		},
-		nil,
 		nil,
 	)
 

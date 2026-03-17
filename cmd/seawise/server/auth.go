@@ -318,8 +318,10 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 				validOrigins := []string{
 					"http://localhost",
 					"http://127.0.0.1",
+					"http://[::1]",
 					"https://localhost",
 					"https://127.0.0.1",
+					"https://[::1]",
 				}
 				isValidOrigin := false
 				for _, valid := range validOrigins {
@@ -341,8 +343,10 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 				validPrefixes := []string{
 					"http://localhost",
 					"http://127.0.0.1",
+					"http://[::1]",
 					"https://localhost",
 					"https://127.0.0.1",
+					"https://[::1]",
 				}
 				for _, prefix := range validPrefixes {
 					if strings.HasPrefix(referer, prefix) {
