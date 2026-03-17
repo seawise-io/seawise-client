@@ -155,6 +155,14 @@ func runPair() {
 			fmt.Printf("   Account: %s\n", result.Data.UserEmail)
 			fmt.Println()
 
+			// SECURITY: Default FRP TLS to true. Only allow disabling via
+			// local env var for development. Don't trust the server's value
+			// if it says false — a compromised API could disable encryption.
+			frpUseTLS := true
+			if os.Getenv("SEAWISE_FRP_TLS") == "false" {
+				frpUseTLS = result.Data.FRPUseTLS // Trust server only in dev
+			}
+
 			// Save config
 			newCfg := &config.Config{
 				ServerID:      result.Data.ServerID,
@@ -162,7 +170,7 @@ func runPair() {
 				FRPToken:      result.Data.FRPToken,
 				FRPServerAddr: result.Data.FRPServerAddr,
 				FRPServerPort: result.Data.FRPServerPort,
-				FRPUseTLS:     result.Data.FRPUseTLS,
+				FRPUseTLS:     frpUseTLS,
 				APIURL:        apiURL,
 				UserID:        result.Data.UserID,
 				UserEmail:     result.Data.UserEmail,

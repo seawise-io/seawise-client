@@ -53,6 +53,15 @@ func ValidateBaseURL(baseURL string) error {
 	return nil
 }
 
+// maxResponseSize limits API response body reads to prevent OOM from a
+// compromised or misbehaving API server.
+const maxResponseSize = 1 << 20 // 1 MB
+
+// readResponseBody reads the response body with a size limit.
+func readResponseBody(resp *http.Response) ([]byte, error) {
+	return io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
+}
+
 // isSuccessStatus returns true for any 2xx HTTP status code
 func isSuccessStatus(code int) bool {
 	return code >= 200 && code < 300
@@ -131,7 +140,7 @@ func (c *Client) RequestPairing(serverName string) (*PairRequestResponse, error)
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readResponseBody(resp)
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
@@ -168,7 +177,7 @@ func (c *Client) PollPairingStatus(deviceCode string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readResponseBody(resp)
 	if err != nil {
 		return "", fmt.Errorf("read response: %w", err)
 	}
@@ -224,7 +233,7 @@ func (c *Client) CompletePairing(deviceCode string) (*PairCompleteResponse, erro
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readResponseBody(resp)
 	if err != nil {
 		return nil, fmt.Errorf("read complete response: %w", err)
 	}
@@ -282,7 +291,7 @@ func (c *Client) RegisterService(serverID, name, host string, port int) (*Servic
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readResponseBody(resp)
 	if err != nil {
 		return nil, fmt.Errorf("read service response: %w", err)
 	}
@@ -363,7 +372,7 @@ func (c *Client) Heartbeat(serverID string, frpConnected bool, serviceCount int,
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readResponseBody(resp)
 	if err != nil {
 		return HeartbeatResult{Error: fmt.Errorf("read response: %w", err)}
 	}
@@ -421,7 +430,7 @@ func (c *Client) ListServices(serverID string) ([]Service, error) {
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readResponseBody(resp)
 	if err != nil {
 		return nil, fmt.Errorf("read services response: %w", err)
 	}
@@ -467,7 +476,7 @@ func (c *Client) ReportServiceHealth(serverID string, statuses []ServiceHealthSt
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := readResponseBody(resp)
 		return fmt.Errorf("report health failed: %s (status %d)", string(body), resp.StatusCode)
 	}
 
@@ -491,7 +500,7 @@ func (c *Client) MarkOffline(serverID string) error {
 	defer resp.Body.Close()
 
 	if !isSuccessStatus(resp.StatusCode) {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := readResponseBody(resp)
 		return fmt.Errorf("mark offline failed: %s", validation.ParseAPIError(respBody, resp.StatusCode))
 	}
 	return nil
@@ -511,7 +520,7 @@ func (c *Client) DeleteServer(serverID string) error {
 	defer resp.Body.Close()
 
 	if !isSuccessStatus(resp.StatusCode) {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := readResponseBody(resp)
 		return fmt.Errorf("delete server failed: %s", validation.ParseAPIError(respBody, resp.StatusCode))
 	}
 	return nil
@@ -532,7 +541,7 @@ func (c *Client) DeleteService(serverID, serviceID string) error {
 	defer resp.Body.Close()
 
 	if !isSuccessStatus(resp.StatusCode) {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := readResponseBody(resp)
 		return fmt.Errorf("delete service failed: %s", validation.ParseAPIError(respBody, resp.StatusCode))
 	}
 	return nil
@@ -564,7 +573,7 @@ func (c *Client) GetCertStatus() (*CertStatusResponse, error) {
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readResponseBody(resp)
 	if err != nil {
 		return nil, fmt.Errorf("read cert status response: %w", err)
 	}
@@ -611,7 +620,7 @@ func (c *Client) RequestCertificate(subdomain string, csrPEM []byte) (*CertIssue
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readResponseBody(resp)
 	if err != nil {
 		return nil, fmt.Errorf("read cert response: %w", err)
 	}

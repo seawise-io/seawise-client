@@ -536,6 +536,14 @@ func (c *Client) Stop() error {
 	}
 	c.state = ProcessStopped
 
+	// SECURITY: Remove frpc.toml which contains the plaintext FRP token.
+	// The config is regenerated on every Start() call.
+	if c.configPath != "" {
+		if err := os.Remove(c.configPath); err != nil && !os.IsNotExist(err) {
+			log.Printf("[FRP] Warning: failed to clean up config file: %v", err)
+		}
+	}
+
 	// Create new stop channel for next Start() call
 	c.stopChan = make(chan struct{})
 
