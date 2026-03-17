@@ -4,6 +4,13 @@
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
 
+# SECURITY: Refuse to run as root — amplifies any vulnerability
+if [ "$PUID" = "0" ] || [ "$PGID" = "0" ]; then
+    echo "ERROR: Running as root (PUID=0 or PGID=0) is not supported."
+    echo "       Use PUID/PGID values >= 1 (default: 1000)"
+    exit 1
+fi
+
 # Create group/user with requested IDs if they don't match
 CURRENT_UID=$(id -u seawise 2>/dev/null)
 CURRENT_GID=$(id -g seawise 2>/dev/null)

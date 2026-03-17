@@ -22,13 +22,19 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -ldflags="-s -w -X github.com/seawise/client/internal/constants.Version=${VERSION}" \
     -o /seawise-client ./cmd/seawise
 
-# FRP client download stage
+# FRP client download stage (with checksum verification)
 FROM alpine:3.21 AS frp-downloader
 ARG FRP_VERSION=0.67.0
 ARG TARGETARCH=amd64
+# SHA-256 checksums from https://github.com/fatedier/frp/releases/tag/v0.67.0
+ARG FRP_SHA256_AMD64=f8629ca7ca56b8e7e7a9903779b8d5c47c56ad1b75b99b2d7138477acc4c7105
+ARG FRP_SHA256_ARM64=0e9683226acdcbbb2ac8d073f35ba8be2a8b1e7584684d2073f39d337ebd6de7
 RUN apk add --no-cache curl tar && \
-    curl -L "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_${TARGETARCH}.tar.gz" | \
-    tar -xz -C /tmp && \
+    FRP_TARBALL="frp_${FRP_VERSION}_linux_${TARGETARCH}.tar.gz" && \
+    curl -Lo "/tmp/${FRP_TARBALL}" "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/${FRP_TARBALL}" && \
+    if [ "${TARGETARCH}" = "amd64" ]; then EXPECTED="${FRP_SHA256_AMD64}"; else EXPECTED="${FRP_SHA256_ARM64}"; fi && \
+    echo "${EXPECTED}  /tmp/${FRP_TARBALL}" | sha256sum -c - && \
+    tar -xzf "/tmp/${FRP_TARBALL}" -C /tmp && \
     mv /tmp/frp_${FRP_VERSION}_linux_${TARGETARCH}/frpc /frpc && \
     mv /tmp/frp_${FRP_VERSION}_linux_${TARGETARCH}/LICENSE /frp-LICENSE
 

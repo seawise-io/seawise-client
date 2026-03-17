@@ -3,6 +3,7 @@ package auth
 import (
 	"bufio"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -29,9 +30,11 @@ func PasswordFile() string {
 	return filepath.Join(paths.DataDir(), "password.hash")
 }
 
-// cliSessionFile returns the path to the CLI session file (in /tmp so it's cleared on reboot)
+// cliSessionFile returns the path to the CLI session file in the data directory.
+// SECURITY: Previously stored in /tmp (predictable, world-accessible). Moved to
+// data dir (0700) to prevent same-user session forgery.
 func cliSessionFile() string {
-	return fmt.Sprintf("/tmp/seawise-cli-session-%d", os.Getuid())
+	return filepath.Join(paths.DataDir(), "cli-session")
 }
 
 // IsPasswordSet returns true if a password has been configured
@@ -49,7 +52,14 @@ func VerifyPassword(password string) bool {
 	return bcrypt.CompareHashAndPassword(data, []byte(password)) == nil
 }
 
-// hasValidCLISession checks if there's a valid CLI session
+// cliSessionHashFile returns the path to the session token hash (used for validation).
+func cliSessionHashFile() string {
+	return filepath.Join(paths.DataDir(), "cli-session-hash")
+}
+
+// hasValidCLISession checks if there's a valid CLI session.
+// SECURITY: Validates both the expiry AND the token against a stored hash.
+// Previously only checked expiry — any file with "anything:<future_timestamp>" passed.
 func hasValidCLISession() bool {
 	data, err := os.ReadFile(cliSessionFile())
 	if err != nil {
@@ -62,15 +72,29 @@ func hasValidCLISession() bool {
 		return false
 	}
 
+	token := parts[0]
 	expiry, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
 		return false
 	}
 
-	return time.Now().Unix() < expiry
+	if time.Now().Unix() >= expiry {
+		return false
+	}
+
+	// Verify token matches stored hash
+	storedHash, err := os.ReadFile(cliSessionHashFile())
+	if err != nil {
+		return false
+	}
+
+	hash := sha256.Sum256([]byte(token))
+	tokenHash := hex.EncodeToString(hash[:])
+
+	return tokenHash == strings.TrimSpace(string(storedHash))
 }
 
-// createCLISession creates a new CLI session
+// createCLISession creates a new CLI session and stores a hash for validation.
 func createCLISession() error {
 	tokenBytes := make([]byte, 16)
 	if _, err := rand.Read(tokenBytes); err != nil {
@@ -79,10 +103,19 @@ func createCLISession() error {
 	token := hex.EncodeToString(tokenBytes)
 	expiry := time.Now().Add(cliSessionDuration).Unix()
 
+	// Write session file (token + expiry)
 	content := fmt.Sprintf("%s:%d", token, expiry)
 	if err := os.WriteFile(cliSessionFile(), []byte(content), 0600); err != nil {
 		return fmt.Errorf("write session file: %w", err)
 	}
+
+	// Write token hash for validation (prevents forgery)
+	hash := sha256.Sum256([]byte(token))
+	tokenHash := hex.EncodeToString(hash[:])
+	if err := os.WriteFile(cliSessionHashFile(), []byte(tokenHash), 0600); err != nil {
+		return fmt.Errorf("write session hash file: %w", err)
+	}
+
 	return nil
 }
 
@@ -126,12 +159,13 @@ func HashAndSavePassword(password string) ([]byte, error) {
 	return hash, nil
 }
 
-// ClearCLISession removes the CLI session (used when password is changed/removed)
-// Returns nil if file doesn't exist or was successfully removed.
+// ClearCLISession removes the CLI session and hash (used when password is changed/removed).
+// Returns nil if files don't exist or were successfully removed.
 func ClearCLISession() error {
-	err := os.Remove(cliSessionFile())
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("clear CLI session: %w", err)
+	for _, f := range []string{cliSessionFile(), cliSessionHashFile()} {
+		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("clear CLI session file %s: %w", f, err)
+		}
 	}
 	return nil
 }

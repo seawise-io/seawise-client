@@ -46,6 +46,11 @@ type authManager struct {
 	rateLimits   map[string]*rateLimitEntry // IP -> rate limit state
 	stopChan     chan struct{} // Signal cleanup goroutine to exit
 	stopOnce     sync.Once    // Prevents double-close panic on stopChan
+
+	// SECURITY: When true, mutating API calls require authentication even if
+	// no password is set. Prevents LAN attackers from controlling the client
+	// when bound to 0.0.0.0 (Docker default).
+	networkExposed bool
 }
 
 func newAuthManager() *authManager {
@@ -370,8 +375,17 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// If no password is set, allow everything (CSRF already validated above)
+		// If no password is set:
+		// - On loopback: allow everything (trusted local access)
+		// - On network (0.0.0.0): block mutating API calls to prevent LAN attacks.
+		//   Only /api/auth/set-password (whitelisted above) and GET requests pass through.
 		if !am.hasPassword() {
+			if am.networkExposed && r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
+				writeJSONStatus(w, http.StatusForbidden, map[string]string{
+					"error": "Password required. Set a password before performing actions when exposed to the network.",
+				})
+				return
+			}
 			next.ServeHTTP(w, r)
 			return
 		}

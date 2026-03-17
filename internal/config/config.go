@@ -39,7 +39,8 @@ func Load() (*Config, error) {
 }
 
 func (c *Config) Save() error {
-	dir := filepath.Dir(ConfigPath())
+	configPath := ConfigPath()
+	dir := filepath.Dir(configPath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("create config directory: %w", err)
 	}
@@ -47,8 +48,16 @@ func (c *Config) Save() error {
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	if err := os.WriteFile(ConfigPath(), data, 0600); err != nil {
-		return fmt.Errorf("write config file: %w", err)
+
+	// Atomic write: write to temp file, then rename.
+	// Prevents corruption if the process crashes mid-write.
+	tmpPath := configPath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+		return fmt.Errorf("write temp config file: %w", err)
+	}
+	if err := os.Rename(tmpPath, configPath); err != nil {
+		os.Remove(tmpPath) // Clean up on rename failure
+		return fmt.Errorf("rename config file: %w", err)
 	}
 	return nil
 }

@@ -978,14 +978,20 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 		bindAddr = "127.0.0.1"
 	}
 
-	// F-025: Warn when binding to all interfaces without password protection
+	// SECURITY: Mark auth manager as network-exposed when binding to non-loopback.
+	// This blocks mutating API calls until a password is set.
+	if bindAddr != "127.0.0.1" && bindAddr != "localhost" && bindAddr != "::1" {
+		s.auth.networkExposed = true
+	}
+
+	// Warn when binding to all interfaces without password protection
 	if (bindAddr == "0.0.0.0" || bindAddr == "::") && !s.auth.hasPassword() {
 		log.Println("[WARNING] ========================================")
 		log.Println("[WARNING] Web UI is listening on ALL interfaces")
 		log.Println("[WARNING] with NO PASSWORD set. Anyone on your")
 		log.Println("[WARNING] network can access and control this client.")
 		log.Println("[WARNING] Set a password via the web UI or API:")
-		log.Printf("[WARNING]   curl -X POST http://localhost:%d/api/auth/set-password -d '{\"new_password\":\"...\"}'", port)
+		log.Printf("[WARNING]   curl -X POST http://localhost:%d/api/auth/set-password -H 'Content-Type: application/json' -d '{\"password\":\"...\"}'", port)
 		log.Println("[WARNING] ========================================")
 	}
 
