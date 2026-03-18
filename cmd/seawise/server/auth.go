@@ -47,14 +47,11 @@ type authManager struct {
 	stopChan     chan struct{}              // Signal cleanup goroutine to exit
 	stopOnce     sync.Once                  // Prevents double-close panic on stopChan
 
-	// SECURITY: When true, mutating API calls require authentication even if
-	// no password is set. Prevents LAN attackers from controlling the client
-	// when bound to 0.0.0.0 (Docker default).
+	// Require auth for mutating calls when bound to non-localhost
 	networkExposed bool
 }
 
 func newAuthManager() *authManager {
-	// Use shared password file path from auth package
 	pwFile := auth.PasswordFile()
 
 	am := &authManager{
@@ -64,28 +61,24 @@ func newAuthManager() *authManager {
 		stopChan:     make(chan struct{}),
 	}
 
-	// Load existing password hash
-	if data, err := os.ReadFile(pwFile); err == nil && len(data) > 0 { // #nosec G304 — path from auth.PasswordFile(), not user input
+	if data, err := os.ReadFile(pwFile); err == nil && len(data) > 0 { // #nosec G304
 		am.passwordHash = data
 		log.Printf("[Auth] Password protection enabled")
 	} else {
 		log.Printf("[Auth] No password set — set one at http://localhost:8082 via Settings")
 	}
 
-	// Start background cleanup of expired sessions
 	am.startCleanup()
 
 	return am
 }
 
-// hasPassword returns true if a password has been configured.
 func (am *authManager) hasPassword() bool {
 	am.mu.RLock()
 	defer am.mu.RUnlock()
 	return len(am.passwordHash) > 0
 }
 
-// setPassword hashes and stores a new password.
 func (am *authManager) setPassword(password string) error {
 	hash, err := auth.HashAndSavePassword(password)
 	if err != nil {
@@ -100,7 +93,6 @@ func (am *authManager) setPassword(password string) error {
 	return nil
 }
 
-// checkPassword verifies a password against the stored hash.
 func (am *authManager) checkPassword(password string) bool {
 	am.mu.RLock()
 	hash := am.passwordHash
@@ -112,7 +104,6 @@ func (am *authManager) checkPassword(password string) bool {
 	return bcrypt.CompareHashAndPassword(hash, []byte(password)) == nil
 }
 
-// createSession generates a new session token and stores it.
 func (am *authManager) createSession() string {
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
@@ -128,7 +119,6 @@ func (am *authManager) createSession() string {
 	return token
 }
 
-// validateSession checks if a session token is valid.
 func (am *authManager) validateSession(token string) bool {
 	if token == "" {
 		return false
@@ -150,22 +140,19 @@ func (am *authManager) validateSession(token string) bool {
 	return true
 }
 
-// deleteSession removes a session.
 func (am *authManager) deleteSession(token string) {
 	am.mu.Lock()
 	delete(am.sessions, token)
 	am.mu.Unlock()
 }
 
-// invalidateAllSessions clears all sessions (used on password change).
 func (am *authManager) invalidateAllSessions() {
 	am.mu.Lock()
 	am.sessions = make(map[string]time.Time)
 	am.mu.Unlock()
 }
 
-// startCleanup periodically removes expired sessions to prevent memory leaks.
-// The goroutine exits when Stop() is called.
+// startCleanup periodically removes expired sessions.
 func (am *authManager) startCleanup() {
 	go func() {
 		ticker := time.NewTicker(sessionCleanupPeriod)
@@ -173,7 +160,7 @@ func (am *authManager) startCleanup() {
 		for {
 			select {
 			case <-am.stopChan:
-				return // Exit goroutine when stop signal received
+				return
 			case <-ticker.C:
 				am.cleanupExpiredSessions()
 			}
@@ -181,15 +168,14 @@ func (am *authManager) startCleanup() {
 	}()
 }
 
-// Stop signals the cleanup goroutine to exit. Call on server shutdown.
-// Safe to call multiple times — uses sync.Once to prevent double-close panic.
+// Stop signals the cleanup goroutine to exit. Safe to call multiple times.
 func (am *authManager) Stop() {
 	am.stopOnce.Do(func() {
 		close(am.stopChan)
 	})
 }
 
-// cleanupExpiredSessions removes all expired sessions from memory.
+// cleanupExpiredSessions removes expired sessions and stale rate limit entries.
 func (am *authManager) cleanupExpiredSessions() {
 	now := time.Now()
 	am.mu.Lock()
@@ -206,7 +192,6 @@ func (am *authManager) cleanupExpiredSessions() {
 		log.Printf("[Auth] Cleaned up %d expired sessions", expired)
 	}
 
-	// Also clean up old rate limit entries
 	for ip, entry := range am.rateLimits {
 		if now.Sub(entry.lastFail) > rateLimitWindow {
 			delete(am.rateLimits, ip)
@@ -214,7 +199,7 @@ func (am *authManager) cleanupExpiredSessions() {
 	}
 }
 
-// checkRateLimit returns true if the IP is allowed to attempt login, false if blocked
+// checkRateLimit returns true if the IP is allowed to attempt login.
 func (am *authManager) checkRateLimit(ip string) (allowed bool, retryAfter time.Duration) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
@@ -226,12 +211,10 @@ func (am *authManager) checkRateLimit(ip string) (allowed bool, retryAfter time.
 
 	now := time.Now()
 
-	// Check if locked out
 	if now.Before(entry.lockedUntil) {
 		return false, entry.lockedUntil.Sub(now)
 	}
 
-	// Reset if window expired
 	if now.Sub(entry.lastFail) > rateLimitWindow {
 		delete(am.rateLimits, ip)
 		return true, 0
@@ -240,7 +223,7 @@ func (am *authManager) checkRateLimit(ip string) (allowed bool, retryAfter time.
 	return true, 0
 }
 
-// recordFailedLogin records a failed login attempt and returns the delay to apply
+// recordFailedLogin records a failed login attempt and returns the lockout delay.
 func (am *authManager) recordFailedLogin(ip string) time.Duration {
 	am.mu.Lock()
 	defer am.mu.Unlock()
@@ -256,7 +239,6 @@ func (am *authManager) recordFailedLogin(ip string) time.Duration {
 	entry.failures++
 	entry.lastFail = now
 
-	// Calculate exponential backoff delay (cap shift to prevent overflow)
 	shift := entry.failures - 1
 	if shift > 30 {
 		shift = 30
@@ -266,10 +248,9 @@ func (am *authManager) recordFailedLogin(ip string) time.Duration {
 		delay = rateLimitMaxDelay
 	}
 
-	// Lock out for the delay period (enforced by checkRateLimit on next request)
 	if entry.failures >= rateLimitMaxFails {
 		entry.lockedUntil = now.Add(rateLimitWindow)
-		log.Printf("[Auth] IP %s locked out for %v after %d failed attempts", sanitizeLog(ip), rateLimitWindow, entry.failures) // #nosec G706 — sanitized
+		log.Printf("[Auth] IP %s locked out for %v after %d failed attempts", sanitizeLog(ip), rateLimitWindow, entry.failures) // #nosec G706
 	} else if delay > 0 {
 		entry.lockedUntil = now.Add(delay)
 	}
@@ -277,7 +258,7 @@ func (am *authManager) recordFailedLogin(ip string) time.Duration {
 	return delay
 }
 
-// clearRateLimit clears rate limit for an IP after successful login
+// clearRateLimit clears rate limit for an IP after successful login.
 func (am *authManager) clearRateLimit(ip string) {
 	am.mu.Lock()
 	defer am.mu.Unlock()
@@ -299,22 +280,17 @@ func (am *authManager) removePassword() error {
 	return nil
 }
 
-// middleware returns an http.Handler that checks authentication and CSRF protection.
-// Unauthenticated requests to protected paths get a 401.
+// middleware wraps handlers with CSRF and authentication checks.
 func (am *authManager) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
-		// CSRF protection for state-changing requests (POST, DELETE, PUT, PATCH)
-		// This protects against malicious websites triggering actions via JavaScript
+		// CSRF protection for state-changing requests
 		if r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
 			origin := r.Header.Get("Origin")
 			referer := r.Header.Get("Referer")
 
-			// Allow requests with no Origin (same-origin requests from older browsers)
-			// or requests where Origin matches localhost
 			if origin != "" {
-				// Check if origin is localhost (various forms)
 				validOrigins := []string{
 					"http://localhost",
 					"http://127.0.0.1",
@@ -325,20 +301,18 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 				}
 				isValidOrigin := false
 				for _, valid := range validOrigins {
-					// Origin header includes scheme but not port, so we check prefix
 					if origin == valid || len(origin) > len(valid) && origin[:len(valid)+1] == valid+":" {
 						isValidOrigin = true
 						break
 					}
 				}
 				if !isValidOrigin {
-					log.Printf("[CSRF] Blocked request from origin: %s to %s", sanitizeLog(origin), sanitizeLog(path)) // #nosec G706 — sanitized
+					log.Printf("[CSRF] Blocked request from origin: %s to %s", sanitizeLog(origin), sanitizeLog(path)) // #nosec G706
 					writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
 					return
 				}
 			} else if referer != "" {
-				// Fall back to Referer check if no Origin header
-				// SECURITY: Must check for delimiter after host to prevent localhost.attacker.com bypass
+				// Check delimiter after host to prevent localhost.attacker.com bypass
 				isValidReferer := false
 				validPrefixes := []string{
 					"http://localhost",
@@ -350,7 +324,6 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 				}
 				for _, prefix := range validPrefixes {
 					if strings.HasPrefix(referer, prefix) {
-						// Must be followed by end, port (:), or path (/)
 						remainder := referer[len(prefix):]
 						if remainder == "" || remainder[0] == ':' || remainder[0] == '/' {
 							isValidReferer = true
@@ -359,30 +332,23 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 					}
 				}
 				if !isValidReferer {
-					log.Printf("[CSRF] Blocked request with referer: %s to %s", sanitizeLog(referer), sanitizeLog(path)) // #nosec G706 — sanitized
+					log.Printf("[CSRF] Blocked request with referer: %s to %s", sanitizeLog(referer), sanitizeLog(path)) // #nosec G706
 					writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
 					return
 				}
 			} else {
-				// SECURITY: Block requests with no Origin AND no Referer
-				// This prevents CSRF via curl/wget-style attacks
-				log.Printf("[CSRF] Blocked request with no origin/referer to %s", sanitizeLog(path)) // #nosec G706 — sanitized
+				log.Printf("[CSRF] Blocked request with no origin/referer to %s", sanitizeLog(path)) // #nosec G706
 				writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Origin or Referer header required"})
 				return
 			}
 		}
 
-		// Auth endpoints + status are always accessible (after CSRF check)
-		// /api/status is whitelisted so the status badge updates even when locked
+		// Auth endpoints and status are always accessible
 		if path == "/api/auth/status" || path == "/api/auth/login" || path == "/api/auth/set-password" || path == "/api/status" {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		// If no password is set:
-		// - On loopback: allow everything (trusted local access)
-		// - On network (0.0.0.0): block mutating API calls to prevent LAN attacks.
-		//   Only /api/auth/set-password (whitelisted above) and GET requests pass through.
 		if !am.hasPassword() {
 			if am.networkExposed && r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
 				writeJSONStatus(w, http.StatusForbidden, map[string]string{
@@ -394,15 +360,12 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Check session cookie
 		cookie, err := r.Cookie(sessionCookieName)
 		if err != nil || !am.validateSession(cookie.Value) {
-			// For API calls, return 401 JSON
 			if len(path) > 4 && path[:5] == "/api/" {
 				writeJSONStatus(w, http.StatusUnauthorized, map[string]string{"error": "Authentication required"})
 				return
 			}
-			// For page requests, serve the page (JS will handle showing login)
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -412,7 +375,6 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 }
 
 // setSessionCookie sets the session cookie on the response.
-// Secure flag is set when the request came over HTTPS (detected via TLS or X-Forwarded-Proto).
 func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	http.SetCookie(w, &http.Cookie{
@@ -438,8 +400,6 @@ func clearSessionCookie(w http.ResponseWriter) {
 	})
 }
 
-// --- HTTP Handlers ---
-
 func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	authenticated := false
 	if s.auth.hasPassword() {
@@ -461,7 +421,6 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If password already set, require current password
 	if s.auth.hasPassword() {
 		cookie, err := r.Cookie(sessionCookieName)
 		if err != nil || !s.auth.validateSession(cookie.Value) {
@@ -491,7 +450,6 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If changing password, verify current
 	if s.auth.hasPassword() && !s.auth.checkPassword(req.CurrentPassword) {
 		writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Current password is incorrect"})
 		return
@@ -502,12 +460,10 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clear CLI session (force re-auth with new password)
 	if err := auth.ClearCLISession(); err != nil {
 		log.Printf("[auth] Warning: failed to clear CLI session: %v", err)
 	}
 
-	// Invalidate old sessions, create new one
 	s.auth.invalidateAllSessions()
 	token := s.auth.createSession()
 	setSessionCookie(w, r, token)
@@ -521,18 +477,14 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get client IP for rate limiting
-	// SECURITY: Only trust X-Forwarded-For if explicitly behind a trusted proxy
-	// Without this check, attackers can spoof their IP to bypass rate limiting
+	// Only trust X-Forwarded-For if explicitly configured
 	clientIP := r.RemoteAddr
 	if os.Getenv("SEAWISE_TRUST_PROXY") == "true" {
 		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-			// Take first IP (original client) from the chain
 			clientIP = strings.TrimSpace(strings.Split(forwarded, ",")[0])
 		}
 	}
 
-	// SECURITY: Check rate limit before processing
 	allowed, retryAfter := s.auth.checkRateLimit(clientIP)
 	if !allowed {
 		w.Header().Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())))
@@ -563,7 +515,6 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !s.auth.checkPassword(req.Password) {
-		// Record failed attempt — sets lockout duration for next request
 		delay := s.auth.recordFailedLogin(clientIP)
 		if delay > 0 {
 			w.Header().Set("Retry-After", fmt.Sprintf("%d", int(delay.Seconds())+1))
@@ -576,7 +527,6 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Successful login - clear rate limit
 	s.auth.clearRateLimit(clientIP)
 
 	token := s.auth.createSession()
@@ -606,7 +556,6 @@ func (s *Server) handleAuthRemovePassword(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Must be authenticated to remove password
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil || !s.auth.validateSession(cookie.Value) {
 		writeJSONStatus(w, http.StatusUnauthorized, map[string]string{"error": "Authentication required"})
@@ -637,7 +586,6 @@ func (s *Server) handleAuthRemovePassword(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Clear CLI session too
 	if err := auth.ClearCLISession(); err != nil {
 		log.Printf("[auth] Warning: failed to clear CLI session: %v", err)
 	}

@@ -71,9 +71,6 @@ const (
 )
 
 // AllowedFRPDomains is the list of trusted FRP server domains.
-// SECURITY: Only these domains are allowed for FRP migration to prevent redirect attacks.
-// Production builds include only ".seawise.dev".
-// Development builds (go build -tags dev) add localhost and Docker entries.
 // See domains_prod.go and domains_dev.go.
 var AllowedFRPDomains = allowedFRPDomains
 

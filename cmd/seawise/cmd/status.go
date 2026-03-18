@@ -35,10 +35,9 @@ func runStatus() {
 		return
 	}
 
-	// Get service count from API
 	apiClient, err := api.New(cfg.APIURL)
 	if err != nil {
-		fmt.Printf("❌ Invalid API URL: %v\n", err)
+		fmt.Printf("Error: Invalid API URL: %v\n", err)
 		os.Exit(1)
 	}
 	apiClient.SetFRPToken(cfg.FRPToken)

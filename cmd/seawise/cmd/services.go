@@ -41,7 +41,7 @@ You can provide arguments directly or run interactively:
 			// Non-interactive mode
 			port, err := strconv.Atoi(args[2])
 			if err != nil {
-				fmt.Printf("❌ Invalid port: %s\n", args[2])
+				fmt.Printf("Error: Invalid port: %s\n", args[2])
 				os.Exit(1)
 			}
 			runServicesAdd(args[0], args[1], port)
@@ -78,12 +78,12 @@ func init() {
 func checkPaired() (*config.Config, *api.Client) {
 	cfg, err := config.Load()
 	if err != nil || cfg.ServerID == "" {
-		fmt.Println("❌ Not paired. Run 'seawise pair' first.")
+		fmt.Println("Error: Not paired. Run 'seawise pair' first.")
 		os.Exit(1)
 	}
 	apiClient, err := api.New(cfg.APIURL)
 	if err != nil {
-		fmt.Printf("❌ Invalid API URL: %v\n", err)
+		fmt.Printf("Error: Invalid API URL: %v\n", err)
 		os.Exit(1)
 	}
 	apiClient.SetFRPToken(cfg.FRPToken)
@@ -95,7 +95,7 @@ func runServicesList() {
 
 	services, err := apiClient.ListServices(cfg.ServerID)
 	if err != nil {
-		fmt.Printf("❌ Failed to list services: %v\n", err)
+		fmt.Printf("Error: Failed to list services: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -115,9 +115,9 @@ func runServicesList() {
 	fmt.Println("├─────────────────────────────────────────────────────────────┤")
 
 	for _, svc := range services {
-		statusIcon := "🟢"
+		statusIcon := "*"
 		if svc.Status != "online" {
-			statusIcon = "🔴"
+			statusIcon = "-"
 		}
 		fmt.Printf("│  %s %-55s │\n", statusIcon, svc.Name)
 		fmt.Printf("│     Host: %-48s │\n", fmt.Sprintf("%s:%d", svc.Host, svc.Port))
@@ -130,17 +130,16 @@ func runServicesList() {
 }
 
 func runServicesAdd(name, host string, port int) {
-	// Validate inputs
 	if !validation.IsValidServiceName(name) {
-		fmt.Println("❌ Invalid service name (must be 1-100 characters)")
+		fmt.Println("Error: Invalid service name (must be 1-100 characters)")
 		os.Exit(1)
 	}
 	if !validation.IsValidHost(host) {
-		fmt.Println("❌ Invalid host format (must be a valid hostname or IP)")
+		fmt.Println("Error: Invalid host format (must be a valid hostname or IP)")
 		os.Exit(1)
 	}
 	if !validation.IsValidPort(port) {
-		fmt.Println("❌ Invalid port (must be 1-65535)")
+		fmt.Println("Error: Invalid port (must be 1-65535)")
 		os.Exit(1)
 	}
 
@@ -150,12 +149,12 @@ func runServicesAdd(name, host string, port int) {
 
 	result, err := apiClient.RegisterService(cfg.ServerID, name, host, port)
 	if err != nil {
-		fmt.Printf("❌ Failed to add service: %v\n", err)
+		fmt.Printf("Error: Failed to add service: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Println()
-	fmt.Println("✅ \033[1;32mService added successfully!\033[0m")
+	fmt.Println("\033[1;32mService added successfully!\033[0m")
 	fmt.Println()
 	fmt.Printf("   Name:      %s\n", name)
 	fmt.Printf("   Target:    %s:%d\n", host, port)
@@ -166,8 +165,6 @@ func runServicesAdd(name, host string, port int) {
 }
 
 func runServicesAddInteractive() {
-	// Validate pairing early (exits if not paired).
-	// runServicesAdd will load config again for the API call.
 	checkPaired()
 
 	reader := bufio.NewReader(os.Stdin)
@@ -177,24 +174,22 @@ func runServicesAddInteractive() {
 	fmt.Println("└─────────────────────────────────────────┘")
 	fmt.Println()
 
-	// Get name
 	fmt.Print("Service name: ")
 	name, err := reader.ReadString('\n')
 	if err != nil {
-		fmt.Printf("❌ Failed to read input: %v\n", err)
+		fmt.Printf("Error: Failed to read input: %v\n", err)
 		os.Exit(1)
 	}
 	name = strings.TrimSpace(name)
 	if name == "" {
-		fmt.Println("❌ Name is required")
+		fmt.Println("Error: Name is required")
 		os.Exit(1)
 	}
 
-	// Get host
 	fmt.Print("Host [localhost]: ")
 	host, err := reader.ReadString('\n')
 	if err != nil {
-		fmt.Printf("❌ Failed to read input: %v\n", err)
+		fmt.Printf("Error: Failed to read input: %v\n", err)
 		os.Exit(1)
 	}
 	host = strings.TrimSpace(host)
@@ -202,17 +197,16 @@ func runServicesAddInteractive() {
 		host = "localhost"
 	}
 
-	// Get port
 	fmt.Print("Port: ")
 	portStr, err := reader.ReadString('\n')
 	if err != nil {
-		fmt.Printf("❌ Failed to read input: %v\n", err)
+		fmt.Printf("Error: Failed to read input: %v\n", err)
 		os.Exit(1)
 	}
 	portStr = strings.TrimSpace(portStr)
 	port, portErr := strconv.Atoi(portStr)
 	if portErr != nil || port < 1 || port > 65535 {
-		fmt.Println("❌ Invalid port number")
+		fmt.Println("Error: Invalid port number")
 		os.Exit(1)
 	}
 
@@ -223,10 +217,9 @@ func runServicesAddInteractive() {
 func runServicesRemove(name string) {
 	cfg, apiClient := checkPaired()
 
-	// Find service by name
 	services, err := apiClient.ListServices(cfg.ServerID)
 	if err != nil {
-		fmt.Printf("❌ Failed to list services: %v\n", err)
+		fmt.Printf("Error: Failed to list services: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -239,7 +232,7 @@ func runServicesRemove(name string) {
 	}
 
 	if serviceToRemove == nil {
-		fmt.Printf("❌ Service '%s' not found\n", name)
+		fmt.Printf("Error: Service '%s' not found\n", name)
 		os.Exit(1)
 	}
 
@@ -247,12 +240,12 @@ func runServicesRemove(name string) {
 
 	err = apiClient.DeleteService(cfg.ServerID, serviceToRemove.ID)
 	if err != nil {
-		fmt.Printf("❌ Failed to remove service: %v\n", err)
+		fmt.Printf("Error: Failed to remove service: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Println()
-	fmt.Println("✅ \033[1;32mService removed successfully!\033[0m")
+	fmt.Println("\033[1;32mService removed successfully!\033[0m")
 }
 
 func runServicesRemoveInteractive() {
@@ -260,7 +253,7 @@ func runServicesRemoveInteractive() {
 
 	services, err := apiClient.ListServices(cfg.ServerID)
 	if err != nil {
-		fmt.Printf("❌ Failed to list services: %v\n", err)
+		fmt.Printf("Error: Failed to list services: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -286,7 +279,7 @@ func runServicesRemoveInteractive() {
 	reader := bufio.NewReader(os.Stdin)
 	input, err := reader.ReadString('\n')
 	if err != nil {
-		fmt.Printf("❌ Failed to read input: %v\n", err)
+		fmt.Printf("Error: Failed to read input: %v\n", err)
 		os.Exit(1)
 	}
 	input = strings.TrimSpace(input)
@@ -298,7 +291,7 @@ func runServicesRemoveInteractive() {
 
 	num, numErr := strconv.Atoi(input)
 	if numErr != nil || num < 1 || num > len(services) {
-		fmt.Println("❌ Invalid selection")
+		fmt.Println("Error: Invalid selection")
 		os.Exit(1)
 	}
 

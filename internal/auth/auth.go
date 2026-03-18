@@ -30,9 +30,7 @@ func PasswordFile() string {
 	return filepath.Join(paths.DataDir(), "password.hash")
 }
 
-// cliSessionFile returns the path to the CLI session file in the data directory.
-// SECURITY: Previously stored in /tmp (predictable, world-accessible). Moved to
-// data dir (0700) to prevent same-user session forgery.
+// cliSessionFile returns the path to the CLI session file.
 func cliSessionFile() string {
 	return filepath.Join(paths.DataDir(), "cli-session")
 }
@@ -52,21 +50,18 @@ func VerifyPassword(password string) bool {
 	return bcrypt.CompareHashAndPassword(data, []byte(password)) == nil
 }
 
-// cliSessionHashFile returns the path to the session token hash (used for validation).
+// cliSessionHashFile returns the path to the session token hash.
 func cliSessionHashFile() string {
 	return filepath.Join(paths.DataDir(), "cli-session-hash")
 }
 
 // hasValidCLISession checks if there's a valid CLI session.
-// SECURITY: Validates both the expiry AND the token against a stored hash.
-// Previously only checked expiry — any file with "anything:<future_timestamp>" passed.
 func hasValidCLISession() bool {
 	data, err := os.ReadFile(cliSessionFile())
 	if err != nil {
 		return false
 	}
 
-	// Format: token:expiry_unix
 	parts := strings.Split(strings.TrimSpace(string(data)), ":")
 	if len(parts) != 2 {
 		return false
@@ -82,7 +77,6 @@ func hasValidCLISession() bool {
 		return false
 	}
 
-	// Verify token matches stored hash
 	storedHash, err := os.ReadFile(cliSessionHashFile())
 	if err != nil {
 		return false
@@ -94,7 +88,7 @@ func hasValidCLISession() bool {
 	return tokenHash == strings.TrimSpace(string(storedHash))
 }
 
-// createCLISession creates a new CLI session and stores a hash for validation.
+// createCLISession creates a new CLI session.
 func createCLISession() error {
 	tokenBytes := make([]byte, 16)
 	if _, err := rand.Read(tokenBytes); err != nil {
@@ -103,13 +97,11 @@ func createCLISession() error {
 	token := hex.EncodeToString(tokenBytes)
 	expiry := time.Now().Add(cliSessionDuration).Unix()
 
-	// Write session file (token + expiry)
 	content := fmt.Sprintf("%s:%d", token, expiry)
 	if err := os.WriteFile(cliSessionFile(), []byte(content), 0600); err != nil {
 		return fmt.Errorf("write session file: %w", err)
 	}
 
-	// Write token hash for validation (prevents forgery)
 	hash := sha256.Sum256([]byte(token))
 	tokenHash := hex.EncodeToString(hash[:])
 	if err := os.WriteFile(cliSessionHashFile(), []byte(tokenHash), 0600); err != nil {
@@ -119,7 +111,7 @@ func createCLISession() error {
 	return nil
 }
 
-// refreshCLISession extends the CLI session expiry
+// refreshCLISession extends the CLI session expiry.
 func refreshCLISession() {
 	data, err := os.ReadFile(cliSessionFile())
 	if err != nil {
@@ -131,18 +123,14 @@ func refreshCLISession() {
 		return
 	}
 
-	// Keep the same token, update expiry
 	expiry := time.Now().Add(cliSessionDuration).Unix()
 	content := fmt.Sprintf("%s:%d", parts[0], expiry)
-	if err := os.WriteFile(cliSessionFile(), []byte(content), 0600); err != nil { // #nosec G703 — cliSessionFile() is a hardcoded path, not user input
-		// Log but don't fail - session refresh is best-effort
-		// Next CLI command will just re-authenticate
+	if err := os.WriteFile(cliSessionFile(), []byte(content), 0600); err != nil { // #nosec G703
 		log.Printf("[auth] Warning: failed to refresh CLI session: %v", err)
 	}
 }
 
-// HashAndSavePassword hashes a password with bcrypt and saves it to the standard location.
-// Returns the hash so callers can update in-memory state if needed.
+// HashAndSavePassword hashes a password with bcrypt and saves it.
 func HashAndSavePassword(password string) ([]byte, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), constants.BcryptCost)
 	if err != nil {
@@ -159,8 +147,7 @@ func HashAndSavePassword(password string) ([]byte, error) {
 	return hash, nil
 }
 
-// ClearCLISession removes the CLI session and hash (used when password is changed/removed).
-// Returns nil if files don't exist or were successfully removed.
+// ClearCLISession removes the CLI session and hash files.
 func ClearCLISession() error {
 	for _, f := range []string{cliSessionFile(), cliSessionHashFile()} {
 		if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
@@ -170,11 +157,10 @@ func ClearCLISession() error {
 	return nil
 }
 
-// PromptPassword prompts the user for a password without echoing
+// PromptPassword prompts the user for a password without echoing.
 func PromptPassword(prompt string) (string, error) {
 	fmt.Print(prompt)
 
-	// Try to read password without echo (works in real terminals)
 	if term.IsTerminal(int(syscall.Stdin)) {
 		password, err := term.ReadPassword(int(syscall.Stdin))
 		fmt.Println() // Add newline after password input
@@ -184,7 +170,6 @@ func PromptPassword(prompt string) (string, error) {
 		return string(password), nil
 	}
 
-	// Fallback for non-terminal input (e.g., pipes)
 	reader := bufio.NewReader(os.Stdin)
 	password, err := reader.ReadString('\n')
 	if err != nil {
@@ -193,35 +178,29 @@ func PromptPassword(prompt string) (string, error) {
 	return strings.TrimSpace(password), nil
 }
 
-// RequireAuth checks if a password is set, and if so, verifies the user.
-// Uses session caching so password isn't required every command.
-// Exits the program on auth failure.
+// RequireAuth prompts for password if one is set and there's no valid session.
 func RequireAuth() {
 	if !IsPasswordSet() {
-		return // No password set, allow access
-	}
-
-	// Check for valid CLI session
-	if hasValidCLISession() {
-		refreshCLISession() // Extend the session
 		return
 	}
 
-	// No valid session, prompt for password
+	if hasValidCLISession() {
+		refreshCLISession()
+		return
+	}
+
 	password, err := PromptPassword("Password: ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to read password: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to read password: %v\n", err)
 		os.Exit(1)
 	}
 
 	if !VerifyPassword(password) {
-		fmt.Fprintln(os.Stderr, "❌ Incorrect password")
+		fmt.Fprintln(os.Stderr, "Error: Incorrect password")
 		os.Exit(1)
 	}
 
-	// Create new session
 	if err := createCLISession(); err != nil {
-		// Non-fatal, just won't cache the session
 		fmt.Fprintf(os.Stderr, "Warning: Could not create session: %v\n", err)
 	}
 }

@@ -49,14 +49,12 @@ func (c *Config) Save() error {
 		return fmt.Errorf("marshal config: %w", err)
 	}
 
-	// Atomic write: write to temp file, then rename.
-	// Prevents corruption if the process crashes mid-write.
 	tmpPath := configPath + ".tmp"
 	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
 		return fmt.Errorf("write temp config file: %w", err)
 	}
 	if err := os.Rename(tmpPath, configPath); err != nil {
-		os.Remove(tmpPath) // #nosec G104 — best-effort cleanup, error irrelevant
+		os.Remove(tmpPath) // #nosec G104
 		return fmt.Errorf("rename config file: %w", err)
 	}
 	return nil
@@ -71,7 +69,7 @@ func Delete() error {
 	return os.Remove(ConfigPath())
 }
 
-// GetAPIURL resolves the API URL from config, env var, or default (in that order).
+// GetAPIURL resolves the API URL from config, env var, or default.
 func GetAPIURL(cfg *Config) string {
 	if cfg != nil && cfg.APIURL != "" {
 		return cfg.APIURL
@@ -82,7 +80,7 @@ func GetAPIURL(cfg *Config) string {
 	return constants.DefaultAPIURL
 }
 
-// GetWebURL resolves the web dashboard URL from env var or default.
+// GetWebURL resolves the web dashboard URL.
 func GetWebURL() string {
 	if url := os.Getenv("SEAWISE_WEB_URL"); url != "" {
 		return url

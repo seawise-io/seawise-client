@@ -4,7 +4,6 @@
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
 
-# SECURITY: Refuse to run as root — amplifies any vulnerability
 if [ "$PUID" = "0" ] || [ "$PGID" = "0" ]; then
     echo "ERROR: Running as root (PUID=0 or PGID=0) is not supported."
     echo "       Use PUID/PGID values >= 1 (default: 1000)"
