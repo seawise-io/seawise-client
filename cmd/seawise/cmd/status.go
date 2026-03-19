@@ -12,7 +12,7 @@ import (
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show the current connection status",
-	Long:  `Displays the current pairing status, server information, and service count.`,
+	Long:  `Displays the current pairing status, server information, and app count.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		runStatus()
 	},
@@ -54,16 +54,16 @@ func runStatus() {
 	fmt.Println("│                                                             │")
 	fmt.Printf("│  Server:   \033[1;37m%-47s\033[0m │\n", cfg.ServerName)
 	fmt.Printf("│  Account:  \033[1;37m%-47s\033[0m │\n", cfg.UserEmail)
-	fmt.Printf("│  Services: \033[1;37m%-47d\033[0m │\n", serviceCount)
+	fmt.Printf("│  Apps:     \033[1;37m%-47d\033[0m │\n", serviceCount)
 	fmt.Println("│                                                             │")
 	fmt.Printf("│  Server ID: %-46s │\n", cfg.ServerID)
 	fmt.Println("└─────────────────────────────────────────────────────────────┘")
 
 	if serviceCount > 0 {
 		fmt.Println()
-		fmt.Println("Run 'seawise services list' to see your services")
+		fmt.Println("Run 'seawise services list' to see your apps")
 	} else {
 		fmt.Println()
-		fmt.Println("Run 'seawise services add' to add your first service")
+		fmt.Println("Run 'seawise services add' to add your first app")
 	}
 }
