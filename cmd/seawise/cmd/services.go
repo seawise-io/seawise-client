@@ -16,13 +16,13 @@ import (
 
 var servicesCmd = &cobra.Command{
 	Use:   "services",
-	Short: "Manage services",
-	Long:  `Add, list, and remove services from this server.`,
+	Short: "Manage apps",
+	Long:  `Add, list, and remove apps from this server.`,
 }
 
 var servicesListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List all services",
+	Short: "List all apps",
 	Run: func(cmd *cobra.Command, args []string) {
 		runServicesList()
 	},
@@ -30,8 +30,8 @@ var servicesListCmd = &cobra.Command{
 
 var servicesAddCmd = &cobra.Command{
 	Use:   "add [name] [host] [port]",
-	Short: "Add a new service",
-	Long: `Add a new service to expose through SeaWise.
+	Short: "Add a new app",
+	Long: `Add a new app to expose through SeaWise.
 
 You can provide arguments directly or run interactively:
   seawise services add "My App" localhost 8080
@@ -54,8 +54,8 @@ You can provide arguments directly or run interactively:
 
 var servicesRemoveCmd = &cobra.Command{
 	Use:   "remove [name]",
-	Short: "Remove a service",
-	Long: `Remove a service from this server.
+	Short: "Remove an app",
+	Long: `Remove an app from this server.
 
   seawise services remove "My App"
   seawise services remove  (interactive mode)`,
@@ -95,23 +95,23 @@ func runServicesList() {
 
 	services, err := apiClient.ListServices(cfg.ServerID)
 	if err != nil {
-		fmt.Printf("Error: Failed to list services: %v\n", err)
+		fmt.Printf("Error: Failed to list apps: %v\n", err)
 		os.Exit(1)
 	}
 
 	if len(services) == 0 {
 		fmt.Println("┌─────────────────────────────────────────────────────────────┐")
-		fmt.Println("│                    Services                                 │")
+		fmt.Println("│                    Apps                                     │")
 		fmt.Println("├─────────────────────────────────────────────────────────────┤")
-		fmt.Println("│  No services configured yet.                                │")
+		fmt.Println("│  No apps configured yet.                                    │")
 		fmt.Println("│                                                             │")
-		fmt.Println("│  Run 'seawise services add' to add your first service       │")
+		fmt.Println("│  Run 'seawise services add' to add your first app           │")
 		fmt.Println("└─────────────────────────────────────────────────────────────┘")
 		return
 	}
 
 	fmt.Println("┌─────────────────────────────────────────────────────────────┐")
-	fmt.Println("│                    Services                                 │")
+	fmt.Println("│                    Apps                                     │")
 	fmt.Println("├─────────────────────────────────────────────────────────────┤")
 
 	for _, svc := range services {
@@ -126,12 +126,12 @@ func runServicesList() {
 	}
 
 	fmt.Println("└─────────────────────────────────────────────────────────────┘")
-	fmt.Printf("\nTotal: %d service(s)\n", len(services))
+	fmt.Printf("\nTotal: %d app(s)\n", len(services))
 }
 
 func runServicesAdd(name, host string, port int) {
 	if !validation.IsValidServiceName(name) {
-		fmt.Println("Error: Invalid service name (must be 1-100 characters)")
+		fmt.Println("Error: Invalid app name (must be 1-100 characters)")
 		os.Exit(1)
 	}
 	if !validation.IsValidHost(host) {
@@ -145,16 +145,16 @@ func runServicesAdd(name, host string, port int) {
 
 	cfg, apiClient := checkPaired()
 
-	fmt.Printf("Adding service '%s' (%s:%d)...\n", name, host, port)
+	fmt.Printf("Adding app '%s' (%s:%d)...\n", name, host, port)
 
 	result, err := apiClient.RegisterService(cfg.ServerID, name, host, port)
 	if err != nil {
-		fmt.Printf("Error: Failed to add service: %v\n", err)
+		fmt.Printf("Error: Failed to add app: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Println()
-	fmt.Println("\033[1;32mService added successfully!\033[0m")
+	fmt.Println("\033[1;32mApp added successfully!\033[0m")
 	fmt.Println()
 	fmt.Printf("   Name:      %s\n", name)
 	fmt.Printf("   Target:    %s:%d\n", host, port)
@@ -170,11 +170,11 @@ func runServicesAddInteractive() {
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println("┌─────────────────────────────────────────┐")
-	fmt.Println("│           Add New Service               │")
+	fmt.Println("│           Add New App                   │")
 	fmt.Println("└─────────────────────────────────────────┘")
 	fmt.Println()
 
-	fmt.Print("Service name: ")
+	fmt.Print("App name: ")
 	name, err := reader.ReadString('\n')
 	if err != nil {
 		fmt.Printf("Error: Failed to read input: %v\n", err)
@@ -219,7 +219,7 @@ func runServicesRemove(name string) {
 
 	services, err := apiClient.ListServices(cfg.ServerID)
 	if err != nil {
-		fmt.Printf("Error: Failed to list services: %v\n", err)
+		fmt.Printf("Error: Failed to list apps: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -232,20 +232,20 @@ func runServicesRemove(name string) {
 	}
 
 	if serviceToRemove == nil {
-		fmt.Printf("Error: Service '%s' not found\n", name)
+		fmt.Printf("Error: App '%s' not found\n", name)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Removing service '%s'...\n", serviceToRemove.Name)
+	fmt.Printf("Removing app '%s'...\n", serviceToRemove.Name)
 
 	err = apiClient.DeleteService(cfg.ServerID, serviceToRemove.ID)
 	if err != nil {
-		fmt.Printf("Error: Failed to remove service: %v\n", err)
+		fmt.Printf("Error: Failed to remove app: %v\n", err)
 		os.Exit(1)
 	}
 
 	fmt.Println()
-	fmt.Println("\033[1;32mService removed successfully!\033[0m")
+	fmt.Println("\033[1;32mApp removed successfully!\033[0m")
 }
 
 func runServicesRemoveInteractive() {
@@ -253,20 +253,20 @@ func runServicesRemoveInteractive() {
 
 	services, err := apiClient.ListServices(cfg.ServerID)
 	if err != nil {
-		fmt.Printf("Error: Failed to list services: %v\n", err)
+		fmt.Printf("Error: Failed to list apps: %v\n", err)
 		os.Exit(1)
 	}
 
 	if len(services) == 0 {
-		fmt.Println("No services to remove.")
+		fmt.Println("No apps to remove.")
 		return
 	}
 
 	fmt.Println("┌─────────────────────────────────────────┐")
-	fmt.Println("│           Remove Service                │")
+	fmt.Println("│           Remove App                    │")
 	fmt.Println("└─────────────────────────────────────────┘")
 	fmt.Println()
-	fmt.Println("Select a service to remove:")
+	fmt.Println("Select an app to remove:")
 	fmt.Println()
 
 	for i, svc := range services {

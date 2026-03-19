@@ -775,9 +775,9 @@
 
             <!-- Add Service Section -->
             <div class="card" id="add-service-card">
-                <div class="card-title" style="margin-bottom: 1rem;">Add Service</div>
+                <div class="card-title" style="margin-bottom: 1rem;">Add App</div>
                 <div class="add-service-form">
-                    <input type="text" id="service-name" placeholder="Service name (e.g., Plex)" />
+                    <input type="text" id="service-name" placeholder="App name (e.g., Plex)" />
                     <input type="text" id="service-host" placeholder="Host" value="localhost" />
                     <input type="number" id="service-port" placeholder="Port" min="1" max="65535" />
                     <button class="btn btn-primary" onclick="addService()">Add</button>
@@ -787,15 +787,15 @@
             <!-- Services Section -->
             <div class="card" id="services-card">
                 <div class="services-header">
-                    <div class="card-title">Services</div>
-                    <span class="services-count" id="services-count">0 services</span>
+                    <div class="card-title">Apps</div>
+                    <span class="services-count" id="services-count">0 apps</span>
                 </div>
                 <div id="services-list">
                     <div class="empty-state">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
                         </svg>
-                        <p>No services added yet</p>
+                        <p>No apps added yet</p>
                     </div>
                 </div>
             </div>
@@ -811,7 +811,7 @@
                 </svg>
             </div>
             <div class="modal-title">Disconnect from SeaWise?</div>
-            <div class="modal-message">You will need to re-pair this server to use services again.</div>
+            <div class="modal-message">You will need to re-pair this server to use apps again.</div>
             <div class="modal-buttons">
                 <button class="btn btn-secondary" onclick="hideDisconnectModal()">Cancel</button>
                 <button class="btn btn-danger" onclick="confirmDisconnect()">Disconnect</button>
@@ -837,7 +837,7 @@
                 </svg>
             </div>
             <div class="modal-title">Delete "<span id="delete-service-name"></span>"?</div>
-            <div class="modal-message">This will stop exposing this service through SeaWise.</div>
+            <div class="modal-message">This will stop exposing this app through SeaWise.</div>
             <div class="modal-buttons">
                 <button class="btn btn-secondary" onclick="hideDeleteServiceModal()">Cancel</button>
                 <button class="btn btn-danger" onclick="confirmDeleteService()">Delete</button>
@@ -1255,7 +1255,7 @@
             const host = document.getElementById('service-host').value.trim() || 'localhost';
             const port = parseInt(document.getElementById('service-port').value);
 
-            if (!name) { showToast('Please enter a service name', 'warning'); return; }
+            if (!name) { showToast('Please enter an app name', 'warning'); return; }
             if (!port || port < 1 || port > 65535) { showToast('Please enter a valid port (1-65535)', 'warning'); return; }
 
             try {
@@ -1280,10 +1280,10 @@
                 if (data.warning) {
                     showToast(data.warning, 'warning');
                 } else {
-                    showToast('Service added: ' + name, 'success');
+                    showToast('App added: ' + name, 'success');
                 }
             } catch (err) {
-                showToast('Failed to add service — check your connection');
+                showToast('Failed to add app — check your connection');
             }
         }
 
@@ -1334,7 +1334,7 @@
         function renderServices() {
             const list = document.getElementById('services-list');
             const count = document.getElementById('services-count');
-            count.textContent = addedServices.length + ' service' + (addedServices.length !== 1 ? 's' : '');
+            count.textContent = addedServices.length + ' app' + (addedServices.length !== 1 ? 's' : '');
 
             if (addedServices.length === 0) {
                 list.innerHTML = `
@@ -1342,7 +1342,7 @@
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
                         </svg>
-                        <p>No services added yet</p>
+                        <p>No apps added yet</p>
                     </div>`;
                 return;
             }
@@ -1355,7 +1355,7 @@
                         <div class="service-details">${escapeHtml(svc.host)}:${escapeHtml(String(svc.port))}</div>
                     </div>
                     <span class="service-subdomain">${escapeHtml(svc.subdomain)}</span>
-                    <button class="service-delete" onclick="showDeleteServiceModal('${escapeAttr(svc.id)}', '${escapeAttr(svc.name)}')" title="Remove service">&times;</button>
+                    <button class="service-delete" onclick="showDeleteServiceModal('${escapeAttr(svc.id)}', '${escapeAttr(svc.name)}')" title="Remove app">&times;</button>
                 </div>
             `).join('');
         }

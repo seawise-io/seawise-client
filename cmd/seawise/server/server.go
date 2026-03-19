@@ -1250,7 +1250,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 
 	if !validation.IsValidServiceName(req.Name) {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w, map[string]string{"error": "Invalid service name (must be 1-100 characters)"})
+		writeJSON(w, map[string]string{"error": "Invalid app name (must be 1-100 characters)"})
 		return
 	}
 	if !validation.IsValidHost(req.Host) {
@@ -1274,7 +1274,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 		for _, existing := range existingServices {
 			if strings.EqualFold(existing.Name, req.Name) {
 				w.WriteHeader(http.StatusConflict)
-				writeJSON(w, map[string]string{"error": "A service with that name already exists"})
+				writeJSON(w, map[string]string{"error": "An app with that name already exists"})
 				return
 			}
 		}
@@ -1284,7 +1284,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Failed to register service %s: %v", sanitizeLog(req.Name), err)
 		w.WriteHeader(http.StatusInternalServerError)
-		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to register service")})
+		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to register app")})
 		return
 	}
 
@@ -1302,7 +1302,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 		s.configureServiceTLS(&frpSvc, svc.Subdomain)
 		if err := client.AddService(frpSvc); err != nil {
 			log.Printf("Warning: Failed to add to FRP tunnel: %v", err)
-			tunnelWarning = "Service registered but tunnel update pending. It will sync automatically."
+			tunnelWarning = "App registered but tunnel update pending. It will sync automatically."
 		} else {
 			log.Printf("Added to FRP tunnel: %s -> %s", req.Name, svc.Subdomain)
 		}
@@ -1338,7 +1338,7 @@ func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Failed to list services: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to list services")})
+		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to list apps")})
 		return
 	}
 
@@ -1393,7 +1393,7 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 	if err := currentAPIClient.DeleteService(currentCfg.ServerID, req.ServiceID); err != nil {
 		log.Printf("Failed to delete service %s: %v", sanitizeLog(req.ServiceID), err)
 		w.WriteHeader(http.StatusInternalServerError)
-		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to delete service")})
+		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to delete app")})
 		return
 	}
 
