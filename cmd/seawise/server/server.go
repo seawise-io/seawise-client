@@ -40,17 +40,14 @@ import (
 //go:embed templates/*
 var templates embed.FS
 
-// indexTemplate is parsed once at package init, not per request
 var indexTemplate = template.Must(template.ParseFS(templates, "templates/index.html"))
 
-// sanitizeLog strips newlines and control characters from user input before logging
-// to prevent log injection attacks (gosec G706).
+// sanitizeLog strips newlines and control characters to prevent log injection.
 func sanitizeLog(s string) string {
 	return strings.NewReplacer("\n", "", "\r", "", "\t", " ").Replace(s)
 }
 
-// writeJSON encodes data as JSON to the response writer with error handling.
-// Logs encoding failures which can occur if the client disconnects mid-response.
+// writeJSON encodes data as JSON to the response writer.
 func writeJSON(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(data); err != nil {
@@ -58,7 +55,7 @@ func writeJSON(w http.ResponseWriter, data interface{}) {
 	}
 }
 
-// writeJSONStatus encodes data as JSON with a specific HTTP status code.
+// writeJSONStatus encodes data as JSON with the given HTTP status code.
 func writeJSONStatus(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -68,7 +65,6 @@ func writeJSONStatus(w http.ResponseWriter, status int, data interface{}) {
 }
 
 // Server owns all runtime state for the SeaWise client.
-// All fields are protected by mu for concurrent access.
 type Server struct {
 	mu          sync.RWMutex
 	shutdownCtx context.Context
@@ -81,22 +77,20 @@ type Server struct {
 	certManager *certs.CertManager
 	auth        *authManager
 
-	pairingCode       string             // user_code (shown to user)
-	pairingDeviceCode string             // device_code (used for polling, never shown)
-	pairingState      string             // "none", "pending", "approved", "paired"
-	pairingCancel     context.CancelFunc // Cancels the previous pollForApproval goroutine
-	e2eTLSEnabled  bool   // Whether the server supports E2E TLS
-	latestVersion  string // Latest available version from GitHub Releases
+	pairingCode       string
+	pairingDeviceCode string
+	pairingState      string // "none", "pending", "approved", "paired"
+	pairingCancel     context.CancelFunc
+	e2eTLSEnabled     bool
+	latestVersion     string
 
-	// Health check caches - only report changes to minimize API calls
-	serviceCache     map[string]string // subdomain → serviceID
-	lastHealthStatus map[string]string // serviceID → "online"/"offline"
+	serviceCache     map[string]string // subdomain -> serviceID
+	lastHealthStatus map[string]string // serviceID -> "online"/"offline"
 
-	restartInProgress atomic.Bool // Dedup concurrent handleFRPCrash calls
+	restartInProgress atomic.Bool
 }
 
 // Run starts the SeaWise client server with web UI.
-// This is the public entry point called from main.go.
 func Run(port int) {
 	s := &Server{
 		pairingState:     "none",
@@ -111,20 +105,16 @@ func (s *Server) run(port int) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.Printf("SeaWise Client %s starting...", constants.Version)
 
-	// Create root context that gets cancelled on shutdown signal.
-	// All goroutines use this context to know when to exit.
 	ctx, cancel := context.WithCancel(context.Background())
 	s.shutdownCtx = ctx
 	s.cancel = cancel
 
-	// Initialize API client
 	apiClient, err := api.New(config.GetAPIURL(nil))
 	if err != nil {
 		log.Fatalf("Invalid API URL: %v", err)
 	}
 	s.apiClient = apiClient
 
-	// Initialize connection manager with production-ready defaults
 	s.connManager = connection.NewManager(connection.DefaultConfig())
 	s.connManager.SetCallbacks(
 		func(old, newState connection.State) {
@@ -136,7 +126,6 @@ func (s *Server) run(port int) {
 		},
 	)
 
-	// Check if already paired
 	if config.Exists() {
 		var err error
 		s.cfg, err = config.Load()
@@ -146,7 +135,6 @@ func (s *Server) run(port int) {
 			s.connManager.SetState(connection.StateDisconnected)
 		} else {
 			log.Printf("Already paired as server: %s (ID: %s)", s.cfg.ServerName, s.cfg.ServerID)
-			// Re-initialize API client with the stored URL (may differ from default)
 			storedClient, apiErr := api.New(s.cfg.APIURL)
 			if apiErr != nil {
 				log.Printf("Warning: Invalid stored API URL: %v", apiErr)
@@ -163,30 +151,25 @@ func (s *Server) run(port int) {
 		s.connManager.SetState(connection.StateUnpaired)
 	}
 
-	// Start web UI server
 	srv := s.startWebUI(ctx, port)
 
 	log.Println("SeaWise Client running")
 	log.Printf("Open http://localhost:%d to manage this server", port)
 
-	// Wait for shutdown signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
 	log.Println("Shutting down...")
 
-	// Cancel root context — all goroutines will begin exiting
 	cancel()
 
-	// Gracefully shut down the HTTP server (give in-flight requests 5s to finish)
 	httpShutdownCtx, httpShutdownRelease := context.WithTimeout(context.Background(), 5*time.Second)
 	defer httpShutdownRelease()
 	if err := srv.Shutdown(httpShutdownCtx); err != nil {
 		log.Printf("HTTP server shutdown error: %v", err)
 	}
 
-	// Notify API that we're going offline (revokes sessions, marks offline)
 	s.mu.RLock()
 	shutdownCfg := s.cfg
 	shutdownAPIClient := s.apiClient
@@ -200,7 +183,7 @@ func (s *Server) run(port int) {
 	}
 
 	s.connManager.Stop()
-	s.auth.Stop() // Stop auth cleanup goroutine
+	s.auth.Stop()
 	s.mu.RLock()
 	client := s.frpClient
 	s.mu.RUnlock()
@@ -213,7 +196,6 @@ func (s *Server) run(port int) {
 }
 
 func (s *Server) startServices(ctx context.Context) {
-	// Get FRP server address from config, fallback to env, then default
 	frpServerAddr := s.cfg.FRPServerAddr
 	if frpServerAddr == "" {
 		frpServerAddr = os.Getenv("FRP_SERVER_ADDR")
@@ -222,18 +204,15 @@ func (s *Server) startServices(ctx context.Context) {
 		frpServerAddr = constants.DockerHostInternal
 	}
 
-	// Get FRP server port from config, fallback to default
 	frpServerPort := s.cfg.FRPServerPort
 	if frpServerPort == 0 {
 		frpServerPort = constants.DefaultFRPServerPort
 	}
 
-	// Get FRP token from config
 	frpToken := s.cfg.FRPToken
 
-	log.Printf("[FRP] Connecting to %s:%d (TLS: %v)", sanitizeLog(frpServerAddr), frpServerPort, s.cfg.FRPUseTLS) // #nosec G706 — sanitized
+	log.Printf("[FRP] Connecting to %s:%d (TLS: %v)", sanitizeLog(frpServerAddr), frpServerPort, s.cfg.FRPUseTLS) // #nosec G706
 
-	// Check if server supports E2E TLS
 	certStatus, err := s.apiClient.GetCertStatus()
 	if err != nil {
 		log.Printf("[E2E TLS] Failed to check status: %v", err)
@@ -243,7 +222,6 @@ func (s *Server) startServices(ctx context.Context) {
 		log.Printf("[E2E TLS] Enabled: %v", s.e2eTLSEnabled)
 	}
 
-	// Initialize cert manager if E2E TLS is enabled
 	if s.e2eTLSEnabled {
 		s.certManager = certs.New(paths.DataDir())
 		if err := s.certManager.EnsureDir(); err != nil {
@@ -252,7 +230,6 @@ func (s *Server) startServices(ctx context.Context) {
 		}
 	}
 
-	// Initialize FRP client
 	s.frpClient = frp.New(frp.Config{
 		ServerAddr: frpServerAddr,
 		ServerPort: frpServerPort,
@@ -261,11 +238,9 @@ func (s *Server) startServices(ctx context.Context) {
 		UseTLS:     s.cfg.FRPUseTLS,
 	})
 
-	// Set up FRP process monitoring
 	s.frpClient.SetOnStateChange(func(state frp.ProcessState) {
 		log.Printf("[Main] FRP process state: %s", state)
 		if state == frp.ProcessCrashed {
-			// FRP crashed, trigger reconnection
 			s.connManager.SetState(connection.StateReconnecting)
 			go s.handleFRPCrash()
 		}
@@ -273,7 +248,6 @@ func (s *Server) startServices(ctx context.Context) {
 
 	log.Println("FRP client initialized, ready to add services")
 
-	// Load existing services from API and add to FRP
 	services, err := s.apiClient.ListServices(s.cfg.ServerID)
 	if err != nil {
 		log.Printf("Failed to load services from API: %v", err)
@@ -292,7 +266,6 @@ func (s *Server) startServices(ctx context.Context) {
 		}
 	}
 
-	// Start FRP
 	if err := s.frpClient.Start(); err != nil {
 		log.Printf("Failed to start FRP: %v", err)
 		s.connManager.SetState(connection.StateReconnecting)
@@ -300,26 +273,17 @@ func (s *Server) startServices(ctx context.Context) {
 		s.connManager.SetState(connection.StateConnected)
 	}
 
-	// Start heartbeat loop
 	go s.heartbeatLoop(ctx)
-
-	// Start service sync loop (syncs with API to detect changes)
 	go s.serviceSyncLoop(ctx)
-
-	// Start service health check loop
 	go s.serviceHealthLoop(ctx)
-
-	// Start update checker (checks GitHub Releases every 24h)
 	go s.checkForUpdates(ctx)
 }
 
 // heartbeatLoop sends heartbeats and handles responses.
-// Exits when ctx is cancelled (shutdown).
 func (s *Server) heartbeatLoop(ctx context.Context) {
 	ticker := time.NewTicker(constants.StatusPollInterval)
 	defer ticker.Stop()
 
-	// Initial heartbeat
 	s.sendHeartbeat(ticker)
 
 	for {
@@ -330,7 +294,6 @@ func (s *Server) heartbeatLoop(ctx context.Context) {
 		case <-ticker.C:
 			s.sendHeartbeat(ticker)
 
-			// Check if we need to restart FRP (crashed state)
 			s.mu.RLock()
 			client := s.frpClient
 			s.mu.RUnlock()
@@ -352,10 +315,7 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 		return
 	}
 
-	// FRP is "connected" if the client is initialized (has a connection ID),
-	// even if the process isn't running yet (no services to proxy).
-	// Without this, the first service can never be registered: FRP doesn't start
-	// because there are no services, but the API requires "online" to add services.
+	// Consider connected if process is running or has a connection ID (no-service case)
 	frpConnected := client != nil && (client.IsRunning() || client.ConnectionID() != "")
 	serviceCount := 0
 	connectionID := ""
@@ -367,19 +327,14 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 	result := currentAPIClient.Heartbeat(currentCfg.ServerID, frpConnected, serviceCount, constants.Version, connectionID)
 
 	if result.ShouldUnpair {
-		// Server says we should unpair (server was deleted)
 		log.Println("[Heartbeat] Server requests unpair")
 		s.connManager.HeartbeatFailed(true)
 		return
 	}
 
 	if result.Superseded {
-		// Another client connected with the same credentials
-		// This means someone copied our config or we're being migrated
-		log.Println("[Heartbeat] Connection superseded - another client is now active")
-		log.Println("[Heartbeat] If this is unexpected, regenerate your server token from the dashboard")
+		log.Println("[Heartbeat] Connection superseded by another client")
 		s.connManager.HeartbeatFailed(false)
-		// Stop the FRP client to avoid competing with the new connection
 		if client != nil {
 			if err := client.Stop(); err != nil {
 				log.Printf("[Heartbeat] Failed to stop FRP after superseded: %v", err)
@@ -394,10 +349,9 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 		return
 	}
 
-	// Success
 	s.connManager.HeartbeatOK()
 
-	// Adopt server-recommended heartbeat interval (clamped to 10s–5min for safety)
+	// Adopt server-recommended heartbeat interval (clamped to 10s-5min)
 	if result.Response != nil && result.Response.NextHeartbeatMs > 0 {
 		interval := time.Duration(result.Response.NextHeartbeatMs) * time.Millisecond
 		if interval < 10*time.Second {
@@ -409,18 +363,16 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 		ticker.Reset(interval)
 	}
 
-	// Log any gap detected by server
 	if result.Response != nil && result.Response.GapSeconds > 30 {
 		log.Printf("[Heartbeat] Server detected gap of %ds", result.Response.GapSeconds)
 	}
 
-	// Handle shard migration signal (draining shard → new shard)
+	// Handle shard migration
 	if result.Response != nil && result.Response.Status == "migrate" && result.Response.MigrateTo != nil {
 		migrate := result.Response.MigrateTo
 		log.Printf("[Heartbeat] Migration requested → %s:%d (shard %s)",
 			migrate.FRPServerAddr, migrate.FRPServerPort, migrate.ShardID)
 
-		// Update saved config so restarts use the new shard
 		s.mu.Lock()
 		s.cfg.FRPServerAddr = migrate.FRPServerAddr
 		s.cfg.FRPServerPort = migrate.FRPServerPort
@@ -429,18 +381,15 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 		}
 		s.mu.Unlock()
 
-		// Graceful restart: update FRP server address and reconnect
 		if client != nil {
-			// SECURITY: Validate the migration target before updating
 			if err := client.UpdateServer(migrate.FRPServerAddr, migrate.FRPServerPort); err != nil {
-				log.Printf("[Heartbeat] SECURITY: Rejected migration to untrusted server: %v", err)
+				log.Printf("[Heartbeat] Rejected migration to untrusted server: %v", err)
 			} else {
-				client.ResetConnectionID() // New shard = new session
+				client.ResetConnectionID()
 				if err := client.Restart(); err != nil {
 					log.Printf("[Heartbeat] Migration restart failed: %v", err)
 				} else {
 					log.Printf("[Heartbeat] Migration complete → connected to shard %s", migrate.ShardID)
-					// Clear health cache so services get re-reported
 					s.mu.Lock()
 					s.lastHealthStatus = make(map[string]string)
 					s.mu.Unlock()
@@ -450,8 +399,7 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 		return
 	}
 
-	// Self-heal stale FRP address (e.g., after infrastructure migration)
-	// If the shard's current address differs from our stored address, update and reconnect
+	// Self-heal stale FRP address
 	if result.Response != nil && result.Response.Shard != nil && client != nil {
 		shard := result.Response.Shard
 		s.mu.RLock()
@@ -463,11 +411,9 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 			log.Printf("[Heartbeat] Shard address changed: %s:%d → %s:%d",
 				storedAddr, storedPort, shard.FRPServerAddr, shard.FRPServerPort)
 
-			// SECURITY: Validate the new address before updating
 			if err := client.UpdateServer(shard.FRPServerAddr, shard.FRPServerPort); err != nil {
-				log.Printf("[Heartbeat] SECURITY: Rejected shard update to untrusted server: %v", err)
+				log.Printf("[Heartbeat] Rejected shard update to untrusted server: %v", err)
 			} else {
-				// Update saved config so restarts use the new address
 				s.mu.Lock()
 				s.cfg.FRPServerAddr = shard.FRPServerAddr
 				s.cfg.FRPServerPort = shard.FRPServerPort
@@ -476,12 +422,11 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 				}
 				s.mu.Unlock()
 
-				client.ResetConnectionID() // New shard address = new session
+				client.ResetConnectionID()
 				if err := client.Restart(); err != nil {
 					log.Printf("[Heartbeat] FRP restart after address update failed: %v", err)
 				} else {
 					log.Printf("[Heartbeat] FRP reconnected to updated shard address")
-					// Clear health cache so services get re-reported
 					s.mu.Lock()
 					s.lastHealthStatus = make(map[string]string)
 					s.mu.Unlock()
@@ -491,13 +436,11 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 	}
 }
 
-// serviceSyncLoop periodically syncs services with the API to detect remote changes.
-// Exits when ctx is cancelled (shutdown).
+// serviceSyncLoop periodically syncs services with the API.
 func (s *Server) serviceSyncLoop(ctx context.Context) {
 	ticker := time.NewTicker(constants.ServicePollInterval)
 	defer ticker.Stop()
 
-	// Initial sync after a short delay (but respect shutdown)
 	select {
 	case <-ctx.Done():
 		return
@@ -516,13 +459,11 @@ func (s *Server) serviceSyncLoop(ctx context.Context) {
 	}
 }
 
-// serviceHealthLoop periodically checks if each service's host:port is reachable
-// and reports the health status to the API.
+// serviceHealthLoop probes each service and reports status changes to the API.
 func (s *Server) serviceHealthLoop(ctx context.Context) {
-	ticker := time.NewTicker(constants.StatusPollInterval) // 30 seconds
+	ticker := time.NewTicker(constants.StatusPollInterval)
 	defer ticker.Stop()
 
-	// Wait for initial startup
 	select {
 	case <-ctx.Done():
 		return
@@ -558,12 +499,10 @@ func (s *Server) checkAndReportHealth() {
 		return
 	}
 
-	// If cache is empty, wait for syncServices to populate it
 	if len(serviceCache) == 0 {
 		return
 	}
 
-	// Probe services and collect only changed statuses
 	var changed []api.ServiceHealthStatus
 	for _, svc := range frpServices {
 		id, ok := serviceCache[svc.Subdomain]
@@ -571,17 +510,15 @@ func (s *Server) checkAndReportHealth() {
 			continue
 		}
 
-		// Probe the service
 		status := "offline"
 		host := frp.TranslateLocalhost(svc.LocalIP)
-		addr := fmt.Sprintf("%s:%d", host, svc.LocalPort)
+		addr := net.JoinHostPort(host, fmt.Sprintf("%d", svc.LocalPort))
 		conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
 		if err == nil {
 			_ = conn.Close()
 			status = "online"
 		}
 
-		// Only report if status changed
 		s.mu.RLock()
 		lastStatus := s.lastHealthStatus[id]
 		s.mu.RUnlock()
@@ -591,19 +528,16 @@ func (s *Server) checkAndReportHealth() {
 				ID:     id,
 				Status: status,
 			})
-			// Update cache
 			s.mu.Lock()
 			s.lastHealthStatus[id] = status
 			s.mu.Unlock()
 		}
 	}
 
-	// Only call API if something changed
 	if len(changed) > 0 {
 		log.Printf("[Health] Status changed for %d service(s), reporting", len(changed))
 		if err := currentAPIClient.ReportServiceHealth(currentCfg.ServerID, changed); err != nil {
 			log.Printf("[Health] Failed to report: %v", err)
-			// Revert cache on failure so we retry next cycle
 			s.mu.Lock()
 			for _, svc := range changed {
 				delete(s.lastHealthStatus, svc.ID)
@@ -614,14 +548,11 @@ func (s *Server) checkAndReportHealth() {
 }
 
 // checkForUpdates periodically checks GitHub Releases for a newer client version.
-// Checks once after 30s startup delay, then every 24 hours. Skips dev builds.
 func (s *Server) checkForUpdates(ctx context.Context) {
-	// Skip for dev builds
 	if constants.Version == "dev" || strings.HasPrefix(constants.Version, "dev-") {
 		return
 	}
 
-	// Don't hit GitHub immediately on startup
 	select {
 	case <-time.After(30 * time.Second):
 	case <-ctx.Done():
@@ -679,27 +610,22 @@ func (s *Server) fetchLatestVersion() {
 	}
 }
 
-// ensureServiceCert ensures a TLS certificate exists for the service
-// Returns cert path, key path, and any error
+// ensureServiceCert ensures a TLS certificate exists for the service.
 func (s *Server) ensureServiceCert(subdomain string) (certPath, keyPath string, err error) {
 	if s.certManager == nil {
 		return "", "", nil
 	}
 
-	// Validate subdomain before constructing domain (defense in depth)
-	// Subdomains are more restrictive than hosts: no dots, colons, or brackets
 	if !validation.IsValidHost(subdomain) || strings.ContainsAny(subdomain, ".:[]") {
 		return "", "", fmt.Errorf("invalid subdomain: %s", subdomain)
 	}
 
-	// Build the full domain
 	subdomainHost := os.Getenv("SUBDOMAIN_HOST")
 	if subdomainHost == "" {
 		subdomainHost = constants.DefaultSubdomainHost
 	}
 	domain := subdomain + "." + subdomainHost
 
-	// Check if we already have a valid cert
 	if s.certManager.CertExists(domain) && !s.certManager.NeedsRenewal(domain) {
 		cert, key, err := s.certManager.GetCertPaths(domain)
 		if err != nil {
@@ -708,27 +634,23 @@ func (s *Server) ensureServiceCert(subdomain string) (certPath, keyPath string, 
 		return cert, key, nil
 	}
 
-	log.Printf("[E2E TLS] Requesting certificate for %s", sanitizeLog(domain)) // #nosec G706 — sanitized
+	log.Printf("[E2E TLS] Requesting certificate for %s", sanitizeLog(domain)) // #nosec G706
 
-	// Generate a new key
 	key, err := s.certManager.GenerateKey()
 	if err != nil {
 		return "", "", err
 	}
 
-	// Create CSR
 	csrPEM, err := s.certManager.CreateCSR(key, domain)
 	if err != nil {
 		return "", "", err
 	}
 
-	// Request certificate from API
 	certResp, err := s.apiClient.RequestCertificate(subdomain, csrPEM)
 	if err != nil {
 		return "", "", err
 	}
 
-	// Save key and cert
 	keyPath, err = s.certManager.SaveKey(key, domain)
 	if err != nil {
 		return "", "", err
@@ -739,11 +661,11 @@ func (s *Server) ensureServiceCert(subdomain string) (certPath, keyPath string, 
 		return "", "", err
 	}
 
-	log.Printf("[E2E TLS] Certificate saved for %s (expires: %s)", sanitizeLog(domain), sanitizeLog(certResp.ExpiresAt)) // #nosec G706 — sanitized
+	log.Printf("[E2E TLS] Certificate saved for %s (expires: %s)", sanitizeLog(domain), sanitizeLog(certResp.ExpiresAt)) // #nosec G706
 	return certPath, keyPath, nil
 }
 
-// configureServiceTLS sets up E2E TLS on a FRP service if enabled.
+// configureServiceTLS sets up E2E TLS on a FRP service.
 func (s *Server) configureServiceTLS(frpSvc *frp.Service, subdomain string) {
 	if !s.e2eTLSEnabled || s.certManager == nil {
 		return
@@ -761,7 +683,7 @@ func (s *Server) configureServiceTLS(frpSvc *frp.Service, subdomain string) {
 	}
 }
 
-// syncServices fetches services from API and syncs with local FRP config
+// syncServices fetches services from API and syncs with local FRP config.
 func (s *Server) syncServices() {
 	s.mu.RLock()
 	currentCfg := s.cfg
@@ -773,14 +695,12 @@ func (s *Server) syncServices() {
 		return
 	}
 
-	// Fetch services from API
 	apiServices, err := currentAPIClient.ListServices(currentCfg.ServerID)
 	if err != nil {
 		log.Printf("[Sync] Failed to fetch services: %v", err)
 		return
 	}
 
-	// Update service cache for health checks (subdomain → serviceID)
 	s.mu.Lock()
 	s.serviceCache = make(map[string]string, len(apiServices))
 	for _, svc := range apiServices {
@@ -788,7 +708,6 @@ func (s *Server) syncServices() {
 	}
 	s.mu.Unlock()
 
-	// Convert to FRP service format with E2E TLS support
 	frpServices := make([]frp.Service, len(apiServices))
 	for i, svc := range apiServices {
 		frpSvc := frp.Service{
@@ -802,7 +721,6 @@ func (s *Server) syncServices() {
 		frpServices[i] = frpSvc
 	}
 
-	// Sync with FRP client
 	added, removed, err := client.SyncServices(frpServices)
 	if err != nil {
 		log.Printf("[Sync] Failed to sync services: %v", err)
@@ -818,8 +736,6 @@ func (s *Server) syncServices() {
 }
 
 // handleFRPCrash restarts FRP with exponential backoff.
-// Respects shutdown context to avoid restarting during shutdown.
-// Uses atomic flag to prevent concurrent restarts from state callback + heartbeat loop.
 func (s *Server) handleFRPCrash() {
 	if !s.restartInProgress.CompareAndSwap(false, true) {
 		log.Println("[FRP Recovery] Restart already in progress, skipping")
@@ -836,11 +752,9 @@ func (s *Server) handleFRPCrash() {
 		return
 	}
 
-	// Calculate backoff delay
 	delay := s.connManager.CalculateBackoff()
 	log.Printf("[FRP Recovery] Waiting %v before restart...", delay)
 
-	// Wait with backoff, but abort if shutting down
 	timer := time.NewTimer(delay)
 	select {
 	case <-timer.C:
@@ -850,13 +764,11 @@ func (s *Server) handleFRPCrash() {
 		return
 	}
 
-	// Check if we should still try to reconnect
 	if s.connManager.State() == connection.StateUnpaired {
 		log.Println("[FRP Recovery] Cancelled - client unpaired")
 		return
 	}
 
-	// Notify API we're offline before reconnecting (revokes sessions while down)
 	s.mu.RLock()
 	currentAPIClient := s.apiClient
 	s.mu.RUnlock()
@@ -867,7 +779,6 @@ func (s *Server) handleFRPCrash() {
 		}
 	}
 
-	// Reload services from API before restart to ensure fresh state
 	if currentAPIClient != nil {
 		services, err := currentAPIClient.ListServices(currentCfg.ServerID)
 		if err != nil {
@@ -889,7 +800,6 @@ func (s *Server) handleFRPCrash() {
 		}
 	}
 
-	// Stop and restart FRP with fresh connection ID (crash = new session)
 	_ = client.Stop()
 	client.ResetConnectionID()
 	if err := client.Start(); err != nil {
@@ -901,9 +811,6 @@ func (s *Server) handleFRPCrash() {
 		client.ResetCrashCount()
 		s.connManager.SetState(connection.StateConnected)
 
-		// Clear health cache so next health check re-reports all service statuses.
-		// Without this, services stay "offline" in the DB because the cache thinks
-		// they were already reported as "online" before the crash.
 		s.mu.Lock()
 		s.lastHealthStatus = make(map[string]string)
 		s.mu.Unlock()
@@ -919,12 +826,11 @@ func (s *Server) reconnectFRP() error {
 		return nil
 	}
 	_ = client.Stop()
-	client.ResetConnectionID() // New session — need fresh connection ID
+	client.ResetConnectionID()
 	if err := client.Start(); err != nil {
 		return err
 	}
 
-	// Clear health cache so services get re-reported after reconnect
 	s.mu.Lock()
 	s.lastHealthStatus = make(map[string]string)
 	s.mu.Unlock()
@@ -932,14 +838,12 @@ func (s *Server) reconnectFRP() error {
 }
 
 func (s *Server) handleUnpairInternal() {
-	// Stop FRP
 	s.mu.Lock()
 	if s.frpClient != nil {
 		_ = s.frpClient.Stop()
 		s.frpClient = nil
 	}
 
-	// Delete local config
 	if err := config.Delete(); err != nil {
 		log.Printf("[Unpair] Failed to delete config: %v", err)
 	}
@@ -955,17 +859,13 @@ func (s *Server) handleUnpairInternal() {
 func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 	mux := http.NewServeMux()
 
-	// Auth endpoints (accessible without auth)
 	mux.HandleFunc("/api/auth/status", s.handleAuthStatus)
 	mux.HandleFunc("/api/auth/login", s.handleAuthLogin)
 	mux.HandleFunc("/api/auth/logout", s.handleAuthLogout)
 	mux.HandleFunc("/api/auth/set-password", s.handleAuthSetPassword)
 	mux.HandleFunc("/api/auth/remove-password", s.handleAuthRemovePassword)
 
-	// Serve static assets (logos, icons)
 	mux.HandleFunc("/static/", handleStatic)
-
-	// Serve UI pages
 	mux.HandleFunc("/", s.handleHome)
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/pair/start", s.handlePairStart)
@@ -976,19 +876,15 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 	mux.HandleFunc("/api/services/delete", s.handleDeleteService)
 	mux.HandleFunc("/api/unpair", s.handleUnpair)
 
-	// Default to localhost for security; override with SEAWISE_BIND_ADDR for Docker containers
 	bindAddr := os.Getenv("SEAWISE_BIND_ADDR")
 	if bindAddr == "" {
 		bindAddr = "127.0.0.1"
 	}
 
-	// SECURITY: Mark auth manager as network-exposed when binding to non-loopback.
-	// This blocks mutating API calls until a password is set.
 	if bindAddr != "127.0.0.1" && bindAddr != "localhost" && bindAddr != "::1" {
 		s.auth.networkExposed = true
 	}
 
-	// Warn when binding to all interfaces without password protection
 	if (bindAddr == "0.0.0.0" || bindAddr == "::") && !s.auth.hasPassword() {
 		log.Println("[WARNING] ========================================")
 		log.Println("[WARNING] Web UI is listening on ALL interfaces")
@@ -999,7 +895,6 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 		log.Println("[WARNING] ========================================")
 	}
 
-	// Wrap all routes with auth middleware
 	handler := s.auth.middleware(mux)
 
 	srv := &http.Server{
@@ -1011,14 +906,11 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 		IdleTimeout:       constants.WebUIIdleTimeout,
 	}
 
-	// SECURITY: When SEAWISE_TLS=auto, generate a self-signed cert for HTTPS.
-	// This protects passwords and session tokens on the LAN when bound to 0.0.0.0.
 	tlsMode := os.Getenv("SEAWISE_TLS")
 	if tlsMode == "auto" {
 		certFile := filepath.Join(paths.DataDir(), "tls-cert.pem")
 		keyFile := filepath.Join(paths.DataDir(), "tls-key.pem")
 
-		// Generate self-signed cert if it doesn't exist
 		if _, err := os.Stat(certFile); os.IsNotExist(err) {
 			log.Println("Generating self-signed TLS certificate...")
 			if err := generateSelfSignedCert(certFile, keyFile); err != nil {
@@ -1028,7 +920,7 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 		}
 
 		if tlsMode == "auto" {
-			log.Printf("Web UI listening on https://%s:%d (self-signed TLS)", sanitizeLog(bindAddr), port) // #nosec G706
+			log.Printf("Web UI listening on https://%s:%d (self-signed TLS)", sanitizeLog(bindAddr), port)
 			go func() {
 				if err := srv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
 					log.Printf("[ERROR] Web UI TLS failed: %v (tunnel continues running)", err)
@@ -1038,7 +930,7 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 		}
 	}
 
-	log.Printf("Web UI listening on %s:%d", sanitizeLog(bindAddr), port) // #nosec G706 — sanitized
+	log.Printf("Web UI listening on %s:%d", sanitizeLog(bindAddr), port)
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("[ERROR] Web UI failed: %v (tunnel continues running)", err)
@@ -1049,8 +941,6 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 }
 
 func handleStatic(w http.ResponseWriter, r *http.Request) {
-	// Serve embedded static files from templates/ directory
-	// URL: /static/seawise-logo.png -> templates/seawise-logo.png
 	const prefix = "/static/"
 	if len(r.URL.Path) <= len(prefix) {
 		http.NotFound(w, r)
@@ -1070,7 +960,7 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 	}
 	w.Header().Set("Cache-Control", "public, max-age=86400")
-	if _, err := w.Write(data); err != nil { // #nosec G705 — data is from embed.FS, not user input
+	if _, err := w.Write(data); err != nil { // #nosec G705
 		log.Printf("[Static] Failed to write response: %v", err)
 	}
 }
@@ -1102,7 +992,6 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	// Get hostname for default server name
 	hostname := os.Getenv("HOSTNAME")
 	if hostname == "" {
 		var err error
@@ -1112,7 +1001,6 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Lock for reading global state
 	s.mu.RLock()
 	status := map[string]interface{}{
 		"pairing_state":    s.pairingState,
@@ -1124,11 +1012,9 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		status["latest_version"] = s.latestVersion
 	}
 
-	// Add connection state info
 	connStatus := s.connManager.GetStatus()
 	status["connection"] = connStatus
 
-	// Add FRP process state
 	if s.frpClient != nil {
 		status["frp_state"] = string(s.frpClient.State())
 		status["frp_running"] = s.frpClient.IsRunning()
@@ -1152,12 +1038,11 @@ func (s *Server) handlePairStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse server name from request
 	r.Body = http.MaxBytesReader(w, r.Body, constants.MaxRequestBodySize)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
-		writeJSON(w,map[string]string{"error": "Request body too large"})
+		writeJSON(w, map[string]string{"error": "Request body too large"})
 		return
 	}
 	var req struct {
@@ -1171,44 +1056,39 @@ func (s *Server) handlePairStart(w http.ResponseWriter, r *http.Request) {
 		req.ServerName = "My Server"
 	}
 
-	// Request pairing codes from API (OAuth Device Flow: user_code + device_code)
 	result, err := s.apiClient.RequestPairing(req.ServerName)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		writeJSON(w,map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to request pairing code")})
+		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to request pairing code")})
 		return
 	}
 
 	s.mu.Lock()
-	// Cancel any previous pairing poll goroutine
 	if s.pairingCancel != nil {
 		s.pairingCancel()
 	}
 	pairingCtx, pairingCancel := context.WithCancel(s.shutdownCtx)
 	s.pairingCancel = pairingCancel
-	s.pairingCode = result.UserCode       // Show to user
-	s.pairingDeviceCode = result.DeviceCode // Keep secret, use for polling
+	s.pairingCode = result.UserCode
+	s.pairingDeviceCode = result.DeviceCode
 	s.pairingState = "pending"
 	s.mu.Unlock()
 
-	// Start polling for approval in background using device_code
 	go s.pollForApproval(pairingCtx, result.DeviceCode)
 
-	writeJSON(w,map[string]interface{}{
-		"code":       result.UserCode, // Only expose user_code to web UI
+	writeJSON(w, map[string]interface{}{
+		"code":       result.UserCode,
 		"expires_at": result.ExpiresAt,
 	})
 }
 
-// pollForApproval polls using device_code (OAuth Device Flow).
-// ctx is cancelled when a new pairing starts or the server shuts down.
+// pollForApproval polls for pairing approval using device_code.
 func (s *Server) pollForApproval(ctx context.Context, deviceCode string) {
 	ticker := time.NewTicker(constants.PairPollInterval)
 	defer ticker.Stop()
 
 	timeout := time.After(constants.WebPairTimeout)
 
-	// Capture API client reference once under lock
 	s.mu.RLock()
 	currentAPIClient := s.apiClient
 	s.mu.RUnlock()
@@ -1226,7 +1106,6 @@ func (s *Server) pollForApproval(ctx context.Context, deviceCode string) {
 			s.mu.Unlock()
 			return
 		case <-ticker.C:
-			// Check if pairing was cancelled
 			s.mu.RLock()
 			currentState := s.pairingState
 			s.mu.RUnlock()
@@ -1243,7 +1122,6 @@ func (s *Server) pollForApproval(ctx context.Context, deviceCode string) {
 
 			switch status {
 			case "approved":
-				// Complete pairing using device_code
 				result, err := currentAPIClient.CompletePairing(deviceCode)
 				if err != nil {
 					log.Printf("Failed to complete pairing: %v", err)
@@ -1254,7 +1132,6 @@ func (s *Server) pollForApproval(ctx context.Context, deviceCode string) {
 					return
 				}
 
-				// Save config
 				s.mu.Lock()
 				s.cfg = &config.Config{
 					ServerID:      result.Data.ServerID,
@@ -1331,7 +1208,7 @@ func (s *Server) handlePairPoll(w http.ResponseWriter, r *http.Request) {
 	response["connection_state"] = string(s.connManager.State())
 	s.mu.RUnlock()
 
-	writeJSON(w,response)
+	writeJSON(w, response)
 }
 
 func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
@@ -1349,7 +1226,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 
 	if !isPaired {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Not paired yet. Connect to SeaWise first."})
+		writeJSON(w, map[string]string{"error": "Not paired yet. Connect to SeaWise first."})
 		return
 	}
 
@@ -1357,7 +1234,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
-		writeJSON(w,map[string]string{"error": "Request body too large"})
+		writeJSON(w, map[string]string{"error": "Request body too large"})
 		return
 	}
 	var req struct {
@@ -1367,57 +1244,52 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Invalid request body"})
+		writeJSON(w, map[string]string{"error": "Invalid request body"})
 		return
 	}
 
-	// Input validation — same rules as CLI (validation package)
 	if !validation.IsValidServiceName(req.Name) {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Invalid service name (must be 1-100 characters)"})
+		writeJSON(w, map[string]string{"error": "Invalid app name (must be 1-100 characters)"})
 		return
 	}
 	if !validation.IsValidHost(req.Host) {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Invalid host format (must be a valid hostname or IP)"})
+		writeJSON(w, map[string]string{"error": "Invalid host format (must be a valid hostname or IP)"})
 		return
 	}
-	// Security: Block internal/private IPs to prevent SSRF attacks
 	if err := validation.ValidateServiceHost(req.Host); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": err.Error()})
+		writeJSON(w, map[string]string{"error": err.Error()})
 		return
 	}
 	if !validation.IsValidPort(req.Port) {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Invalid port (must be 1-65535)"})
+		writeJSON(w, map[string]string{"error": "Invalid port (must be 1-65535)"})
 		return
 	}
 
-	// Check for duplicate service name
 	existingServices, err := currentAPIClient.ListServices(currentCfg.ServerID)
 	if err == nil {
 		for _, existing := range existingServices {
 			if strings.EqualFold(existing.Name, req.Name) {
 				w.WriteHeader(http.StatusConflict)
-				writeJSON(w,map[string]string{"error": "A service with that name already exists"})
+				writeJSON(w, map[string]string{"error": "An app with that name already exists"})
 				return
 			}
 		}
 	}
 
-	// Register with API
 	svc, err := currentAPIClient.RegisterService(currentCfg.ServerID, req.Name, req.Host, req.Port)
 	if err != nil {
 		log.Printf("Failed to register service %s: %v", sanitizeLog(req.Name), err)
 		w.WriteHeader(http.StatusInternalServerError)
-		writeJSON(w,map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to register service")})
+		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to register app")})
 		return
 	}
 
 	log.Printf("Registered service: %s (subdomain: %s)", sanitizeLog(req.Name), svc.Subdomain)
 
-	// Add to FRP tunnel
 	var tunnelWarning string
 	if client != nil {
 		frpSvc := frp.Service{
@@ -1430,7 +1302,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 		s.configureServiceTLS(&frpSvc, svc.Subdomain)
 		if err := client.AddService(frpSvc); err != nil {
 			log.Printf("Warning: Failed to add to FRP tunnel: %v", err)
-			tunnelWarning = "Service registered but tunnel update pending. It will sync automatically."
+			tunnelWarning = "App registered but tunnel update pending. It will sync automatically."
 		} else {
 			log.Printf("Added to FRP tunnel: %s -> %s", req.Name, svc.Subdomain)
 		}
@@ -1445,7 +1317,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 	if tunnelWarning != "" {
 		response["warning"] = tunnelWarning
 	}
-	writeJSON(w,response)
+	writeJSON(w, response)
 }
 
 func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
@@ -1458,7 +1330,7 @@ func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
 
 	if currentCfg == nil {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Not paired yet"})
+		writeJSON(w, map[string]string{"error": "Not paired yet"})
 		return
 	}
 
@@ -1466,11 +1338,11 @@ func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Failed to list services: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		writeJSON(w,map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to list services")})
+		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to list apps")})
 		return
 	}
 
-	writeJSON(w,map[string]interface{}{
+	writeJSON(w, map[string]interface{}{
 		"services": services,
 	})
 }
@@ -1491,7 +1363,7 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 
 	if currentCfg == nil {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Not paired yet"})
+		writeJSON(w, map[string]string{"error": "Not paired yet"})
 		return
 	}
 
@@ -1499,7 +1371,7 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
-		writeJSON(w,map[string]string{"error": "Request body too large"})
+		writeJSON(w, map[string]string{"error": "Request body too large"})
 		return
 	}
 	var req struct {
@@ -1508,27 +1380,25 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "Invalid request body"})
+		writeJSON(w, map[string]string{"error": "Invalid request body"})
 		return
 	}
 
 	if req.ServiceID == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w,map[string]string{"error": "service_id is required"})
+		writeJSON(w, map[string]string{"error": "service_id is required"})
 		return
 	}
 
-	// Delete from API
 	if err := currentAPIClient.DeleteService(currentCfg.ServerID, req.ServiceID); err != nil {
 		log.Printf("Failed to delete service %s: %v", sanitizeLog(req.ServiceID), err)
 		w.WriteHeader(http.StatusInternalServerError)
-		writeJSON(w,map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to delete service")})
+		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to delete app")})
 		return
 	}
 
 	log.Printf("Deleted service: %s (ID: %s)", sanitizeLog(req.ServiceName), sanitizeLog(req.ServiceID))
 
-	// Remove from FRP tunnel
 	if client != nil && req.ServiceName != "" {
 		if err := client.RemoveService(req.ServiceName); err != nil {
 			log.Printf("Warning: Failed to remove from FRP tunnel: %v", err)
@@ -1537,7 +1407,7 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w,map[string]interface{}{
+	writeJSON(w, map[string]interface{}{
 		"success": true,
 	})
 }
@@ -1550,16 +1420,13 @@ func (s *Server) handleUnpair(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
-	// Set state to unpaired first
 	s.connManager.SetState(connection.StateUnpaired)
 
-	// Snapshot globals under lock for API call
 	s.mu.RLock()
 	currentCfg := s.cfg
 	currentAPIClient := s.apiClient
 	s.mu.RUnlock()
 
-	// Notify API to delete the server (so it's removed from dashboard)
 	if currentCfg != nil {
 		if err := currentAPIClient.DeleteServer(currentCfg.ServerID); err != nil {
 			log.Printf("Warning: Failed to delete server from API: %v", err)
@@ -1568,16 +1435,14 @@ func (s *Server) handleUnpair(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Clean up
 	s.handleUnpairInternal()
 
-	writeJSON(w,map[string]interface{}{
+	writeJSON(w, map[string]interface{}{
 		"success": true,
 	})
 }
 
-// generateSelfSignedCert creates a self-signed ECDSA P-256 certificate for the web UI.
-// Valid for 1 year, covers localhost + common LAN addresses.
+// generateSelfSignedCert creates a self-signed ECDSA P-256 certificate.
 func generateSelfSignedCert(certFile, keyFile string) error {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -1600,7 +1465,7 @@ func generateSelfSignedCert(certFile, keyFile string) error {
 		return fmt.Errorf("create certificate: %w", err)
 	}
 
-	certOut, err := os.Create(certFile) // #nosec G304 — certFile is constructed from dataDir, not user input
+	certOut, err := os.Create(certFile) // #nosec G304
 	if err != nil {
 		return fmt.Errorf("create cert file: %w", err)
 	}
@@ -1613,7 +1478,7 @@ func generateSelfSignedCert(certFile, keyFile string) error {
 	if err != nil {
 		return fmt.Errorf("marshal key: %w", err)
 	}
-	keyOut, err := os.OpenFile(keyFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600) // #nosec G304 — keyFile is constructed from dataDir, not user input
+	keyOut, err := os.OpenFile(keyFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600) // #nosec G304
 	if err != nil {
 		return fmt.Errorf("create key file: %w", err)
 	}

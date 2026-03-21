@@ -19,7 +19,6 @@ import (
 )
 
 // tomlEscape escapes a string for safe inclusion in a TOML quoted value.
-// Prevents injection of TOML directives via user-controlled service names/subdomains.
 func tomlEscape(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
@@ -60,7 +59,7 @@ const (
 
 type Client struct {
 	mu         sync.RWMutex
-	restartMu  sync.Mutex // Serializes Restart() to prevent orphaned frpc processes (F-016)
+	restartMu  sync.Mutex
 	config     Config
 	services   []Service
 	configPath string
@@ -72,8 +71,6 @@ type Client struct {
 	crashCount    int
 	stopChan      chan struct{}
 
-	// Connection tracking - unique ID per FRP connection for duplicate detection
-	// When a new client connects with the same token, it supersedes the old one
 	connectionID string
 
 	// Callbacks
@@ -115,7 +112,6 @@ subdomain = "{{ tomlEscape .Subdomain }}"
 {{ end }}
 `
 
-// frpcTmpl is parsed once at package init, not per writeConfigLocked() call
 var frpcTmpl = template.Must(template.New("frpc").Funcs(template.FuncMap{
 	"tomlEscape": tomlEscape,
 }).Parse(frpcTemplate))
@@ -131,7 +127,7 @@ func New(cfg Config) *Client {
 	}
 }
 
-// SetOnStateChange sets the callback for process state changes
+// SetOnStateChange sets the callback for process state changes.
 func (c *Client) SetOnStateChange(callback func(ProcessState)) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -160,7 +156,6 @@ func (c *Client) CrashCount() int {
 }
 
 // ConnectionID returns the current connection ID for this FRP session.
-// Used by heartbeat to detect when this connection has been superseded.
 func (c *Client) ConnectionID() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -168,8 +163,6 @@ func (c *Client) ConnectionID() string {
 }
 
 // ResetConnectionID clears the connection ID so the next Start() generates a fresh one.
-// Call this on true reconnections (after superseded, offline recovery, etc.) — NOT on
-// service-change restarts where we want to keep the same session identity.
 func (c *Client) ResetConnectionID() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -377,10 +370,6 @@ func (c *Client) writeConfigLocked() error {
 func (c *Client) Start() error {
 	c.mu.Lock()
 
-	// Reuse existing connection ID within a session (e.g., restart to add services).
-	// Only generate a new one on first start or after a forced reconnect.
-	// Generating a new ID on every restart causes a race: heartbeat sends the new ID
-	// before FRP Login stores it in the DB, triggering a self-superseded error.
 	if c.connectionID == "" {
 		connIDBytes := make([]byte, 16)
 		if _, err := rand.Read(connIDBytes); err != nil {
@@ -399,7 +388,6 @@ func (c *Client) Start() error {
 		return nil
 	}
 
-	// Always rewrite config with fresh connection_id to avoid stale state
 	if err := c.writeConfigLocked(); err != nil {
 		c.mu.Unlock()
 		return fmt.Errorf("failed to write config: %w", err)
@@ -408,8 +396,6 @@ func (c *Client) Start() error {
 
 	c.setState(ProcessStarting)
 
-	// SECURITY: Only use absolute paths for frpc binary
-	// Never use exec.LookPath which searches PATH (command injection risk)
 	possiblePaths := []string{
 		"/app/frpc",           // Docker container
 		"/usr/local/bin/frpc", // Homebrew/manual install
@@ -430,12 +416,11 @@ func (c *Client) Start() error {
 	log.Printf("[FRP] Starting frpc: %s -c %s", frpcPath, c.configPath)
 
 	c.mu.Lock()
-	c.cmd = exec.Command(frpcPath, "-c", c.configPath) // #nosec G204 — frpcPath is from known filesystem locations, not user input
+	c.cmd = exec.Command(frpcPath, "-c", c.configPath) // #nosec G204
 	c.cmd.Stdout = os.Stdout
 	c.cmd.Stderr = os.Stderr
 	c.lastStartTime = time.Now()
 
-	// Start the process while holding the lock to prevent race with Stop()
 	if err := c.cmd.Start(); err != nil {
 		c.cmd = nil
 		c.mu.Unlock()
@@ -443,7 +428,6 @@ func (c *Client) Start() error {
 		return fmt.Errorf("failed to start frpc: %w", err)
 	}
 
-	// Capture PID while still holding the lock
 	var pid int
 	if c.cmd.Process != nil {
 		pid = c.cmd.Process.Pid
@@ -457,19 +441,14 @@ func (c *Client) Start() error {
 	}
 	c.setState(ProcessRunning)
 
-	// Monitor process in background
 	go c.monitorProcess()
 
 	return nil
 }
 
-// monitorProcess watches the FRP process and detects crashes
 func (c *Client) monitorProcess() {
 	c.mu.RLock()
 	cmd := c.cmd
-	// Capture stopChan BEFORE the blocking Wait() call.
-	// Stop() replaces stopChan with a new channel, so we must capture
-	// the current one to correctly detect deliberate stops.
 	stopCh := c.stopChan
 	c.mu.RUnlock()
 
@@ -477,10 +456,7 @@ func (c *Client) monitorProcess() {
 		return
 	}
 
-	// Wait for process to exit
 	err := cmd.Wait()
-
-	// Check if this was a deliberate stop using the captured channel
 	select {
 	case <-stopCh:
 		log.Printf("[FRP] Process stopped deliberately")
@@ -489,7 +465,6 @@ func (c *Client) monitorProcess() {
 	}
 
 	c.mu.Lock()
-	// Process crashed or exited unexpectedly
 	c.crashCount++
 	crashCount := c.crashCount
 	uptime := time.Since(c.lastStartTime)
@@ -504,7 +479,7 @@ func (c *Client) monitorProcess() {
 	}
 }
 
-// ServiceCount returns the number of services configured
+// ServiceCount returns the number of services configured.
 func (c *Client) ServiceCount() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -515,8 +490,6 @@ func (c *Client) Stop() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Signal that this is a deliberate stop.
-	// monitorProcess captures stopChan before Wait(), so it will see this close.
 	select {
 	case <-c.stopChan:
 		// Already closed
@@ -525,19 +498,13 @@ func (c *Client) Stop() error {
 	}
 
 	if c.cmd != nil && c.cmd.Process != nil {
-		// Graceful shutdown: SIGTERM first, then SIGKILL after timeout.
-		// Allows frpc to close connections cleanly instead of dropping in-flight requests.
 		if err := c.cmd.Process.Signal(os.Interrupt); err != nil {
-			// SIGTERM failed (process may have already exited), try SIGKILL
 			if killErr := c.cmd.Process.Kill(); killErr != nil {
 				log.Printf("[FRP] Kill error (process may have already exited): %v", killErr)
 			}
 		} else {
-			// Wait up to 5 seconds for graceful exit, then force kill
 			done := make(chan struct{})
 			go func() {
-				// monitorProcess is already waiting on cmd.Wait(), so we just
-				// wait for the process to exit by polling.
 				for i := 0; i < 50; i++ {
 					if c.cmd == nil || c.cmd.ProcessState != nil {
 						break
@@ -548,10 +515,9 @@ func (c *Client) Stop() error {
 			}()
 			select {
 			case <-done:
-				// Process exited gracefully
 			case <-time.After(5 * time.Second):
 				if c.cmd != nil && c.cmd.Process != nil {
-					c.cmd.Process.Kill()
+					_ = c.cmd.Process.Kill() // #nosec G104
 				}
 			}
 		}
@@ -559,31 +525,27 @@ func (c *Client) Stop() error {
 	}
 	c.state = ProcessStopped
 
-	// SECURITY: Remove frpc.toml which contains the plaintext FRP token.
-	// The config is regenerated on every Start() call.
 	if c.configPath != "" {
 		if err := os.Remove(c.configPath); err != nil && !os.IsNotExist(err) {
 			log.Printf("[FRP] Warning: failed to clean up config file: %v", err)
 		}
 	}
 
-	// Create new stop channel for next Start() call
 	c.stopChan = make(chan struct{})
 
 	return nil
 }
 
-// ResetCrashCount resets the crash counter (call after successful reconnection)
+// ResetCrashCount resets the crash counter.
 func (c *Client) ResetCrashCount() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.crashCount = 0
 }
 
-// UpdateServer changes the FRP server address and port (used during shard migration).
-// SECURITY: Only allows migration to trusted SeaWise domains to prevent redirect attacks.
+// UpdateServer changes the FRP server address and port.
+// Only allows migration to trusted SeaWise domains.
 func (c *Client) UpdateServer(addr string, port int) error {
-	// Validate the address is a trusted SeaWise domain
 	if !isAllowedFRPDomain(addr) {
 		return fmt.Errorf("untrusted FRP server domain: %s", addr)
 	}
@@ -594,7 +556,6 @@ func (c *Client) UpdateServer(addr string, port int) error {
 	return nil
 }
 
-// isAllowedFRPDomain checks if the address is a trusted FRP server domain.
 func isAllowedFRPDomain(addr string) bool {
 	for _, allowed := range constants.AllowedFRPDomains {
 		if strings.HasSuffix(addr, allowed) || addr == allowed {
@@ -604,8 +565,7 @@ func isAllowedFRPDomain(addr string) bool {
 	return false
 }
 
-// Restart stops and restarts the FRP process. Uses a dedicated mutex to
-// prevent concurrent restarts from orphaning frpc processes (F-016).
+// Restart stops and restarts the FRP process.
 func (c *Client) Restart() error {
 	c.restartMu.Lock()
 	defer c.restartMu.Unlock()

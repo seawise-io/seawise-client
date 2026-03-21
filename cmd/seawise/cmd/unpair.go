@@ -8,6 +8,7 @@ import (
 
 	"github.com/seawise/client/internal/api"
 	"github.com/seawise/client/internal/config"
+	"github.com/seawise/client/internal/localclient"
 	"github.com/spf13/cobra"
 )
 
@@ -54,7 +55,7 @@ func runUnpair() {
 		reader := bufio.NewReader(os.Stdin)
 		response, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Printf("❌ Failed to read input: %v\n", err)
+			fmt.Printf("Error: Failed to read input: %v\n", err)
 			os.Exit(1)
 		}
 		response = strings.TrimSpace(strings.ToLower(response))
@@ -67,23 +68,39 @@ func runUnpair() {
 
 	fmt.Println("Unpairing...")
 
-	// Notify API to remove the server from the dashboard
+	// Use local server when running — handles FRP shutdown + API + config cleanup
+	lc := localclient.NewDefault()
+	if lc.IsRunning() {
+		_, err := lc.Unpair()
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println()
+		fmt.Println("\033[1;32mSuccessfully unpaired!\033[0m")
+		fmt.Println()
+		fmt.Println("Run 'seawise pair' to connect to a SeaWise account again.")
+		return
+	}
+
+	// Fallback: direct API + config cleanup
 	apiClient, apiErr := api.New(config.GetAPIURL(cfg))
 	if apiErr != nil {
-		fmt.Printf("⚠️  Warning: Invalid API URL: %v\n", apiErr)
+		fmt.Printf("Warning: Invalid API URL: %v\n", apiErr)
 	} else {
 		apiClient.SetFRPToken(cfg.FRPToken)
 		if err := apiClient.DeleteServer(cfg.ServerID); err != nil {
-			fmt.Printf("⚠️  Warning: Failed to notify server: %v\n", err)
+			fmt.Printf("Warning: Failed to notify server: %v\n", err)
 		}
 	}
 
 	if err := config.Delete(); err != nil {
-		fmt.Printf("⚠️  Warning: Failed to delete config: %v\n", err)
+		fmt.Printf("Warning: Failed to delete config: %v\n", err)
 	}
 
 	fmt.Println()
-	fmt.Println("✅ \033[1;32mSuccessfully unpaired!\033[0m")
+	fmt.Println("\033[1;32mSuccessfully unpaired!\033[0m")
 	fmt.Println()
 	fmt.Println("Run 'seawise pair' to connect to a SeaWise account again.")
 }

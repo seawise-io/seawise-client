@@ -39,9 +39,9 @@ var passwordStatusCmd = &cobra.Command{
 	Short: "Check if password is set",
 	Run: func(cmd *cobra.Command, args []string) {
 		if auth.IsPasswordSet() {
-			fmt.Println("🔒 Password protection is \033[1;32menabled\033[0m")
+			fmt.Println("Password protection is \033[1;32menabled\033[0m")
 		} else {
-			fmt.Println("🔓 Password protection is \033[1;31mdisabled\033[0m")
+			fmt.Println("Password protection is \033[1;31mdisabled\033[0m")
 			fmt.Println("\nRun 'seawise password set' to enable password protection.")
 		}
 	},
@@ -55,59 +55,53 @@ func init() {
 }
 
 func runPasswordSet() {
-	// If password already set, require current password first
 	if auth.IsPasswordSet() {
 		fmt.Println("A password is already set. Enter current password to change it.")
 		currentPw, err := auth.PromptPassword("Current password: ")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "❌ Failed to read password: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: Failed to read password: %v\n", err)
 			os.Exit(1)
 		}
 		if !auth.VerifyPassword(currentPw) {
-			fmt.Fprintln(os.Stderr, "❌ Incorrect password")
+			fmt.Fprintln(os.Stderr, "Error: Incorrect password")
 			os.Exit(1)
 		}
 		fmt.Println()
 	}
 
-	// Get new password
 	newPw, err := auth.PromptPassword("New password (min 8 chars): ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to read password: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to read password: %v\n", err)
 		os.Exit(1)
 	}
 
 	if len(newPw) < 8 {
-		fmt.Fprintln(os.Stderr, "❌ Password must be at least 8 characters")
+		fmt.Fprintln(os.Stderr, "Error: Password must be at least 8 characters")
 		os.Exit(1)
 	}
 
-	// Confirm password
 	confirmPw, err := auth.PromptPassword("Confirm password: ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to read password: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to read password: %v\n", err)
 		os.Exit(1)
 	}
 
 	if newPw != confirmPw {
-		fmt.Fprintln(os.Stderr, "❌ Passwords do not match")
+		fmt.Fprintln(os.Stderr, "Error: Passwords do not match")
 		os.Exit(1)
 	}
 
-	// Hash and save
 	if _, err := auth.HashAndSavePassword(newPw); err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to save password: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to save password: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Clear any existing CLI session (force re-auth with new password)
 	if err := auth.ClearCLISession(); err != nil {
-		// Non-fatal - session will expire naturally
 		fmt.Fprintf(os.Stderr, "Warning: failed to clear CLI session: %v\n", err)
 	}
 
 	fmt.Println()
-	fmt.Println("✅ \033[1;32mPassword set successfully!\033[0m")
+	fmt.Println("\033[1;32mPassword set successfully!\033[0m")
 	fmt.Println()
 	fmt.Println("This password now protects:")
 	fmt.Println("  • All CLI commands (seawise status, services, etc.)")
@@ -120,32 +114,28 @@ func runPasswordRemove() {
 		return
 	}
 
-	// Require current password
 	currentPw, err := auth.PromptPassword("Enter current password to remove: ")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to read password: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to read password: %v\n", err)
 		os.Exit(1)
 	}
 
 	if !auth.VerifyPassword(currentPw) {
-		fmt.Fprintln(os.Stderr, "❌ Incorrect password")
+		fmt.Fprintln(os.Stderr, "Error: Incorrect password")
 		os.Exit(1)
 	}
 
-	// Remove password file
 	if err := os.Remove(auth.PasswordFile()); err != nil && !os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "❌ Failed to remove password: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: Failed to remove password: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Clear CLI session
 	if err := auth.ClearCLISession(); err != nil {
-		// Non-fatal - session will expire naturally
 		fmt.Fprintf(os.Stderr, "Warning: failed to clear CLI session: %v\n", err)
 	}
 
 	fmt.Println()
-	fmt.Println("✅ \033[1;32mPassword removed.\033[0m")
+	fmt.Println("\033[1;32mPassword removed.\033[0m")
 	fmt.Println()
-	fmt.Println("⚠️  The CLI and web UI are now accessible without a password.")
+	fmt.Println("Warning: The CLI and web UI are now accessible without a password.")
 }

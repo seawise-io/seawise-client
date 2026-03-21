@@ -14,8 +14,7 @@ import (
 	"time"
 )
 
-// validDomain matches only safe domain characters: alphanumeric, hyphens, dots.
-// Rejects path traversal attempts like "../" or absolute paths.
+// validDomain matches safe domain characters: alphanumeric, hyphens, dots.
 var validDomain = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$`)
 
 // CertManager handles certificate generation and storage
@@ -25,11 +24,11 @@ type CertManager struct {
 
 // CertInfo contains paths to certificate and key files
 type CertInfo struct {
-	CertPath   string
-	KeyPath    string
-	Domain     string
-	ExpiresAt  time.Time
-	IssuedAt   time.Time
+	CertPath  string
+	KeyPath   string
+	Domain    string
+	ExpiresAt time.Time
+	IssuedAt  time.Time
 }
 
 // New creates a new CertManager
@@ -44,7 +43,6 @@ func (m *CertManager) EnsureDir() error {
 }
 
 // validateDomain ensures the domain name is safe for use in file paths.
-// Prevents path traversal attacks from malicious subdomain values.
 func validateDomain(domain string) error {
 	if domain == "" {
 		return fmt.Errorf("empty domain")
@@ -139,7 +137,7 @@ func (m *CertManager) LoadKey(domain string) (*ecdsa.PrivateKey, error) {
 	}
 	keyPath := filepath.Join(m.certsDir, domain+".key")
 
-	keyPEM, err := os.ReadFile(keyPath) // #nosec G304 — domain validated by validateDomain()
+	keyPEM, err := os.ReadFile(keyPath) // #nosec G304
 	if err != nil {
 		return nil, fmt.Errorf("failed to read private key: %w", err)
 	}
@@ -165,7 +163,7 @@ func (m *CertManager) LoadCert(domain string) (*CertInfo, error) {
 	certPath := filepath.Join(m.certsDir, domain+".crt")
 	keyPath := filepath.Join(m.certsDir, domain+".key")
 
-	certPEM, err := os.ReadFile(certPath) // #nosec G304 — domain validated by validateDomain()
+	certPEM, err := os.ReadFile(certPath) // #nosec G304
 	if err != nil {
 		return nil, fmt.Errorf("failed to read certificate: %w", err)
 	}

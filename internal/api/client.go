@@ -23,7 +23,6 @@ type Client struct {
 }
 
 func New(baseURL string) (*Client, error) {
-	// SECURITY: FRP tokens are sent in headers — MUST use HTTPS for non-localhost
 	if err := ValidateBaseURL(baseURL); err != nil {
 		return nil, err
 	}
@@ -35,17 +34,14 @@ func New(baseURL string) (*Client, error) {
 	}, nil
 }
 
-// ValidateBaseURL checks that the API URL uses HTTPS in production
-// SECURITY: FRP tokens are sent in headers - MUST use HTTPS to prevent interception
+// ValidateBaseURL checks that the API URL uses HTTPS for non-localhost.
 func ValidateBaseURL(baseURL string) error {
-	// Allow HTTP only for localhost/development
 	if strings.HasPrefix(baseURL, "http://localhost") ||
 		strings.HasPrefix(baseURL, "http://127.0.0.1") ||
 		strings.HasPrefix(baseURL, "http://[::1]") {
 		return nil
 	}
 
-	// All other URLs must use HTTPS
 	if !strings.HasPrefix(baseURL, "https://") {
 		return fmt.Errorf("API URL must use HTTPS for security (got: %s)", baseURL)
 	}
@@ -53,21 +49,17 @@ func ValidateBaseURL(baseURL string) error {
 	return nil
 }
 
-// maxResponseSize limits API response body reads to prevent OOM from a
-// compromised or misbehaving API server.
 const maxResponseSize = 1 << 20 // 1 MB
 
-// readResponseBody reads the response body with a size limit.
 func readResponseBody(resp *http.Response) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 }
 
-// isSuccessStatus returns true for any 2xx HTTP status code
 func isSuccessStatus(code int) bool {
 	return code >= 200 && code < 300
 }
 
-// isValidUUID checks if a string is a valid UUID format (defense-in-depth for path interpolation).
+// isValidUUID checks if a string is a valid UUID format.
 func isValidUUID(s string) bool {
 	if len(s) != 36 {
 		return false
@@ -84,21 +76,19 @@ func isValidUUID(s string) bool {
 	return true
 }
 
-// PairingCodes holds both codes from pairing request
 type PairingCodes struct {
-	UserCode   string    // Show to user (10 chars)
-	DeviceCode string    // Keep secret, use for polling (32 chars)
+	UserCode   string
+	DeviceCode string
 	ExpiresAt  time.Time
 }
 
-// InitPairing starts the pairing process and returns both codes
+// InitPairing starts the pairing process and returns both codes.
 func (c *Client) InitPairing(serverName string) (*PairingCodes, error) {
 	result, err := c.RequestPairing(serverName)
 	if err != nil {
 		return nil, fmt.Errorf("init pairing: %w", err)
 	}
 
-	// Parse expiration time (use default 10 min from now if parsing fails)
 	expTime, parseErr := time.Parse(time.RFC3339, result.ExpiresAt)
 	if parseErr != nil {
 		expTime = time.Now().Add(10 * time.Minute)
@@ -117,7 +107,7 @@ func (c *Client) SetFRPToken(token string) {
 	c.mu.Unlock()
 }
 
-// getFRPToken returns the current FRP token (thread-safe)
+// getFRPToken returns the current FRP token.
 func (c *Client) getFRPToken() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -128,13 +118,9 @@ func (c *Client) BaseURL() string {
 	return c.baseURL
 }
 
-// Request a new pairing code from the API
-// Returns two codes (OAuth Device Flow pattern):
-// - UserCode: 10 chars, shown to user
-// - DeviceCode: 32 chars, used by client for polling/completion (never shown)
 type PairRequestResponse struct {
-	UserCode   string `json:"user_code"`   // Show this to user
-	DeviceCode string `json:"device_code"` // Keep secret, use for polling
+	UserCode   string `json:"user_code"`
+	DeviceCode string `json:"device_code"`
 	ExpiresAt  string `json:"expires_at"`
 }
 
@@ -174,7 +160,7 @@ func (c *Client) RequestPairing(serverName string) (*PairRequestResponse, error)
 	return &result.Data, nil
 }
 
-// PollPairingStatus polls for approval using device_code (OAuth Device Flow)
+// PollPairingStatus polls for approval using device_code.
 func (c *Client) PollPairingStatus(deviceCode string) (string, error) {
 	payload := map[string]string{"device_code": deviceCode}
 	body, err := json.Marshal(payload)
@@ -214,7 +200,7 @@ func (c *Client) PollPairingStatus(deviceCode string) (string, error) {
 }
 
 type PairCompleteRequest struct {
-	DeviceCode string `json:"device_code"` // Use device_code (OAuth Device Flow)
+	DeviceCode string `json:"device_code"`
 }
 
 type PairCompleteResponse struct {
@@ -230,7 +216,7 @@ type PairCompleteResponse struct {
 	} `json:"data"`
 }
 
-// CompletePairing completes the pairing using device_code
+// CompletePairing completes the pairing using device_code.
 func (c *Client) CompletePairing(deviceCode string) (*PairCompleteResponse, error) {
 	payload := PairCompleteRequest{DeviceCode: deviceCode}
 	body, err := json.Marshal(payload)
@@ -327,21 +313,20 @@ func (c *Client) RegisterService(serverID, name, host string, port int) (*Servic
 	return &result.Data, nil
 }
 
-// MigrateInfo contains the new FRP shard to connect to during migration
+// MigrateInfo contains the new FRP shard to connect to during migration.
 type MigrateInfo struct {
 	FRPServerAddr string `json:"frp_server_addr"`
 	FRPServerPort int    `json:"frp_server_port"`
 	ShardID       string `json:"shard_id"`
 }
 
-// ShardInfo contains the current shard address from the server
-// Used for self-healing when the client's stored address is stale
+// ShardInfo contains the current shard address from the server.
 type ShardInfo struct {
 	FRPServerAddr string `json:"frp_server_addr"`
 	FRPServerPort int    `json:"frp_server_port"`
 }
 
-// HeartbeatResponse contains the bidirectional status from the server
+// HeartbeatResponse contains the server's heartbeat response.
 type HeartbeatResponse struct {
 	Status          string       `json:"status"`
 	ServerStatus    string       `json:"server_status"`
@@ -354,11 +339,10 @@ type HeartbeatResponse struct {
 	Shard           *ShardInfo   `json:"shard,omitempty"`
 }
 
-// HeartbeatResult contains the result of a heartbeat call
 type HeartbeatResult struct {
 	Success      bool
-	ShouldUnpair bool // Server says we should unpair (server deleted)
-	Superseded   bool // Another client took over this connection
+	ShouldUnpair bool
+	Superseded   bool
 	Response     *HeartbeatResponse
 	Error        error
 }
@@ -367,7 +351,6 @@ func (c *Client) Heartbeat(serverID string, frpConnected bool, serviceCount int,
 	if !isValidUUID(serverID) {
 		return HeartbeatResult{Error: fmt.Errorf("invalid server ID format")}
 	}
-	// Build request with client status
 	payload := map[string]interface{}{
 		"frp_connected":  frpConnected,
 		"service_count":  serviceCount,
@@ -397,7 +380,6 @@ func (c *Client) Heartbeat(serverID string, frpConnected bool, serviceCount int,
 		return HeartbeatResult{Error: fmt.Errorf("read response: %w", err)}
 	}
 
-	// Check for 410 Gone - server was deleted
 	if resp.StatusCode == 410 {
 		return HeartbeatResult{
 			Success:      false,
@@ -406,7 +388,6 @@ func (c *Client) Heartbeat(serverID string, frpConnected bool, serviceCount int,
 		}
 	}
 
-	// Check for 409 Conflict - connection superseded by newer client
 	if resp.StatusCode == 409 {
 		return HeartbeatResult{
 			Success:    false,
@@ -504,8 +485,6 @@ func (c *Client) ReportServiceHealth(serverID string, statuses []ServiceHealthSt
 }
 
 // MarkOffline notifies the API that this server is going offline.
-// Marks server/services offline and revokes active sessions.
-// Used on graceful shutdown, crash recovery, and superseded responses.
 func (c *Client) MarkOffline(serverID string) error {
 	req, err := http.NewRequest("POST", c.baseURL+"/api/servers/"+serverID+"/offline", nil)
 	if err != nil {
@@ -546,7 +525,7 @@ func (c *Client) DeleteServer(serverID string) error {
 	return nil
 }
 
-// DeleteService deletes a service from the server
+// DeleteService deletes a service from the server.
 func (c *Client) DeleteService(serverID, serviceID string) error {
 	req, err := http.NewRequest("DELETE", c.baseURL+"/api/servers/"+serverID+"/services/"+serviceID, nil)
 	if err != nil {
@@ -567,20 +546,20 @@ func (c *Client) DeleteService(serverID, serviceID string) error {
 	return nil
 }
 
-// CertStatusResponse contains E2E TLS status info
+// CertStatusResponse contains E2E TLS status info.
 type CertStatusResponse struct {
 	E2ETLSEnabled bool   `json:"e2e_tls_enabled"`
 	ACMEDirectory string `json:"acme_directory"`
 }
 
-// CertIssueResponse contains the issued certificate
+// CertIssueResponse contains the issued certificate.
 type CertIssueResponse struct {
 	Certificate string `json:"certificate"`
 	Domain      string `json:"domain"`
 	ExpiresAt   string `json:"expires_at"`
 }
 
-// GetCertStatus checks if E2E TLS is enabled on the server
+// GetCertStatus checks if E2E TLS is enabled on the server.
 func (c *Client) GetCertStatus() (*CertStatusResponse, error) {
 	req, err := http.NewRequest("GET", c.baseURL+"/api/certs/status", nil)
 	if err != nil {
@@ -612,7 +591,7 @@ func (c *Client) GetCertStatus() (*CertStatusResponse, error) {
 	return &result.Data, nil
 }
 
-// RequestCertificate requests a TLS certificate for a subdomain
+// RequestCertificate requests a TLS certificate for a subdomain.
 func (c *Client) RequestCertificate(subdomain string, csrPEM []byte) (*CertIssueResponse, error) {
 	payload := map[string]string{
 		"subdomain": subdomain,
@@ -623,7 +602,6 @@ func (c *Client) RequestCertificate(subdomain string, csrPEM []byte) (*CertIssue
 		return nil, fmt.Errorf("marshal cert request: %w", err)
 	}
 
-	// Certificate issuance can take time due to DNS propagation — use longer timeout via context
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 

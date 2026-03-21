@@ -34,10 +34,9 @@ func init() {
 func runPair() {
 	reader := bufio.NewReader(os.Stdin)
 
-	// Check if already paired
 	cfg, err := config.Load()
 	if err == nil && cfg.ServerID != "" {
-		fmt.Println("⚠️  This client is already paired.")
+		fmt.Println("Warning: This client is already paired.")
 		fmt.Printf("   Server: %s\n", cfg.ServerName)
 		fmt.Printf("   Account: %s\n", cfg.UserEmail)
 		fmt.Println()
@@ -45,7 +44,7 @@ func runPair() {
 
 		response, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Printf("❌ Failed to read input: %v\n", err)
+			fmt.Printf("Error: Failed to read input: %v\n", err)
 			os.Exit(1)
 		}
 		response = strings.TrimSpace(strings.ToLower(response))
@@ -55,18 +54,16 @@ func runPair() {
 			return
 		}
 
-		// Unpair first
 		fmt.Println("Unpairing...")
 		if err := config.Delete(); err != nil {
-			fmt.Printf("⚠️  Warning: Failed to delete old config: %v\n", err)
+			fmt.Printf("Warning: Failed to delete old config: %v\n", err)
 		}
 	}
 
-	// Get server name
 	fmt.Print("Enter a name for this server: ")
 	serverName, err := reader.ReadString('\n')
 	if err != nil {
-		fmt.Printf("❌ Failed to read input: %v\n", err)
+		fmt.Printf("Error: Failed to read input: %v\n", err)
 		os.Exit(1)
 	}
 	serverName = strings.TrimSpace(serverName)
@@ -81,28 +78,23 @@ func runPair() {
 		fmt.Printf("Using default name: %s\n", serverName)
 	}
 
-	// Initialize API client
 	apiURL := config.GetAPIURL(nil)
 	apiClient, err := api.New(apiURL)
 	if err != nil {
-		fmt.Printf("❌ Invalid API URL: %v\n", err)
+		fmt.Printf("Error: Invalid API URL: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Get pairing codes (OAuth Device Flow: user_code + device_code)
 	fmt.Println()
-	fmt.Println("🔗 Requesting pairing code...")
+	fmt.Println("Requesting pairing code...")
 
 	codes, err := apiClient.InitPairing(serverName)
 	if err != nil {
-		fmt.Printf("❌ Failed to get pairing code: %v\n", err)
+		fmt.Printf("Error: Failed to get pairing code: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Generate the pairing URL with user_code (shown to user)
 	pairingURL := fmt.Sprintf("%s/connect?code=%s", config.GetWebURL(), codes.UserCode)
-
-	// Display the pairing info
 	fmt.Println()
 	fmt.Println("┌─────────────────────────────────────────────────────────────┐")
 	fmt.Println("│                    SeaWise Pairing                          │")
@@ -119,8 +111,6 @@ func runPair() {
 	fmt.Println("└─────────────────────────────────────────────────────────────┘")
 	fmt.Println()
 
-	// Poll for pairing completion using device_code (kept secret)
-	// Context handles Ctrl+C gracefully instead of abrupt termination
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -137,43 +127,36 @@ func runPair() {
 			fmt.Println("\n\nPairing cancelled.")
 			os.Exit(0)
 		case <-timeout:
-			fmt.Println("\n❌ Pairing timed out. Please try again.")
+			fmt.Println("\nPairing timed out. Please try again.")
 			os.Exit(1)
 
 		case <-ticker.C:
-			// Show spinner
 			fmt.Printf("\r%s Waiting for connection...", spinner[spinIdx])
 			spinIdx = (spinIdx + 1) % len(spinner)
 
-			// Check if pairing completed using device_code (not user_code)
 			result, err := apiClient.CompletePairing(codes.DeviceCode)
 			if err != nil {
-				// "not_approved" is expected during polling — only log unexpected errors
 				if !strings.Contains(err.Error(), "not yet approved") && !strings.Contains(err.Error(), "pending") {
-					fmt.Printf("\r⚠️  Poll error: %v (retrying...)\n", err)
+					fmt.Printf("\rWarning: Poll error: %v (retrying...)\n", err)
 				}
 				continue
 			}
 
-			// Pairing successful!
-			fmt.Println("\r                                        ") // Clear spinner line
+			fmt.Println("\r                                        ")
 			fmt.Println()
-			fmt.Println("✅ \033[1;32mPairing successful!\033[0m")
+			fmt.Println("\033[1;32mPairing successful!\033[0m")
 			fmt.Println()
 			fmt.Printf("   Server ID: %s\n", result.Data.ServerID)
 			fmt.Printf("   Server Name: %s\n", result.Data.ServerName)
 			fmt.Printf("   Account: %s\n", result.Data.UserEmail)
 			fmt.Println()
 
-			// SECURITY: Default FRP TLS to true. Only allow disabling via
-			// local env var for development. Don't trust the server's value
-			// if it says false — a compromised API could disable encryption.
+			// Default TLS on; only trust server's value in dev
 			frpUseTLS := true
 			if os.Getenv("SEAWISE_FRP_TLS") == "false" {
-				frpUseTLS = result.Data.FRPUseTLS // Trust server only in dev
+				frpUseTLS = result.Data.FRPUseTLS
 			}
 
-			// Save config
 			newCfg := &config.Config{
 				ServerID:      result.Data.ServerID,
 				ServerName:    result.Data.ServerName,
@@ -187,13 +170,13 @@ func runPair() {
 			}
 
 			if err := newCfg.Save(); err != nil {
-				fmt.Printf("❌ Failed to save pairing config: %v\n", err)
+				fmt.Printf("Error: Failed to save pairing config: %v\n", err)
 				fmt.Println("Pairing completed on the server but could not be saved locally.")
 				fmt.Println("Please try again with: seawise pair")
 				os.Exit(1)
 			}
 
-			fmt.Println("🚀 You can now add services with: seawise services add")
+			fmt.Println("You can now add services with: seawise services add")
 			fmt.Println("   Or start the web UI with: seawise serve")
 			return
 		}
