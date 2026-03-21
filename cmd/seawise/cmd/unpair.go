@@ -8,6 +8,7 @@ import (
 
 	"github.com/seawise/client/internal/api"
 	"github.com/seawise/client/internal/config"
+	"github.com/seawise/client/internal/localclient"
 	"github.com/spf13/cobra"
 )
 
@@ -67,6 +68,23 @@ func runUnpair() {
 
 	fmt.Println("Unpairing...")
 
+	// Use local server when running — handles FRP shutdown + API + config cleanup
+	lc := localclient.NewDefault()
+	if lc.IsRunning() {
+		_, err := lc.Unpair()
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println()
+		fmt.Println("\033[1;32mSuccessfully unpaired!\033[0m")
+		fmt.Println()
+		fmt.Println("Run 'seawise pair' to connect to a SeaWise account again.")
+		return
+	}
+
+	// Fallback: direct API + config cleanup
 	apiClient, apiErr := api.New(config.GetAPIURL(cfg))
 	if apiErr != nil {
 		fmt.Printf("Warning: Invalid API URL: %v\n", apiErr)

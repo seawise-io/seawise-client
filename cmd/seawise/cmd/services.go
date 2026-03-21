@@ -10,6 +10,7 @@ import (
 	"github.com/seawise/client/internal/api"
 	"github.com/seawise/client/internal/config"
 	"github.com/seawise/client/internal/constants"
+	"github.com/seawise/client/internal/localclient"
 	"github.com/seawise/client/internal/validation"
 	"github.com/spf13/cobra"
 )
@@ -38,7 +39,6 @@ You can provide arguments directly or run interactively:
   seawise services add  (interactive mode)`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) >= 3 {
-			// Non-interactive mode
 			port, err := strconv.Atoi(args[2])
 			if err != nil {
 				fmt.Printf("Error: Invalid port: %s\n", args[2])
@@ -46,7 +46,6 @@ You can provide arguments directly or run interactively:
 			}
 			runServicesAdd(args[0], args[1], port)
 		} else {
-			// Interactive mode
 			runServicesAddInteractive()
 		}
 	},
@@ -91,8 +90,20 @@ func checkPaired() (*config.Config, *api.Client) {
 }
 
 func runServicesList() {
-	cfg, apiClient := checkPaired() // SetFRPToken called inside checkPaired
+	// Try local server first — gets live FRP state
+	lc := localclient.NewDefault()
+	if lc.IsRunning() {
+		services, err := lc.ListServices()
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		printServicesTable(services)
+		return
+	}
 
+	// Fallback: query cloud API directly
+	cfg, apiClient := checkPaired()
 	services, err := apiClient.ListServices(cfg.ServerID)
 	if err != nil {
 		fmt.Printf("Error: Failed to list apps: %v\n", err)
@@ -100,13 +111,36 @@ func runServicesList() {
 	}
 
 	if len(services) == 0 {
-		fmt.Println("┌─────────────────────────────────────────────────────────────┐")
-		fmt.Println("│                    Apps                                     │")
-		fmt.Println("├─────────────────────────────────────────────────────────────┤")
-		fmt.Println("│  No apps configured yet.                                    │")
-		fmt.Println("│                                                             │")
-		fmt.Println("│  Run 'seawise services add' to add your first app           │")
-		fmt.Println("└─────────────────────────────────────────────────────────────┘")
+		printEmptyServicesTable()
+		return
+	}
+
+	var maps []map[string]interface{}
+	for _, svc := range services {
+		maps = append(maps, map[string]interface{}{
+			"name":      svc.Name,
+			"host":      svc.Host,
+			"port":      float64(svc.Port),
+			"subdomain": svc.Subdomain,
+			"status":    svc.Status,
+		})
+	}
+	printServicesTable(maps)
+}
+
+func printEmptyServicesTable() {
+	fmt.Println("┌─────────────────────────────────────────────────────────────┐")
+	fmt.Println("│                    Apps                                     │")
+	fmt.Println("├─────────────────────────────────────────────────────────────┤")
+	fmt.Println("│  No apps configured yet.                                    │")
+	fmt.Println("│                                                             │")
+	fmt.Println("│  Run 'seawise services add' to add your first app           │")
+	fmt.Println("└─────────────────────────────────────────────────────────────┘")
+}
+
+func printServicesTable(services []map[string]interface{}) {
+	if len(services) == 0 {
+		printEmptyServicesTable()
 		return
 	}
 
@@ -115,13 +149,24 @@ func runServicesList() {
 	fmt.Println("├─────────────────────────────────────────────────────────────┤")
 
 	for _, svc := range services {
+		name, _ := svc["name"].(string)
+		host, _ := svc["host"].(string)
+		port := 0
+		if p, ok := svc["port"].(float64); ok {
+			port = int(p)
+		}
+		subdomain, _ := svc["subdomain"].(string)
+		status, _ := svc["status"].(string)
+
 		statusIcon := "*"
-		if svc.Status != "online" {
+		if status != "online" {
 			statusIcon = "-"
 		}
-		fmt.Printf("│  %s %-55s │\n", statusIcon, svc.Name)
-		fmt.Printf("│     Host: %-48s │\n", fmt.Sprintf("%s:%d", svc.Host, svc.Port))
-		fmt.Printf("│     URL:  %-48s │\n", fmt.Sprintf("https://%s.%s", svc.Subdomain, constants.DefaultSubdomainHost))
+		fmt.Printf("│  %s %-55s │\n", statusIcon, name)
+		fmt.Printf("│     Host: %-48s │\n", fmt.Sprintf("%s:%d", host, port))
+		if subdomain != "" {
+			fmt.Printf("│     URL:  %-48s │\n", fmt.Sprintf("https://%s.%s", subdomain, constants.DefaultSubdomainHost))
+		}
 		fmt.Println("│                                                             │")
 	}
 
@@ -143,10 +188,32 @@ func runServicesAdd(name, host string, port int) {
 		os.Exit(1)
 	}
 
-	cfg, apiClient := checkPaired()
-
 	fmt.Printf("Adding app '%s' (%s:%d)...\n", name, host, port)
 
+	// Use local server when running — handles API registration + FRP tunnel
+	lc := localclient.NewDefault()
+	if lc.IsRunning() {
+		result, err := lc.AddService(name, host, port)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println()
+		fmt.Println("\033[1;32mApp added successfully!\033[0m")
+		fmt.Println()
+		fmt.Printf("   Name:      %s\n", name)
+		fmt.Printf("   Target:    %s:%d\n", host, port)
+		if subdomain, ok := result["subdomain"].(string); ok {
+			fmt.Printf("   Subdomain: %s\n", subdomain)
+			fmt.Printf("   URL:       https://%s.%s\n", subdomain, constants.DefaultSubdomainHost)
+		}
+		fmt.Println()
+		return
+	}
+
+	// Fallback: register via cloud API only (no FRP hot-add)
+	cfg, apiClient := checkPaired()
 	result, err := apiClient.RegisterService(cfg.ServerID, name, host, port)
 	if err != nil {
 		fmt.Printf("Error: Failed to add app: %v\n", err)
@@ -161,12 +228,10 @@ func runServicesAdd(name, host string, port int) {
 	fmt.Printf("   Subdomain: %s\n", result.Subdomain)
 	fmt.Printf("   URL:       https://%s.%s\n", result.Subdomain, constants.DefaultSubdomainHost)
 	fmt.Println()
-	fmt.Println("Note: Start 'seawise serve' to activate the tunnel")
+	fmt.Println("Note: Restart 'seawise serve' to activate the tunnel")
 }
 
 func runServicesAddInteractive() {
-	checkPaired()
-
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println("┌─────────────────────────────────────────┐")
@@ -215,6 +280,21 @@ func runServicesAddInteractive() {
 }
 
 func runServicesRemove(name string) {
+	// Use local server when running — handles API deletion + FRP tunnel removal
+	lc := localclient.NewDefault()
+	if lc.IsRunning() {
+		_, err := lc.DeleteService("", name)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+
+		fmt.Println()
+		fmt.Println("\033[1;32mApp removed successfully!\033[0m")
+		return
+	}
+
+	// Fallback: delete via cloud API only
 	cfg, apiClient := checkPaired()
 
 	services, err := apiClient.ListServices(cfg.ServerID)
@@ -246,15 +326,35 @@ func runServicesRemove(name string) {
 
 	fmt.Println()
 	fmt.Println("\033[1;32mApp removed successfully!\033[0m")
+	fmt.Println("Note: Restart 'seawise serve' to update the tunnel")
 }
 
 func runServicesRemoveInteractive() {
-	cfg, apiClient := checkPaired()
+	lc := localclient.NewDefault()
+	var services []map[string]interface{}
 
-	services, err := apiClient.ListServices(cfg.ServerID)
-	if err != nil {
-		fmt.Printf("Error: Failed to list apps: %v\n", err)
-		os.Exit(1)
+	if lc.IsRunning() {
+		var err error
+		services, err = lc.ListServices()
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		cfg, apiClient := checkPaired()
+		apiServices, err := apiClient.ListServices(cfg.ServerID)
+		if err != nil {
+			fmt.Printf("Error: Failed to list apps: %v\n", err)
+			os.Exit(1)
+		}
+		for _, svc := range apiServices {
+			services = append(services, map[string]interface{}{
+				"id":   svc.ID,
+				"name": svc.Name,
+				"host": svc.Host,
+				"port": float64(svc.Port),
+			})
+		}
 	}
 
 	if len(services) == 0 {
@@ -270,7 +370,13 @@ func runServicesRemoveInteractive() {
 	fmt.Println()
 
 	for i, svc := range services {
-		fmt.Printf("  %d. %s (%s:%d)\n", i+1, svc.Name, svc.Host, svc.Port)
+		name, _ := svc["name"].(string)
+		host, _ := svc["host"].(string)
+		port := 0
+		if p, ok := svc["port"].(float64); ok {
+			port = int(p)
+		}
+		fmt.Printf("  %d. %s (%s:%d)\n", i+1, name, host, port)
 	}
 
 	fmt.Println()
@@ -295,6 +401,6 @@ func runServicesRemoveInteractive() {
 		os.Exit(1)
 	}
 
-	selectedService := services[num-1]
-	runServicesRemove(selectedService.Name)
+	selectedName, _ := services[num-1]["name"].(string)
+	runServicesRemove(selectedName)
 }
