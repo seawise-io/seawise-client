@@ -920,7 +920,7 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 		}
 
 		if tlsMode == "auto" {
-			log.Printf("Web UI listening on https://%s:%d (self-signed TLS)", sanitizeLog(bindAddr), port)
+			log.Printf("Web UI listening on https://%s:%d (self-signed TLS)", sanitizeLog(bindAddr), port) // #nosec G706 -- bindAddr sanitized via sanitizeLog
 			go func() {
 				if err := srv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
 					log.Printf("[ERROR] Web UI TLS failed: %v (tunnel continues running)", err)
@@ -930,7 +930,7 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 		}
 	}
 
-	log.Printf("Web UI listening on %s:%d", sanitizeLog(bindAddr), port)
+	log.Printf("Web UI listening on %s:%d", sanitizeLog(bindAddr), port) // #nosec G706 -- bindAddr sanitized via sanitizeLog
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("[ERROR] Web UI failed: %v (tunnel continues running)", err)
