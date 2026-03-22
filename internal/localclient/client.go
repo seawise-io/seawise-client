@@ -43,7 +43,7 @@ func (c *Client) IsRunning() bool {
 	if err != nil {
 		return false
 	}
-	resp.Body.Close()
+	defer resp.Body.Close() // #nosec G104 — best-effort close on status check
 	return resp.StatusCode == http.StatusOK
 }
 
