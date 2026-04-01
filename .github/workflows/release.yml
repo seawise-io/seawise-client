@@ -1,0 +1,117 @@
+# Release — runs only on version tag push (v*).
+# Builds multi-arch Docker image, pushes to GHCR, signs with cosign,
+# scans for vulnerabilities, generates SBOM, and creates GitHub Release.
+# All 3rd-party actions pinned to exact commit SHAs.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: seawise-io/seawise-client
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.26'
+
+      - name: Run tests
+        run: go test -v ./...
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # Attach SBOM to GitHub Release
+      packages: write
+      id-token: write     # Keyless cosign signing via GitHub OIDC
+      attestations: write # SBOM attestation upload
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build and push
+        id: build-and-push
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
+
+      - name: Sign image with cosign (keyless)
+        run: cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}
+
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}"
+          format: "table"
+          exit-code: "1"
+          severity: "CRITICAL"
+          ignore-unfixed: true
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@57aae528053a48a3f6235f2d9461b05fbcb7366d # v0.23.1
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Attach SBOM attestation to image
+        run: cosign attest --yes --predicate sbom.spdx.json --type spdxjson ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-and-push.outputs.digest }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create Release
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
+        with:
+          generate_release_notes: true

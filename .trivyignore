@@ -1,0 +1,4 @@
+# Go stdlib — fix listed as 1.26.0-rc.3 but Trivy still flags 1.26.1 binaries.
+# The actual stable patch may require Go 1.26.2. Remove when Trivy clears.
+# crypto/tls: Unexpected session resumption
+CVE-2025-68121

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seawise.io</title>
+    <link rel="icon" type="image/png" href="/static/seawise-icon.png">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Update Banner (shown when newer version available) -->
+    <div class="update-banner hidden" id="update-banner">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>A new version is available.</span>
+        <a href="https://github.com/seawise-io/seawise-client/releases" target="_blank" rel="noopener">View release</a>
+    </div>
+
+    <!-- Dark Header Bar -->
+    <div class="header-bar">
+        <div class="header-content">
+            <div class="logo-group">
+                <img src="/static/seawise-logo.png" alt="Seawise.io" class="logo-img">
+                <div class="subtitle">Server Manager</div>
+            </div>
+            <div class="header-right">
+                <div class="status-badge offline" id="status-badge">
+                    <span class="status-dot"></span>
+                    <span id="status-text">Not Connected</span>
+                </div>
+                <div class="settings-wrapper">
+                    <button class="settings-btn" onclick="toggleSettingsDropdown(event)" title="Settings">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                        </svg>
+                    </button>
+                    <div class="settings-dropdown hidden" id="settings-dropdown">
+                        <button class="settings-dropdown-item" id="dropdown-set-pw" onclick="showSetPasswordModal()">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                            </svg>
+                            Change Password
+                        </button>
+                        <button class="settings-dropdown-item hidden lock-item" id="dropdown-lock" onclick="lockUI()">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                            </svg>
+                            Lock
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Screen (shown when password is set but not authenticated) -->
+    <div class="container hidden" id="login-screen">
+        <div class="card card-accent-sm">
+            <div class="card-header card-header-center">
+                <div class="card-icon orange">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="card-title">Password Required</div>
+                    <div class="card-subtitle">Enter your password to access the manager</div>
+                </div>
+            </div>
+            <div>
+                <input type="password" id="login-password" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()" />
+                <div id="login-error" class="form-error hidden"></div>
+                <button class="btn btn-primary" onclick="doLogin()">Unlock</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container hidden" id="main-container">
+
+        <!-- Setup Card (shown on first run — password required before proceeding) -->
+        <div class="card card-accent hidden" id="setup-card">
+            <div class="card-header">
+                <div class="card-icon orange">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="card-title">Secure Your Server</div>
+                    <div class="card-subtitle">Create a password to protect this server's management interface</div>
+                </div>
+            </div>
+            <div>
+                <input type="password" id="setup-password" placeholder="Password (min 8 characters)" onkeydown="if(event.key==='Enter')document.getElementById('setup-confirm').focus()" />
+                <input type="password" id="setup-confirm" placeholder="Confirm password" onkeydown="if(event.key==='Enter')doSetupPassword()" />
+                <div id="setup-error" class="form-error hidden"></div>
+                <button class="btn btn-primary" onclick="doSetupPassword()">Set Password &amp; Continue</button>
+            </div>
+        </div>
+
+        <!-- Connect Card (shown after password setup + when not paired) -->
+        <div class="card card-accent hidden" id="connect-card">
+            <div class="card-header">
+                <div class="card-icon orange">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="card-title">Connect to Seawise.io</div>
+                    <div class="card-subtitle">Link this server to your account</div>
+                </div>
+            </div>
+
+            <div id="connect-form" class="hidden">
+                <input type="text" id="server-name-input" placeholder="Server name" />
+                <button class="btn btn-primary" onclick="connectToSeaWise()">Connect to Seawise.io</button>
+                <p class="input-hint input-hint-center">Opens your browser to authorize this server</p>
+            </div>
+
+            <div id="waiting-approval" class="hidden">
+                <div class="waiting">
+                    <div class="spinner"></div>
+                    <p class="text-primary waiting-title">Waiting for authorization...</p>
+                    <p class="waiting-subtitle">Complete the authorization in your browser</p>
+                </div>
+                <button class="btn btn-secondary cancel-btn-mt" onclick="cancelPairing()">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Main Content (shown when paired) -->
+        <div class="hidden" id="main-content">
+            <!-- Top Row: Server Info + Disconnect -->
+            <div class="top-row">
+                <div class="server-info">
+                    <div class="card-icon green">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z" />
+                        </svg>
+                    </div>
+                    <div class="server-details">
+                        <div class="server-name" id="server-name">My Server</div>
+                        <div class="server-meta">
+                            <span id="user-email">-</span>
+                        </div>
+                    </div>
+                </div>
+                <button class="disconnect-btn" onclick="showDisconnectModal()">Disconnect</button>
+            </div>
+
+            <!-- Add Service Section -->
+            <div class="card" id="add-service-card">
+                <div class="card-title card-title-mb">Add App</div>
+                <div class="add-service-form">
+                    <input type="text" id="service-name" placeholder="App name" />
+                    <input type="text" id="service-host" placeholder="Hostname or IP" />
+                    <input type="number" id="service-port" placeholder="Port" min="1" max="65535" />
+                    <button class="btn btn-primary" onclick="addService()">Add</button>
+                </div>
+            </div>
+
+            <!-- Services Section -->
+            <div class="card" id="services-card">
+                <div class="services-header">
+                    <div class="card-title">Apps</div>
+                    <span class="services-count" id="services-count">0 apps</span>
+                </div>
+                <div id="services-list">
+                    <div class="empty-state">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+                        </svg>
+                        <p>No apps added yet</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Disconnect Confirmation Modal -->
+    <div class="modal-overlay" id="disconnect-modal" onclick="if(event.target === this) hideDisconnectModal()">
+        <div class="modal">
+            <div class="modal-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                </svg>
+            </div>
+            <div class="modal-title">Disconnect from Seawise.io?</div>
+            <div class="modal-message">You will need to re-pair this server to use apps again.</div>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" onclick="hideDisconnectModal()">Cancel</button>
+                <button class="btn btn-danger" onclick="confirmDisconnect()">Disconnect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Service Confirmation Modal -->
+    <div class="modal-overlay" id="delete-service-modal" onclick="if(event.target === this) hideDeleteServiceModal()">
+        <div class="modal">
+            <div class="modal-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                </svg>
+            </div>
+            <div class="modal-title">Delete "<span id="delete-service-name"></span>"?</div>
+            <div class="modal-message">This will stop exposing this app through Seawise.io.</div>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" onclick="hideDeleteServiceModal()">Cancel</button>
+                <button class="btn btn-danger" onclick="confirmDeleteService()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Set Password Modal -->
+    <div class="modal-overlay" id="set-password-modal" onclick="if(event.target === this) hideSetPasswordModal()">
+        <div class="modal">
+            <div class="modal-icon blue">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                </svg>
+            </div>
+            <div class="modal-title">Change Password</div>
+            <div class="modal-message">Enter your current password and a new one</div>
+            <input type="password" id="set-pw-current" placeholder="Current password" onkeydown="if(event.key==='Enter')document.getElementById('set-pw-new').focus()" />
+            <input type="password" id="set-pw-new" placeholder="New password (min 8 characters)" onkeydown="if(event.key==='Enter')document.getElementById('set-pw-confirm').focus()" />
+            <input type="password" id="set-pw-confirm" placeholder="Confirm new password" onkeydown="if(event.key==='Enter')doSetPassword()" />
+            <div id="set-pw-error" class="pw-error hidden"></div>
+            <div class="modal-buttons">
+                <button class="btn btn-secondary" onclick="hideSetPasswordModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="doSetPassword()">Change Password</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- Footers -->
+    <div class="server-id-footer hidden" id="server-id-footer"></div>
+    <div class="version-footer" id="version-footer">{{.Version}}</div>
+
+    <!-- Go template variable injection (minimal, required for pairing URL) -->
+    <script>const WEB_APP_URL = '{{.WebAppURL}}';</script>
+    <script src="/static/app.js"></script>
+</body>
+</html>
