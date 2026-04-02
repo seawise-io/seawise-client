@@ -219,7 +219,7 @@ func (s *Server) startServices(ctx context.Context) {
 
 	frpToken := s.cfg.FRPToken
 
-	slog.Info("Connecting to FRP server", "component", "frp", "addr", frpServerAddr, "port", frpServerPort, "tls", s.cfg.FRPUseTLS)
+	slog.Info("Connecting to FRP server", "component", "frp", "addr", frpServerAddr, "port", frpServerPort, "tls", s.cfg.FRPUseTLS) // #nosec G706 -- config values, not user input
 
 	certStatus, err := s.apiClient.GetCertStatus()
 	if err != nil {
@@ -665,7 +665,7 @@ func (s *Server) ensureServiceCert(subdomain string) (certPath, keyPath string, 
 		return cert, key, nil
 	}
 
-	slog.Info("Requesting certificate", "component", "e2e_tls", "domain", domain)
+	slog.Info("Requesting certificate", "component", "e2e_tls", "domain", domain) // #nosec G706 -- domain from API config
 
 	key, err := s.certManager.GenerateKey()
 	if err != nil {
@@ -692,7 +692,7 @@ func (s *Server) ensureServiceCert(subdomain string) (certPath, keyPath string, 
 		return "", "", err
 	}
 
-	slog.Info("Certificate saved", "component", "e2e_tls", "domain", domain, "expires_at", certResp.ExpiresAt)
+	slog.Info("Certificate saved", "component", "e2e_tls", "domain", domain, "expires_at", certResp.ExpiresAt) // #nosec G706 -- domain from API config
 	return certPath, keyPath, nil
 }
 
@@ -922,7 +922,7 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 		}
 
 		if tlsMode == "auto" {
-			slog.Info("Web UI listening with self-signed TLS", "component", "webui", "bind_addr", bindAddr, "port", port, "protocol", "https")
+			slog.Info("Web UI listening with self-signed TLS", "component", "webui", "bind_addr", bindAddr, "port", port, "protocol", "https") // #nosec G706 -- config values
 			go func() {
 				if err := srv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
 					slog.Error("Web UI TLS failed, tunnel continues running", "component", "webui", "error", err)
@@ -932,7 +932,7 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 		}
 	}
 
-	slog.Info("Web UI listening", "component", "webui", "bind_addr", bindAddr, "port", port, "protocol", "http")
+	slog.Info("Web UI listening", "component", "webui", "bind_addr", bindAddr, "port", port, "protocol", "http") // #nosec G706 -- config values
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("Web UI failed, tunnel continues running", "component", "webui", "error", err)

@@ -8,6 +8,7 @@ import (
 	"github.com/seawise/client/cmd/seawise/cmd"
 	"github.com/seawise/client/cmd/seawise/server"
 	"github.com/seawise/client/internal/constants"
+	"github.com/seawise/client/internal/validation"
 )
 
 func main() {
@@ -17,7 +18,7 @@ func main() {
 			if p, err := strconv.Atoi(envPort); err == nil && p > 0 && p <= 65535 {
 				port = p
 			} else {
-				slog.Warn("Invalid SEAWISE_PORT, using default", "component", "main", "value", envPort, "default_port", port)
+				slog.Warn("Invalid SEAWISE_PORT, using default", "component", "main", "value", validation.SanitizeLogValue(envPort), "default_port", port)
 			}
 		}
 		server.Run(port)

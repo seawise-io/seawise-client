@@ -16,6 +16,7 @@ import (
 
 	"github.com/seawise/client/internal/auth"
 	"github.com/seawise/client/internal/constants"
+	"github.com/seawise/client/internal/validation"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -247,7 +248,7 @@ func (am *authManager) recordFailedLogin(ip string) time.Duration {
 
 	if entry.failures >= rateLimitMaxFails {
 		entry.lockedUntil = now.Add(rateLimitWindow)
-		slog.Warn("IP locked out after failed attempts", "component", "auth", "ip", ip, "lockout_duration", rateLimitWindow, "attempts", entry.failures)
+		slog.Warn("IP locked out after failed attempts", "component", "auth", "ip", validation.SanitizeLogValue(ip), "lockout_duration", rateLimitWindow, "attempts", entry.failures)
 	} else if delay > 0 {
 		entry.lockedUntil = now.Add(delay)
 	}
@@ -298,7 +299,7 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 					}
 				}
 				if !isValidOrigin {
-					slog.Warn("Blocked request from invalid origin", "component", "csrf", "origin", origin, "path", path)
+					slog.Warn("Blocked request from invalid origin", "component", "csrf", "origin", validation.SanitizeLogValue(origin), "path", validation.SanitizeLogValue(path))
 					writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
 					return
 				}
@@ -327,12 +328,12 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 					}
 				}
 				if !isValidReferer {
-					slog.Warn("Blocked request with invalid referer", "component", "csrf", "referer", referer, "path", path)
+					slog.Warn("Blocked request with invalid referer", "component", "csrf", "referer", validation.SanitizeLogValue(referer), "path", validation.SanitizeLogValue(path))
 					writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
 					return
 				}
 			} else {
-				slog.Warn("Blocked request with no origin/referer", "component", "csrf", "path", path)
+				slog.Warn("Blocked request with no origin/referer", "component", "csrf", "path", validation.SanitizeLogValue(path))
 				writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Origin or Referer header required"})
 				return
 			}
@@ -372,7 +373,7 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 // setSessionCookie sets the session cookie on the response.
 func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure set dynamically based on TLS
 		Name:     sessionCookieName,
 		Value:    token,
 		Path:     "/",
@@ -385,7 +386,7 @@ func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 
 // clearSessionCookie removes the session cookie.
 func clearSessionCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- expiry cookie, no data to protect
 		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",

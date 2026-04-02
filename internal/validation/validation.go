@@ -82,6 +82,11 @@ func ParseAPIError(respBody []byte, statusCode int) string {
 	}
 }
 
+// SanitizeLogValue strips control characters from a string before logging.
+func SanitizeLogValue(s string) string {
+	return controlChars.ReplaceAllString(s, "")
+}
+
 // sanitizeMessage limits message length and removes control characters.
 func sanitizeMessage(msg string) string {
 	const maxLen = 200
