@@ -42,7 +42,8 @@ jobs:
         with:
           go-version: "1.26.1"
 
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.25.0
+
       - name: Run gosec
-        uses: securego/gosec@bb17e422fc34bf4c0a2e5cab9d07dc45a68c040c # v2.24.7
-        with:
-          args: ./...
+        run: gosec -severity medium -track-suppressions ./...

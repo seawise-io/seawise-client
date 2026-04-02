@@ -7,6 +7,7 @@ import (
 
 	"github.com/seawise/client/cmd/seawise/server"
 	"github.com/seawise/client/internal/constants"
+	"github.com/seawise/client/internal/validation"
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +28,7 @@ func init() {
 		if p, err := strconv.Atoi(envPort); err == nil && p > 0 && p <= 65535 {
 			defaultPort = p
 		} else {
-			slog.Warn("Invalid SEAWISE_PORT, using default", "component", "main", "value", envPort, "default_port", defaultPort)
+			slog.Warn("Invalid SEAWISE_PORT, using default", "component", "main", "value", validation.SanitizeLogValue(envPort), "default_port", defaultPort)
 		}
 	}
 	serveCmd.Flags().IntVarP(&servePort, "port", "p", defaultPort, "Port for the web UI (env: SEAWISE_PORT)")

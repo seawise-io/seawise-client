@@ -435,7 +435,7 @@ func (c *Client) Start() error {
 	slog.Info("Starting frpc", "component", "frp", "path", frpcPath, "config", configPath)
 
 	c.mu.Lock()
-	c.cmd = exec.Command(frpcPath, "-c", configPath)
+	c.cmd = exec.Command(frpcPath, "-c", configPath) // #nosec G204 -- frpcPath from exec.LookPath
 	c.cmd.Stdout = os.Stdout
 	c.cmd.Stderr = os.Stderr
 	c.lastStartTime = time.Now()
@@ -533,7 +533,7 @@ func (c *Client) Stop() error {
 			defer timer.Stop()
 			exited := make(chan struct{})
 			go func() {
-				cmd.Wait()
+				_ = cmd.Wait()
 				close(exited)
 			}()
 			select {
