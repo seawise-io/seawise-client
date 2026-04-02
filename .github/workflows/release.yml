@@ -4,6 +4,7 @@
 # All 3rd-party actions pinned to exact commit SHAs.
 
 name: Release
+run-name: "Release ${{ github.ref_name }}"
 
 on:
   push:
