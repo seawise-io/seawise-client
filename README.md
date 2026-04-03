@@ -12,20 +12,9 @@
 
 # Seawise.io Client
 
-Expose local apps to the internet through secure outbound tunnels. Run one Docker container, pair it with your [Seawise.io](https://seawise.io) account, and get public URLs for any app on your network.
+Share your local apps with anyone through secure dashboards. Run one Docker container, connect it to your [Seawise.io](https://seawise.io) account, and share access with specific people — no networking required.
 
 Works behind CGNAT, double NAT, and firewalls. No port forwarding, no VPN, no DNS setup.
-
-## Features
-
-- **One-command install** — single Docker container, no dependencies
-- **Web UI** — manage apps, pair servers, set passwords from the browser
-- **CLI** — script and automate with built-in commands
-- **Outbound-only** — no ports to open, no firewall rules, no DNS changes
-- **Works anywhere** — CGNAT, double NAT, IPv6, corporate firewalls
-- **Multi-platform** — Linux amd64 and arm64 (Raspberry Pi, NAS devices)
-- **Password protection** — optional, bcrypt-hashed with rate limiting
-- **Auto-reconnect** — exponential backoff, survives network interruptions
 
 ## Quick Start
 
@@ -37,18 +26,18 @@ docker run -d --name seawise \
   ghcr.io/seawise-io/seawise-client:latest
 ```
 
-Open [http://localhost:8082](http://localhost:8082) to pair your server and start adding apps.
+Open [http://localhost:8082](http://localhost:8082) to get started.
 
 ## How It Works
 
 1. Run the container on your server
-2. Open the web UI and set a password
-3. Click **Pair** — a code appears
-4. Go to [seawise.io/connect](https://seawise.io/connect) and enter the code
-5. Add apps by name, host, and port (e.g., Jellyfin at `localhost:8096`)
-6. Each app gets a public URL like `https://cool-fish-wave-bay.seawise.dev`
+2. Set a password to protect the web UI
+3. Click **Connect to Seawise.io** — your browser opens the authorization page
+4. Approve the connection
+5. Add apps by name, host, and port
+6. Each app gets a public URL on `seawise.dev`
 
-The client creates an outbound tunnel to Seawise.io. Traffic flows through the tunnel to your local apps. Your network is never exposed directly.
+The client creates an outbound tunnel to Seawise.io. Traffic flows through the tunnel to your local apps. Your network is never exposed directly. Tunnels are powered by [FRP](https://github.com/fatedier/frp) (Fast Reverse Proxy).
 
 ## Docker Compose
 
@@ -68,43 +57,31 @@ volumes:
 
 ## Adding Apps
 
-In the web UI, add an app by specifying where the client can reach it:
+In the web UI, add an app by entering a name, host, and port:
 
 | Your app is... | Host | Port |
 |----------------|------|------|
 | On this machine | `localhost` | App port |
-| On another device on your LAN | Device IP (e.g., `192.168.1.50`) | App port |
+| In a Docker container with port mapping | `localhost` | Mapped port |
+| On another device on your network | Device IP (e.g., `192.168.1.50`) | App port |
 
-Common apps: Jellyfin (8096), Plex (32400), Home Assistant (8123), Nextcloud (8080), Overseerr (5055).
+## Features
 
-## CLI
-
-The client includes a CLI for scripting and debugging. When the server is running, CLI commands route through it automatically.
-
-```
-seawise serve             Start the web UI and tunnel service
-seawise pair              Pair with your Seawise.io account
-seawise unpair            Disconnect and remove configuration
-seawise status            Show connection status and app count
-seawise services list     List all apps
-seawise services add      Add an app
-seawise services remove   Remove an app
-seawise password set      Set a password for the web UI
-seawise password remove   Remove the password
-```
-
-## Password Protection
-
-Password is optional. Set one in the web UI under Settings if you want to restrict access. The client works fully without a password.
+- **One-command install** — single Docker container
+- **Web UI** — manage apps, connect servers, set passwords
+- **Outbound-only** — no ports to open, no firewall rules
+- **Dashboard sharing** — organize apps into dashboards, share by email with per-user access control
+- **Works anywhere** — CGNAT, double NAT, IPv6, corporate firewalls
+- **Multi-platform** — Linux amd64 and arm64 (Raspberry Pi, NAS devices)
+- **Password protection** — required on first run, bcrypt-hashed with rate limiting
+- **Auto-reconnect** — exponential backoff, survives network interruptions
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SEAWISE_PORT` | `8082` | Web UI port |
-| `SEAWISE_API_URL` | `https://api.seawise.io` | API endpoint |
-| `SEAWISE_WEB_URL` | `https://seawise.io` | Dashboard URL |
-| `SEAWISE_BIND_ADDR` | `127.0.0.1` | Bind address (use `0.0.0.0` for LAN access) |
+| `SEAWISE_BIND_ADDR` | `127.0.0.1` | Bind address |
 | `SEAWISE_DATA_DIR` | `/config` | Persistent data directory |
 | `PUID` / `PGID` | `1000` | Run as specific user/group ID |
 
@@ -116,7 +93,7 @@ docker stop seawise && docker rm seawise
 # Re-run the docker run command above — config is preserved in the volume
 ```
 
-The client checks for updates automatically and shows a notification in the web UI when a new version is available.
+The client checks for updates automatically and shows a banner when a new version is available.
 
 ## Platform Support
 
@@ -127,9 +104,9 @@ The client checks for updates automatically and shows a notification in the web 
 ## Documentation
 
 - [Getting Started](https://docs.seawise.io/getting-started/quick-start)
-- [App Setup Guides](https://docs.seawise.io/guides) (Plex, Jellyfin, Home Assistant, Nextcloud)
-- [Troubleshooting](https://docs.seawise.io/troubleshooting)
-- [Security](https://docs.seawise.io/security/overview)
+- [Apps](https://docs.seawise.io/apps)
+- [Dashboards & Sharing](https://docs.seawise.io/dashboards)
+- [Security](https://docs.seawise.io/security)
 
 ## License
 
