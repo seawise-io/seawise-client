@@ -21,7 +21,7 @@ Works behind CGNAT, double NAT, and firewalls. No port forwarding, no VPN, no DN
 ```bash
 docker run -d --name seawise \
   --restart unless-stopped \
-  --network host \
+  -p 8082:8082 \
   -v seawise-data:/config \
   ghcr.io/seawise-io/seawise-client:latest
 ```
@@ -47,7 +47,8 @@ services:
     image: ghcr.io/seawise-io/seawise-client:latest
     container_name: seawise
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "8082:8082"
     volumes:
       - seawise-data:/config
 
@@ -59,11 +60,11 @@ volumes:
 
 In the web UI, add an app by entering a name, host, and port:
 
-| Your app is... | Host | Port |
-|----------------|------|------|
-| On this machine | `localhost` | App port |
-| In a Docker container with port mapping | `localhost` | Mapped port |
-| On another device on your network | Device IP (e.g., `192.168.1.50`) | App port |
+| Your app runs... | Host to use |
+|-----------------|-------------|
+| In the same Docker Compose file | Service name (e.g., `grafana`) |
+| In a separate container or directly on the server | `host.docker.internal` |
+| On another device on your network | Device IP (e.g., `192.168.1.50`) |
 
 ## Features
 
