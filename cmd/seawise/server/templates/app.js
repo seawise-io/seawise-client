@@ -128,7 +128,7 @@ function renderState(data) {
     }
 
     // Status badge
-    updateStatusBadge(state);
+    updateStatusBadge(state, data);
 
     switch (state) {
         case State.SETUP:
@@ -165,10 +165,16 @@ function renderState(data) {
     }
 }
 
-function updateStatusBadge(state) {
+function updateStatusBadge(state, data) {
     const badge = dom.statusBadge();
     const text = dom.statusText();
     if (!badge || !text) return;
+
+    if (state === State.LOCKED && data && data.pairing_state === 'paired') {
+        badge.className = 'status-badge online';
+        text.textContent = 'Connected';
+        return;
+    }
 
     switch (state) {
         case State.PAIRED:
