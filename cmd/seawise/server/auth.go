@@ -25,11 +25,9 @@ const (
 	sessionMaxAge        = 8 * time.Hour // 8 hours
 	sessionCleanupPeriod = 15 * time.Minute
 
-	// Rate limiting constants
-	rateLimitWindow    = 15 * time.Minute // Reset window
-	rateLimitMaxFails  = 5                // Max failures before lockout
-	rateLimitBaseDelay = 500 * time.Millisecond
-	rateLimitMaxDelay  = 30 * time.Second
+	rateLimitWindow    = 15 * time.Minute
+	rateLimitBaseDelay = 1 * time.Second
+	rateLimitMaxDelay  = 10 * time.Second
 )
 
 // rateLimitEntry tracks failed login attempts per IP
@@ -246,10 +244,7 @@ func (am *authManager) recordFailedLogin(ip string) time.Duration {
 		delay = rateLimitMaxDelay
 	}
 
-	if entry.failures >= rateLimitMaxFails {
-		entry.lockedUntil = now.Add(rateLimitWindow)
-		slog.Warn("IP locked out after failed attempts", "component", "auth", "ip", validation.SanitizeLogValue(ip), "lockout_duration", rateLimitWindow, "attempts", entry.failures)
-	} else if delay > 0 {
+	if delay > 0 {
 		entry.lockedUntil = now.Add(delay)
 	}
 
