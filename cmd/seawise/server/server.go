@@ -134,6 +134,11 @@ func (s *Server) run(port int) {
 		},
 	)
 
+	if err := config.MigrateLegacy(); err != nil {
+		slog.Error("Config migration failed — refusing to start", "component", "main", "error", err)
+		os.Exit(1)
+	}
+
 	if config.Exists() {
 		var err error
 		s.cfg, err = config.Load()
