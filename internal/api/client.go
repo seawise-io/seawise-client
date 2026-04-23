@@ -292,6 +292,25 @@ type RegisterServiceRequest struct {
 	Port     int    `json:"port"`
 }
 
+// BatchServiceInput describes one service in a batch-register request.
+type BatchServiceInput struct {
+	Name    string `json:"name"`
+	Host    string `json:"host"`
+	Port    int    `json:"port"`
+	IconURL string `json:"icon_url,omitempty"`
+}
+
+// BatchRegisterResult is one entry returned by /services/register/batch —
+// the server-assigned ID plus any server-decided fields.
+type BatchRegisterResult struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	Subdomain string `json:"subdomain"`
+	Status    string `json:"status"`
+}
+
 func (c *Client) RegisterService(serverID, name, host string, port int) (*Service, error) {
 	payload := RegisterServiceRequest{
 		ServerID: serverID,
@@ -334,6 +353,57 @@ func (c *Client) RegisterService(serverID, name, host string, port int) (*Servic
 	}
 
 	return &result.Data, nil
+}
+
+// BatchRegisterServices registers multiple services atomically on the
+// currently-paired server. Empty input is a valid no-op (returns empty
+// slice, no network call).
+func (c *Client) BatchRegisterServices(serverID string, services []BatchServiceInput) ([]BatchRegisterResult, error) {
+	if len(services) == 0 {
+		return []BatchRegisterResult{}, nil
+	}
+
+	payload := struct {
+		ServerID string              `json:"server_id"`
+		Services []BatchServiceInput `json:"services"`
+	}{ServerID: serverID, Services: services}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal batch request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", c.baseURL+"/api/services/register/batch", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create batch request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-FRP-Token", c.getFRPToken())
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("send batch request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := readResponseBody(resp)
+	if err != nil {
+		return nil, fmt.Errorf("read batch response: %w", err)
+	}
+
+	if !isSuccessStatus(resp.StatusCode) {
+		return nil, fmt.Errorf("batch register failed: %s", validation.ParseAPIError(respBody, resp.StatusCode))
+	}
+
+	var result struct {
+		Data struct {
+			Services []BatchRegisterResult `json:"services"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("parse batch response: %w", err)
+	}
+
+	return result.Data.Services, nil
 }
 
 // MigrateInfo contains the new FRP shard to connect to during migration.
