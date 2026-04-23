@@ -144,18 +144,24 @@ function renderState(data) {
             dom.mainContainer().classList.remove('hidden');
             dom.connectCard().classList.remove('hidden');
             dom.connectForm().classList.remove('hidden');
+            // Services are configurable before any account is attached.
+            dom.mainContent().classList.remove('hidden');
+            hideTopRow();
             break;
 
         case State.PAIRING:
             dom.mainContainer().classList.remove('hidden');
             dom.connectCard().classList.remove('hidden');
             dom.waitingApproval().classList.remove('hidden');
+            dom.mainContent().classList.remove('hidden');
+            hideTopRow();
             break;
 
         case State.PAIRED:
             dom.mainContainer().classList.remove('hidden');
             dom.mainContent().classList.remove('hidden');
             dom.serverIdFooter().classList.remove('hidden');
+            showTopRow();
             if (data) {
                 dom.serverName().textContent = data.server_name || 'My Server';
                 dom.userEmail().textContent = data.user_email || '-';
@@ -163,6 +169,16 @@ function renderState(data) {
             }
             break;
     }
+}
+
+function hideTopRow() {
+    const row = document.getElementById('top-row');
+    if (row) row.classList.add('hidden');
+}
+
+function showTopRow() {
+    const row = document.getElementById('top-row');
+    if (row) row.classList.remove('hidden');
 }
 
 function updateStatusBadge(state, data) {
@@ -242,8 +258,9 @@ async function poll() {
         // Render
         renderState(data);
 
-        // Load services when paired
-        if (currentState === State.PAIRED) {
+        // Services are a local resource — load them any time the user is in
+        // the main area (connect / pairing / paired), not just when paired.
+        if (currentState === State.PAIRED || currentState === State.CONNECT || currentState === State.PAIRING) {
             await loadServices();
         }
 
@@ -537,11 +554,13 @@ async function loadServices() {
         const data = await resp.json();
         const services = (data.services && data.services.length > 0)
             ? data.services.map(svc => ({
-                id: svc.id,
+                id: svc.id || '',
+                local_id: svc.local_id || '',
                 name: svc.name,
                 host: svc.host,
                 port: svc.port,
-                subdomain: svc.subdomain,
+                subdomain: svc.subdomain || '',
+                status: svc.status || 'local-only',
             }))
             : [];
 
@@ -600,13 +619,19 @@ function renderServices(services) {
 
         const subdomainEl = document.createElement('span');
         subdomainEl.className = 'service-subdomain';
-        subdomainEl.textContent = svc.subdomain;
+        if (svc.subdomain) {
+            subdomainEl.textContent = svc.subdomain;
+        } else {
+            subdomainEl.textContent = 'Local only';
+            subdomainEl.classList.add('service-badge-local');
+        }
 
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'service-delete';
         deleteBtn.title = 'Remove app';
         deleteBtn.textContent = '\u00D7';
-        deleteBtn.addEventListener('click', () => showDeleteServiceModal(svc.id, svc.name));
+        const deleteKey = svc.local_id || svc.id;
+        deleteBtn.addEventListener('click', () => showDeleteServiceModal(deleteKey, svc.name));
 
         item.appendChild(icon);
         item.appendChild(info);
@@ -679,7 +704,7 @@ async function confirmDeleteService() {
         const resp = await fetch('/api/services/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ service_id: serviceId, service_name: serviceName })
+            body: JSON.stringify({ local_id: serviceId, service_name: serviceName })
         });
         const data = await resp.json();
         if (data.error) { showToast(data.error); return; }

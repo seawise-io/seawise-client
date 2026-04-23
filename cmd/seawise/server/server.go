@@ -10,6 +10,7 @@ import (
 	"embed"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -157,6 +158,16 @@ func (s *Server) run(port int) {
 			s.apiClient.SetFRPToken(s.cfg.FRPToken)
 			s.pairingState = "paired"
 			s.connManager.SetState(connection.StateConnecting)
+
+			// One-time bootstrap: if machine.json has no local services yet
+			// but the server does, pull them in so the local machine owns a
+			// full picture across future unpair/repair cycles.
+			go func() {
+				if err := syncMachineServicesFromServer(s.apiClient, s.cfg.ServerID); err != nil {
+					slog.Warn("Initial machine-services sync failed", "component", "main", "error", err)
+				}
+			}()
+
 			s.startServices(ctx)
 		}
 	} else {
@@ -853,6 +864,21 @@ func (s *Server) handleFRPCrash() {
 	}
 }
 
+// handleUnpairInternal drops the current account binding but preserves
+// local machine state. Specifically:
+//
+//   - stops FRP
+//   - deletes account.json
+//   - clears server_service_id and subdomain on every service in
+//     machine.json (those IDs are now stale pointers to nothing)
+//   - leaves machine_id, service names, hosts, ports, icons, and
+//     password.hash untouched
+//
+// Callers are expected to have already notified the API (via DELETE
+// /servers/:id/disconnect) when the unpair was user-initiated locally —
+// this function does not call the API itself, since it is also invoked
+// in response to server-initiated unpair signals where the server row
+// is already gone.
 func (s *Server) handleUnpairInternal() {
 	s.mu.Lock()
 	if s.frpClient != nil {
@@ -860,16 +886,35 @@ func (s *Server) handleUnpairInternal() {
 		s.frpClient = nil
 	}
 
-	if err := config.Delete(); err != nil {
-		slog.Error("Failed to delete config", "component", "unpair", "error", err)
+	if err := config.DeleteAccount(); err != nil {
+		slog.Error("Failed to delete account file", "component", "unpair", "error", err)
 	}
+
+	if m, err := config.LoadMachine(); err == nil {
+		changed := false
+		for i := range m.Services {
+			if m.Services[i].ServerServiceID != "" || m.Services[i].Subdomain != "" {
+				m.Services[i].ServerServiceID = ""
+				m.Services[i].Subdomain = ""
+				changed = true
+			}
+		}
+		if changed {
+			if err := m.Save(); err != nil {
+				slog.Error("Failed to clear stale server IDs on machine state", "component", "unpair", "error", err)
+			}
+		}
+	} else {
+		slog.Warn("Machine state not loadable during unpair (nothing to clean)", "component", "unpair", "error", err)
+	}
+
 	s.cfg = nil
 	s.pairingState = "none"
 	s.pairingCode = ""
 	s.pairingDeviceCode = ""
 	s.mu.Unlock()
 
-	slog.Info("Client reset, please re-pair", "component", "unpair")
+	slog.Info("Account disconnected — machine state (services, password) preserved", "component", "unpair")
 }
 
 func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
@@ -1183,9 +1228,19 @@ func (s *Server) pollForApproval(ctx context.Context, deviceCode string) {
 				s.pairingCode = ""
 				s.pairingDeviceCode = ""
 				serverName := s.cfg.ServerName
+				currentServerID := s.cfg.ServerID
+				currentAPIClient := s.apiClient
 				s.mu.Unlock()
 
 				slog.Info("Pairing successful", "component", "pairing", "server_name", serverName)
+
+				// Register any pre-configured local services on the new account.
+				// Empty machine.Services is a no-op in the API client.
+				if err := registerLocalServices(currentAPIClient, currentServerID); err != nil {
+					slog.Error("Failed to batch-register local services", "component", "pairing", "error", err)
+					// Don't fail the pair — services can be synced later, and the
+					// machine still has them locally for the next retry.
+				}
 
 				// Start services
 				s.connManager.SetState(connection.StateConnecting)
@@ -1249,12 +1304,6 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 	client := s.frpClient
 	s.mu.RUnlock()
 
-	if !isPaired {
-		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w, map[string]string{"error": "Not paired yet. Connect to SeaWise first."})
-		return
-	}
-
 	r.Body = http.MaxBytesReader(w, r.Body, constants.MaxRequestBodySize)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -1294,81 +1343,112 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	existingServices, err := currentAPIClient.ListServices(currentCfg.ServerID)
-	if err == nil {
-		for _, existing := range existingServices {
-			if strings.EqualFold(existing.Name, req.Name) {
-				w.WriteHeader(http.StatusConflict)
-				writeJSON(w, map[string]string{"error": "An app with that name already exists"})
-				return
-			}
-		}
-	}
-
-	svc, err := currentAPIClient.RegisterService(currentCfg.ServerID, req.Name, req.Host, req.Port)
+	// Step 1: persist locally first. Machine state is the source of truth;
+	// the server entry (if any) is derived from it on the next pair.
+	local, err := addLocalService(req.Name, req.Host, req.Port, "")
 	if err != nil {
-		slog.Error("Failed to register service", "component", "webui", "service_name", req.Name, "error", err)
+		if errors.Is(err, ErrDuplicateServiceName) {
+			w.WriteHeader(http.StatusConflict)
+			writeJSON(w, map[string]string{"error": "An app with that name already exists"})
+			return
+		}
+		slog.Error("Failed to add service to machine state", "component", "webui", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to register app")})
+		writeJSON(w, map[string]string{"error": "Failed to save app"})
 		return
 	}
 
-	slog.Info("Registered service", "component", "webui", "service_name", req.Name, "subdomain", svc.Subdomain)
+	response := map[string]interface{}{
+		"success": true,
+		"service": map[string]interface{}{
+			"local_id": local.LocalID,
+			"name":     local.Name,
+			"host":     local.Host,
+			"port":     local.Port,
+			"status":   "local-only",
+		},
+	}
 
-	var tunnelWarning string
-	if client != nil {
-		frpSvc := frp.Service{
-			Name:      req.Name,
-			LocalIP:   req.Host,
-			LocalPort: req.Port,
-			Subdomain: svc.Subdomain,
+	// Step 2: if paired, register with the API and write back the server ID
+	// + subdomain. Failures here are soft — the service still exists locally
+	// and will be batch-registered on the next pair.
+	if isPaired && currentAPIClient != nil && currentCfg != nil {
+		svc, apiErr := currentAPIClient.RegisterService(currentCfg.ServerID, req.Name, req.Host, req.Port)
+		if apiErr != nil {
+			slog.Warn("Registered locally, but server registration failed", "component", "webui", "service_name", req.Name, "error", apiErr)
+			response["warning"] = "Saved locally. Server registration pending — will retry on reconnect."
+			writeJSON(w, response)
+			return
 		}
 
-		s.configureServiceTLS(&frpSvc, svc.Subdomain)
-		if err := client.AddService(frpSvc); err != nil {
-			slog.Warn("Failed to add to FRP tunnel", "component", "webui", "error", err)
-			tunnelWarning = "App registered but tunnel update pending. It will sync automatically."
-		} else {
-			slog.Info("Added to FRP tunnel", "component", "webui", "service_name", req.Name, "subdomain", svc.Subdomain)
+		if err := recordServerRegistration(local.LocalID, svc.ID, svc.Subdomain); err != nil {
+			slog.Warn("Failed to record server registration in machine state", "component", "webui", "error", err)
+		}
+
+		slog.Info("Registered service", "component", "webui", "service_name", req.Name, "subdomain", svc.Subdomain)
+
+		var tunnelWarning string
+		if client != nil {
+			frpSvc := frp.Service{
+				Name:      req.Name,
+				LocalIP:   req.Host,
+				LocalPort: req.Port,
+				Subdomain: svc.Subdomain,
+			}
+			s.configureServiceTLS(&frpSvc, svc.Subdomain)
+			if err := client.AddService(frpSvc); err != nil {
+				slog.Warn("Failed to add to FRP tunnel", "component", "webui", "error", err)
+				tunnelWarning = "App registered but tunnel update pending. It will sync automatically."
+			} else {
+				slog.Info("Added to FRP tunnel", "component", "webui", "service_name", req.Name, "subdomain", svc.Subdomain)
+			}
+		}
+
+		response["service"] = svc
+		response["subdomain"] = svc.Subdomain
+		if tunnelWarning != "" {
+			response["warning"] = tunnelWarning
 		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	response := map[string]interface{}{
-		"success":   true,
-		"service":   svc,
-		"subdomain": svc.Subdomain,
-	}
-	if tunnelWarning != "" {
-		response["warning"] = tunnelWarning
-	}
 	writeJSON(w, response)
 }
 
 func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	s.mu.RLock()
-	currentCfg := s.cfg
-	currentAPIClient := s.apiClient
-	s.mu.RUnlock()
-
-	if currentCfg == nil {
-		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w, map[string]string{"error": "Not paired yet"})
+	m, err := config.LoadMachine()
+	if err != nil {
+		slog.Error("Failed to load machine state", "component", "webui", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		writeJSON(w, map[string]string{"error": "Failed to load apps"})
 		return
 	}
 
-	services, err := currentAPIClient.ListServices(currentCfg.ServerID)
-	if err != nil {
-		slog.Error("Failed to list services", "component", "webui", "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to list apps")})
-		return
+	out := make([]map[string]interface{}, 0, len(m.Services))
+	for _, svc := range m.Services {
+		status := "local-only"
+		if svc.ServerServiceID != "" {
+			status = "registered"
+		}
+		out = append(out, map[string]interface{}{
+			"local_id":          svc.LocalID,
+			"name":              svc.Name,
+			"host":              svc.Host,
+			"port":              svc.Port,
+			"icon_url":          svc.IconURL,
+			"server_service_id": svc.ServerServiceID,
+			"subdomain":         svc.Subdomain,
+			"status":            status,
+			// Keep the legacy "id" field pointing at the server ID so the
+			// existing UI continues to work for paired clients.
+			"id": svc.ServerServiceID,
+		})
 	}
 
 	writeJSON(w, map[string]interface{}{
-		"services": services,
+		"services": out,
 	})
 }
 
@@ -1381,16 +1461,11 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	s.mu.RLock()
+	isPaired := s.pairingState == "paired" && s.cfg != nil
 	currentCfg := s.cfg
 	currentAPIClient := s.apiClient
 	client := s.frpClient
 	s.mu.RUnlock()
-
-	if currentCfg == nil {
-		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w, map[string]string{"error": "Not paired yet"})
-		return
-	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, constants.MaxRequestBodySize)
 	body, err := io.ReadAll(r.Body)
@@ -1401,6 +1476,7 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		ServiceID   string `json:"service_id"`
+		LocalID     string `json:"local_id"`
 		ServiceName string `json:"service_name"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -1409,26 +1485,52 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.ServiceID == "" {
+	if req.ServiceID == "" && req.LocalID == "" {
 		w.WriteHeader(http.StatusBadRequest)
-		writeJSON(w, map[string]string{"error": "service_id is required"})
+		writeJSON(w, map[string]string{"error": "service_id or local_id is required"})
 		return
 	}
 
-	if err := currentAPIClient.DeleteService(currentCfg.ServerID, req.ServiceID); err != nil {
-		slog.Error("Failed to delete service", "component", "webui", "service_id", req.ServiceID, "error", err)
+	// Remove from machine.json. Try by local_id first, fall back to
+	// server id (for older UI clients that still pass it).
+	var removed *config.LocalService
+	if req.LocalID != "" {
+		removed, err = removeLocalServiceByLocalID(req.LocalID)
+	} else {
+		removed, err = removeLocalServiceByServerID(req.ServiceID)
+	}
+	if err != nil {
+		slog.Error("Failed to remove service from machine state", "component", "webui", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to delete app")})
+		writeJSON(w, map[string]string{"error": "Failed to delete app"})
+		return
+	}
+	if removed == nil {
+		w.WriteHeader(http.StatusNotFound)
+		writeJSON(w, map[string]string{"error": "App not found"})
 		return
 	}
 
-	slog.Info("Deleted service", "component", "webui", "service_name", req.ServiceName, "service_id", req.ServiceID)
+	// If paired and the service was registered, also delete on the server.
+	// Failure here is logged but non-fatal — local state is authoritative,
+	// and the orphan on the server will be cleaned up on next disconnect.
+	serverServiceID := removed.ServerServiceID
+	if req.ServiceID != "" && serverServiceID == "" {
+		serverServiceID = req.ServiceID
+	}
+	if isPaired && currentAPIClient != nil && currentCfg != nil && serverServiceID != "" {
+		if err := currentAPIClient.DeleteService(currentCfg.ServerID, serverServiceID); err != nil {
+			slog.Warn("Service removed locally, server delete failed", "component", "webui", "service_id", serverServiceID, "error", err)
+		}
+	}
 
-	if client != nil && req.ServiceName != "" {
-		if err := client.RemoveService(req.ServiceName); err != nil {
+	slog.Info("Deleted service", "component", "webui", "service_name", removed.Name)
+
+	if client != nil && removed.Name != "" {
+		if err := client.RemoveService(removed.Name); err != nil {
 			slog.Warn("Failed to remove from FRP tunnel", "component", "webui", "error", err)
 		} else {
-			slog.Info("Removed from FRP tunnel", "component", "webui", "service_name", req.ServiceName)
+			slog.Info("Removed from FRP tunnel", "component", "webui", "service_name", removed.Name)
 		}
 	}
 

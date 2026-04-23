@@ -403,6 +403,11 @@ input::placeholder { color: #8C8C8C; }
     padding: 0.2rem 0.5rem;
     border-radius: 4px;
 }
+.service-badge-local {
+    color: #6B7280;
+    background: #F3F4F6;
+    font-family: inherit;
+}
 .service-delete {
     width: 24px;
     height: 24px;
