@@ -1265,11 +1265,31 @@ func (s *Server) handlePairCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Read the device_code under lock, then clear local pairing state.
+	// We capture device_code before unlocking so the API call below uses the
+	// value we owned at cancel time even if a concurrent re-pair happens.
 	s.mu.Lock()
+	deviceCode := s.pairingDeviceCode
 	s.pairingState = "none"
 	s.pairingCode = ""
 	s.pairingDeviceCode = ""
 	s.mu.Unlock()
+
+	// Tell the server to invalidate the pending code, best-effort. Local
+	// cancellation has already succeeded; this prevents a race where the user
+	// could approve in their browser tab after we gave up. Fire-and-forget so
+	// UX stays instant — if the API is unreachable, the row expires server-side
+	// in 15 minutes anyway.
+	if deviceCode != "" && s.apiClient != nil {
+		go func(dc string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := s.apiClient.CancelPairing(ctx, dc); err != nil {
+				slog.Warn("Server-side pairing cancel failed (will expire on its own)",
+					"component", "pairing", "error", err.Error())
+			}
+		}(deviceCode)
+	}
 
 	slog.Info("Pairing cancelled by user", "component", "pairing")
 	writeJSON(w, map[string]string{"status": "cancelled"})

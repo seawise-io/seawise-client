@@ -276,6 +276,41 @@ func (c *Client) CompletePairing(deviceCode string) (*PairCompleteResponse, erro
 	return &result, nil
 }
 
+// CancelPairing tells the server to invalidate a pending pairing the client
+// has abandoned. Idempotent — server returns 200 whether the code was pending,
+// already cancelled, already used, or doesn't exist (anti-enumeration).
+//
+// Best-effort by design: callers should not block local cancellation on this
+// completing or succeeding. If the API is unreachable the row expires server-
+// side anyway (15 min TTL), so a missed cancel is self-healing.
+//
+// Caller is responsible for setting an appropriate context timeout.
+func (c *Client) CancelPairing(ctx context.Context, deviceCode string) error {
+	payload := map[string]string{"device_code": deviceCode}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal cancel request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/servers/pair/cancel", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create cancel request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("send cancel request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		respBody, _ := readResponseBody(resp)
+		return fmt.Errorf("cancel pairing failed: %s", validation.ParseAPIError(respBody, resp.StatusCode))
+	}
+	return nil
+}
+
 type Service struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
