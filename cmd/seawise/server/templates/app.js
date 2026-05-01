@@ -17,6 +17,24 @@
 // --- Go template injects WEB_APP_URL before this file loads ---
 // const WEB_APP_URL is defined in index.html <script> block
 
+// SEA-151: defense-in-depth scheme check. WEB_APP_URL is operator-supplied via
+// SEAWISE_WEB_URL env var. A misconfiguration to a non-http(s) scheme (e.g.
+// javascript:...) would execute as JS when passed to window.open(). The string
+// is JS-context-escaped by html/template, but a valid string literal of
+// 'javascript:...' is still legal and would fire on open(). Compute once at
+// module init; consumers (connectToSeaWise) check this flag before opening.
+const WEB_APP_URL_VALID = (() => {
+    try {
+        const u = new URL(WEB_APP_URL);
+        return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch {
+        return false;
+    }
+})();
+if (!WEB_APP_URL_VALID) {
+    console.error('[seawise] WEB_APP_URL is not a valid http(s) URL; pairing flow disabled. Set SEAWISE_WEB_URL to an http(s) origin.');
+}
+
 // ===== State Machine =====
 
 const State = Object.freeze({
@@ -509,6 +527,12 @@ async function doSetPassword() {
 // ===== Pairing =====
 
 async function connectToSeaWise() {
+    // SEA-151: refuse to open the dashboard with a malformed WEB_APP_URL
+    // (operator misconfiguration could otherwise let a non-http scheme execute).
+    if (!WEB_APP_URL_VALID) {
+        showToast('Web URL is misconfigured on this client. Check SEAWISE_WEB_URL.');
+        return;
+    }
     const serverName = dom.serverNameInput().value || 'My Server';
     try {
         const resp = await fetch('/api/pair/start', {
