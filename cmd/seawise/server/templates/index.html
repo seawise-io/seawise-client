@@ -98,43 +98,14 @@
             </div>
         </div>
 
-        <!-- Connect Card (shown after password setup + when not paired) -->
-        <div class="card card-accent hidden" id="connect-card">
-            <div class="card-header">
-                <div class="card-icon orange">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
-                    </svg>
-                </div>
-                <div>
-                    <div class="card-title">Connect to Seawise.io</div>
-                    <div class="card-subtitle">Link this server to your account</div>
-                </div>
-            </div>
-
-            <div id="connect-form" class="hidden">
-                <input type="text" id="server-name-input" placeholder="Server name" />
-                <button class="btn btn-primary" onclick="connectToSeaWise()">Connect to Seawise.io</button>
-                <p class="input-hint input-hint-center">Opens your browser to authorize this server</p>
-            </div>
-
-            <div id="waiting-approval" class="hidden">
-                <div class="waiting">
-                    <div class="spinner"></div>
-                    <p class="text-primary waiting-title">Waiting for authorization...</p>
-                    <p class="waiting-subtitle">Complete the authorization in your browser</p>
-                </div>
-                <button class="btn btn-secondary cancel-btn-mt" onclick="cancelPairing()">Cancel</button>
-            </div>
-        </div>
-
         <!-- Main Content: services list and add form — always available once authenticated. -->
         <div class="hidden" id="main-content">
-            <!-- Top Row: Server Info + Disconnect (shown only when paired) -->
-            <div class="top-row hidden" id="top-row">
+            <!-- Top Row: Server Info + connection toggle button. Layout is the
+                 same whether paired or not; contents swap via JS. -->
+            <div class="top-row" id="top-row">
                 <div class="server-info">
-                    <div class="card-icon green">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <div class="card-icon green" id="server-info-icon">
+                        <svg id="server-info-icon-svg" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 14.25h13.5m-13.5 0a3 3 0 01-3-3m3 3a3 3 0 100 6h13.5a3 3 0 100-6m-16.5-3a3 3 0 013-3h13.5a3 3 0 013 3m-19.5 0a4.5 4.5 0 01.9-2.7L5.737 5.1a3.375 3.375 0 012.7-1.35h7.126c1.062 0 2.062.5 2.7 1.35l2.587 3.45a4.5 4.5 0 01.9 2.7m0 0a3 3 0 01-3 3m0 3h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008zm-3 6h.008v.008h-.008v-.008zm0-6h.008v.008h-.008v-.008z" />
                         </svg>
                     </div>
@@ -145,7 +116,7 @@
                         </div>
                     </div>
                 </div>
-                <button class="disconnect-btn" onclick="showDisconnectModal()">Disconnect</button>
+                <button class="connect-btn" id="connection-btn" onclick="handleConnectionBtn()">Connect</button>
             </div>
 
             <!-- Add Service Section -->
@@ -173,6 +144,41 @@
                         <p>No apps added yet</p>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Connect Modal -->
+    <div class="modal-overlay" id="connect-modal" onclick="if(event.target === this) hideConnectModal()">
+        <div class="modal">
+            <button class="modal-close" aria-label="Close" onclick="cancelOrCloseConnectModal()">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+            <div class="modal-icon blue">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                </svg>
+            </div>
+            <div class="modal-title">Connect to SeaWise</div>
+            <div class="modal-message">Give this server a name so you can recognize it in your SeaWise dashboard.</div>
+
+            <div id="connect-form">
+                <input type="text" id="server-name-input" placeholder="e.g. Home Server, Office NAS" />
+                <p class="input-hint input-hint-center">When you click Connect, your browser will open seawise.io to sign in. After you approve, this server will appear in your dashboard and you can start adding apps.</p>
+            </div>
+
+            <div id="waiting-approval" class="hidden">
+                <div class="waiting">
+                    <div class="spinner"></div>
+                    <p class="text-primary waiting-title">Waiting for authorization...</p>
+                    <p class="waiting-subtitle">Complete the authorization in your browser</p>
+                </div>
+            </div>
+
+            <div class="modal-buttons">
+                <button class="btn btn-primary" id="connect-modal-submit" onclick="connectToSeaWise()">Connect</button>
             </div>
         </div>
     </div>
