@@ -102,8 +102,8 @@ type PairingCodes struct {
 }
 
 // InitPairing starts the pairing process and returns both codes.
-func (c *Client) InitPairing(serverName string) (*PairingCodes, error) {
-	result, err := c.RequestPairing(serverName)
+func (c *Client) InitPairing(ctx context.Context, serverName string) (*PairingCodes, error) {
+	result, err := c.RequestPairing(ctx, serverName)
 	if err != nil {
 		return nil, fmt.Errorf("init pairing: %w", err)
 	}
@@ -143,14 +143,14 @@ type PairRequestResponse struct {
 	ExpiresAt  string `json:"expires_at"`
 }
 
-func (c *Client) RequestPairing(serverName string) (*PairRequestResponse, error) {
+func (c *Client) RequestPairing(ctx context.Context, serverName string) (*PairRequestResponse, error) {
 	payload := map[string]string{"server_name": serverName}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.baseURL+"/api/servers/pair/request", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/servers/pair/request", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create pairing request: %w", err)
 	}
@@ -180,14 +180,14 @@ func (c *Client) RequestPairing(serverName string) (*PairRequestResponse, error)
 }
 
 // PollPairingStatus polls for approval using device_code.
-func (c *Client) PollPairingStatus(deviceCode string) (string, error) {
+func (c *Client) PollPairingStatus(ctx context.Context, deviceCode string) (string, error) {
 	payload := map[string]string{"device_code": deviceCode}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.baseURL+"/api/servers/pair/status", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/servers/pair/status", bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("create poll request: %w", err)
 	}
@@ -240,14 +240,14 @@ type PairCompleteResponse struct {
 }
 
 // CompletePairing completes the pairing using device_code.
-func (c *Client) CompletePairing(deviceCode string) (*PairCompleteResponse, error) {
+func (c *Client) CompletePairing(ctx context.Context, deviceCode string) (*PairCompleteResponse, error) {
 	payload := PairCompleteRequest{DeviceCode: deviceCode}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshal complete request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.baseURL+"/api/servers/pair/complete", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/servers/pair/complete", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create complete request: %w", err)
 	}
@@ -346,7 +346,7 @@ type BatchRegisterResult struct {
 	Status    string `json:"status"`
 }
 
-func (c *Client) RegisterService(serverID, name, host string, port int) (*Service, error) {
+func (c *Client) RegisterService(ctx context.Context, serverID, name, host string, port int) (*Service, error) {
 	payload := RegisterServiceRequest{
 		ServerID: serverID,
 		Name:     name,
@@ -358,7 +358,7 @@ func (c *Client) RegisterService(serverID, name, host string, port int) (*Servic
 		return nil, fmt.Errorf("marshal service request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.baseURL+"/api/services/register", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/services/register", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create service request: %w", err)
 	}
@@ -393,7 +393,7 @@ func (c *Client) RegisterService(serverID, name, host string, port int) (*Servic
 // BatchRegisterServices registers multiple services atomically on the
 // currently-paired server. Empty input is a valid no-op (returns empty
 // slice, no network call).
-func (c *Client) BatchRegisterServices(serverID string, services []BatchServiceInput) ([]BatchRegisterResult, error) {
+func (c *Client) BatchRegisterServices(ctx context.Context, serverID string, services []BatchServiceInput) ([]BatchRegisterResult, error) {
 	if len(services) == 0 {
 		return []BatchRegisterResult{}, nil
 	}
@@ -407,7 +407,7 @@ func (c *Client) BatchRegisterServices(serverID string, services []BatchServiceI
 		return nil, fmt.Errorf("marshal batch request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.baseURL+"/api/services/register/batch", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/services/register/batch", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create batch request: %w", err)
 	}
@@ -475,7 +475,7 @@ type HeartbeatResult struct {
 	Error        error
 }
 
-func (c *Client) Heartbeat(serverID string, frpConnected bool, serviceCount int, clientVersion string, connectionID string) HeartbeatResult {
+func (c *Client) Heartbeat(ctx context.Context, serverID string, frpConnected bool, serviceCount int, clientVersion string, connectionID string) HeartbeatResult {
 	if !isValidUUID(serverID) {
 		return HeartbeatResult{Error: fmt.Errorf("invalid server ID format")}
 	}
@@ -490,7 +490,7 @@ func (c *Client) Heartbeat(serverID string, frpConnected bool, serviceCount int,
 		return HeartbeatResult{Error: fmt.Errorf("marshal request: %w", err)}
 	}
 
-	req, err := http.NewRequest("POST", c.baseURL+"/api/servers/"+serverID+"/heartbeat", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/servers/"+serverID+"/heartbeat", bytes.NewReader(body))
 	if err != nil {
 		return HeartbeatResult{Error: fmt.Errorf("create heartbeat request: %w", err)}
 	}
@@ -546,8 +546,8 @@ func (c *Client) Heartbeat(serverID string, frpConnected bool, serviceCount int,
 	}
 }
 
-func (c *Client) ListServices(serverID string) ([]Service, error) {
-	req, err := http.NewRequest("GET", c.baseURL+"/api/servers/"+serverID+"/services", nil)
+func (c *Client) ListServices(ctx context.Context, serverID string) ([]Service, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/api/servers/"+serverID+"/services", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create list services request: %w", err)
 	}
@@ -583,7 +583,7 @@ type ServiceHealthStatus struct {
 	Status string `json:"status"`
 }
 
-func (c *Client) ReportServiceHealth(serverID string, statuses []ServiceHealthStatus) error {
+func (c *Client) ReportServiceHealth(ctx context.Context, serverID string, statuses []ServiceHealthStatus) error {
 	payload, err := json.Marshal(map[string]interface{}{
 		"services": statuses,
 	})
@@ -591,7 +591,7 @@ func (c *Client) ReportServiceHealth(serverID string, statuses []ServiceHealthSt
 		return fmt.Errorf("marshal health status: %w", err)
 	}
 
-	req, err := http.NewRequest("PATCH", c.baseURL+"/api/servers/"+serverID+"/services/health", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, "PATCH", c.baseURL+"/api/servers/"+serverID+"/services/health", bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("create health report request: %w", err)
 	}
@@ -613,8 +613,8 @@ func (c *Client) ReportServiceHealth(serverID string, statuses []ServiceHealthSt
 }
 
 // MarkOffline notifies the API that this server is going offline.
-func (c *Client) MarkOffline(serverID string) error {
-	req, err := http.NewRequest("POST", c.baseURL+"/api/servers/"+serverID+"/offline", nil)
+func (c *Client) MarkOffline(ctx context.Context, serverID string) error {
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/servers/"+serverID+"/offline", nil)
 	if err != nil {
 		return fmt.Errorf("create offline request: %w", err)
 	}
@@ -633,8 +633,8 @@ func (c *Client) MarkOffline(serverID string) error {
 	return nil
 }
 
-func (c *Client) DeleteServer(serverID string) error {
-	req, err := http.NewRequest("DELETE", c.baseURL+"/api/servers/"+serverID+"/disconnect", nil)
+func (c *Client) DeleteServer(ctx context.Context, serverID string) error {
+	req, err := http.NewRequestWithContext(ctx, "DELETE", c.baseURL+"/api/servers/"+serverID+"/disconnect", nil)
 	if err != nil {
 		return fmt.Errorf("create disconnect request: %w", err)
 	}
@@ -654,8 +654,8 @@ func (c *Client) DeleteServer(serverID string) error {
 }
 
 // DeleteService deletes a service from the server.
-func (c *Client) DeleteService(serverID, serviceID string) error {
-	req, err := http.NewRequest("DELETE", c.baseURL+"/api/servers/"+serverID+"/services/"+serviceID, nil)
+func (c *Client) DeleteService(ctx context.Context, serverID, serviceID string) error {
+	req, err := http.NewRequestWithContext(ctx, "DELETE", c.baseURL+"/api/servers/"+serverID+"/services/"+serviceID, nil)
 	if err != nil {
 		return fmt.Errorf("create delete service request: %w", err)
 	}
@@ -688,8 +688,8 @@ type CertIssueResponse struct {
 }
 
 // GetCertStatus checks if E2E TLS is enabled on the server.
-func (c *Client) GetCertStatus() (*CertStatusResponse, error) {
-	req, err := http.NewRequest("GET", c.baseURL+"/api/certs/status", nil)
+func (c *Client) GetCertStatus(ctx context.Context) (*CertStatusResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/api/certs/status", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create cert status request: %w", err)
 	}

@@ -13,6 +13,12 @@ const (
 	BaseRetryDelay    = 1 * time.Second
 	MaxRetryDelay     = 5 * time.Minute
 	HTTPClientTimeout = 30 * time.Second
+	// PostReconnectHealthCheckDelay gives the network a moment to settle after
+	// a successful reconnect before probing service health.
+	PostReconnectHealthCheckDelay = 5 * time.Second
+	// SupersededRestartDelay throttles the FRP restart after the server reports
+	// connection_id supersede. Avoids tight reconnect loops when two clients race.
+	SupersededRestartDelay = 2 * time.Second
 )
 
 // Polling intervals

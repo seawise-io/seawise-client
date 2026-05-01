@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -112,7 +113,7 @@ func removeLocalServiceByServerID(serverServiceID string) (*config.LocalService,
 // Called right after a successful pair and any time an unpaired-then-
 // repaired machine has local services that need re-registering on the new
 // account.
-func registerLocalServices(apiClient *api.Client, serverID string) error {
+func registerLocalServices(ctx context.Context, apiClient *api.Client, serverID string) error {
 	if apiClient == nil {
 		return fmt.Errorf("nil api client")
 	}
@@ -144,7 +145,7 @@ func registerLocalServices(apiClient *api.Client, serverID string) error {
 		})
 	}
 
-	results, err := apiClient.BatchRegisterServices(serverID, inputs)
+	results, err := apiClient.BatchRegisterServices(ctx, serverID, inputs)
 	if err != nil {
 		return fmt.Errorf("batch register: %w", err)
 	}
@@ -183,7 +184,7 @@ func registerLocalServices(apiClient *api.Client, serverID string) error {
 // pre-split config.json: they already have services living on the server,
 // so the local machine.json needs to learn about them to survive future
 // unpair/repair cycles.
-func syncMachineServicesFromServer(apiClient *api.Client, serverID string) error {
+func syncMachineServicesFromServer(ctx context.Context, apiClient *api.Client, serverID string) error {
 	if apiClient == nil {
 		return fmt.Errorf("nil api client")
 	}
@@ -198,7 +199,7 @@ func syncMachineServicesFromServer(apiClient *api.Client, serverID string) error
 		return nil
 	}
 
-	serverServices, err := apiClient.ListServices(serverID)
+	serverServices, err := apiClient.ListServices(ctx, serverID)
 	if err != nil {
 		return fmt.Errorf("list services: %w", err)
 	}

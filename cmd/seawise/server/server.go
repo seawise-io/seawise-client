@@ -139,8 +139,14 @@ func (s *Server) run(port int) {
 				s.mu.Lock()
 				s.lastHealthStatus = make(map[string]string)
 				s.mu.Unlock()
+				// SEA-152: tie the post-reconnect health-check delay to shutdownCtx
+				// so a Ctrl-C during reconnect doesn't leave a goroutine running.
 				go func() {
-					time.Sleep(5 * time.Second)
+					select {
+					case <-time.After(constants.PostReconnectHealthCheckDelay):
+					case <-s.shutdownCtx.Done():
+						return
+					}
 					s.checkAndReportHealth()
 				}()
 			}
@@ -179,7 +185,7 @@ func (s *Server) run(port int) {
 			// but the server does, pull them in so the local machine owns a
 			// full picture across future unpair/repair cycles.
 			go func() {
-				if err := syncMachineServicesFromServer(s.apiClient, s.cfg.ServerID); err != nil {
+				if err := syncMachineServicesFromServer(s.shutdownCtx, s.apiClient, s.cfg.ServerID); err != nil {
 					slog.Warn("Initial machine-services sync failed", "component", "main", "error", err)
 				}
 			}()
@@ -215,11 +221,14 @@ func (s *Server) run(port int) {
 	shutdownAPIClient := s.apiClient
 	s.mu.RUnlock()
 	if shutdownCfg != nil && shutdownAPIClient != nil {
-		if err := shutdownAPIClient.MarkOffline(shutdownCfg.ServerID); err != nil {
+		// Bounded context so shutdown doesn't hang on a slow API.
+		offlineCtx, offlineCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := shutdownAPIClient.MarkOffline(offlineCtx, shutdownCfg.ServerID); err != nil {
 			slog.Error("Failed to notify API of shutdown", "component", "main", "error", err)
 		} else {
 			slog.Info("Notified API: server going offline", "component", "main")
 		}
+		offlineCancel()
 	}
 
 	s.connManager.Stop()
@@ -236,7 +245,20 @@ func (s *Server) run(port int) {
 }
 
 func (s *Server) startServices(ctx context.Context) {
-	frpServerAddr := s.cfg.FRPServerAddr
+	// SEA-152: read config under lock, build state in locals (no s.* mutation
+	// during slow API calls or cert setup), then publish to s.* in a single
+	// critical section at the end. Keeps the main RWMutex free during network
+	// I/O while still satisfying the Go race detector.
+	s.mu.RLock()
+	cfgSnapshot := s.cfg
+	apiClient := s.apiClient
+	s.mu.RUnlock()
+	if cfgSnapshot == nil || apiClient == nil {
+		slog.Error("startServices called before pair config loaded", "component", "main")
+		return
+	}
+
+	frpServerAddr := cfgSnapshot.FRPServerAddr
 	if frpServerAddr == "" {
 		frpServerAddr = os.Getenv("FRP_SERVER_ADDR")
 	}
@@ -244,41 +266,44 @@ func (s *Server) startServices(ctx context.Context) {
 		frpServerAddr = constants.DockerHostInternal
 	}
 
-	frpServerPort := s.cfg.FRPServerPort
+	frpServerPort := cfgSnapshot.FRPServerPort
 	if frpServerPort == 0 {
 		frpServerPort = constants.DefaultFRPServerPort
 	}
 
-	frpToken := s.cfg.FRPToken
+	frpToken := cfgSnapshot.FRPToken
 
-	slog.Info("Connecting to FRP server", "component", "frp", "addr", frpServerAddr, "port", frpServerPort, "tls", s.cfg.FRPUseTLS) // #nosec G706 -- config values, not user input
+	slog.Info("Connecting to FRP server", "component", "frp", "addr", frpServerAddr, "port", frpServerPort, "tls", cfgSnapshot.FRPUseTLS) // #nosec G706 -- config values, not user input
 
-	certStatus, err := s.apiClient.GetCertStatus()
+	var e2eTLSEnabled bool
+	var certManager *certs.CertManager
+
+	certStatus, err := apiClient.GetCertStatus(ctx)
 	if err != nil {
 		slog.Error("Failed to check E2E TLS status", "component", "e2e_tls", "error", err)
-		s.e2eTLSEnabled = false
 	} else {
-		s.e2eTLSEnabled = certStatus.E2ETLSEnabled
-		slog.Info("E2E TLS status", "component", "e2e_tls", "enabled", s.e2eTLSEnabled)
+		e2eTLSEnabled = certStatus.E2ETLSEnabled
+		slog.Info("E2E TLS status", "component", "e2e_tls", "enabled", e2eTLSEnabled)
 	}
 
-	if s.e2eTLSEnabled {
-		s.certManager = certs.New(paths.DataDir())
-		if err := s.certManager.EnsureDir(); err != nil {
+	if e2eTLSEnabled {
+		certManager = certs.New(paths.DataDir())
+		if err := certManager.EnsureDir(); err != nil {
 			slog.Error("Failed to create certs dir", "component", "e2e_tls", "error", err)
-			s.e2eTLSEnabled = false
+			e2eTLSEnabled = false
+			certManager = nil
 		}
 	}
 
-	s.frpClient = frp.New(frp.Config{
+	frpClient := frp.New(frp.Config{
 		ServerAddr: frpServerAddr,
 		ServerPort: frpServerPort,
 		Token:      frpToken,
-		ServerID:   s.cfg.ServerID,
-		UseTLS:     s.cfg.FRPUseTLS,
+		ServerID:   cfgSnapshot.ServerID,
+		UseTLS:     cfgSnapshot.FRPUseTLS,
 	})
 
-	s.frpClient.SetOnStateChange(func(state frp.ProcessState) {
+	frpClient.SetOnStateChange(func(state frp.ProcessState) {
 		slog.Info("FRP process state changed", "component", "main", "state", string(state))
 		if state == frp.ProcessCrashed {
 			s.connManager.SetState(connection.StateReconnecting)
@@ -286,9 +311,17 @@ func (s *Server) startServices(ctx context.Context) {
 		}
 	})
 
+	// Publish FRP client + TLS state under lock. Done before adding services so
+	// concurrent readers see a consistent picture (TLS flag matches client).
+	s.mu.Lock()
+	s.frpClient = frpClient
+	s.certManager = certManager
+	s.e2eTLSEnabled = e2eTLSEnabled
+	s.mu.Unlock()
+
 	slog.Info("FRP client initialized, ready to add services", "component", "frp")
 
-	services, err := s.apiClient.ListServices(s.cfg.ServerID)
+	services, err := s.apiClient.ListServices(ctx, cfgSnapshot.ServerID)
 	if err != nil {
 		slog.Error("Failed to load services from API", "component", "main", "error", err)
 	} else if len(services) > 0 {
@@ -364,7 +397,7 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 		connectionID = client.ConnectionID()
 	}
 
-	result := currentAPIClient.Heartbeat(currentCfg.ServerID, frpConnected, serviceCount, constants.Version, connectionID)
+	result := currentAPIClient.Heartbeat(s.shutdownCtx, currentCfg.ServerID, frpConnected, serviceCount, constants.Version, connectionID)
 
 	if result.ShouldUnpair {
 		slog.Info("Server requests unpair", "component", "heartbeat")
@@ -383,8 +416,13 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 			if err := client.Stop(); err != nil {
 				slog.Error("Failed to stop FRP for restart", "component", "heartbeat", "error", err)
 			}
+			// SEA-152: tie the post-supersede restart delay to shutdownCtx.
 			go func() {
-				time.Sleep(2 * time.Second)
+				select {
+				case <-time.After(constants.SupersededRestartDelay):
+				case <-s.shutdownCtx.Done():
+					return
+				}
 				s.mu.RLock()
 				cfg := s.cfg
 				s.mu.RUnlock()
@@ -423,9 +461,14 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 		s.mu.Lock()
 		s.lastHealthStatus = make(map[string]string)
 		s.mu.Unlock()
-		// Trigger immediate health check after short delay (network may need a moment)
+		// Trigger immediate health check after short delay (network may need a moment).
+		// SEA-152: tied to shutdownCtx.
 		go func() {
-			time.Sleep(5 * time.Second)
+			select {
+			case <-time.After(constants.PostReconnectHealthCheckDelay):
+			case <-s.shutdownCtx.Done():
+				return
+			}
 			s.checkAndReportHealth()
 		}()
 	}
@@ -599,7 +642,7 @@ func (s *Server) checkAndReportHealth() {
 
 	if len(changed) > 0 {
 		slog.Info("Service health status changed, reporting", "component", "health", "changed_count", len(changed))
-		if err := currentAPIClient.ReportServiceHealth(currentCfg.ServerID, changed); err != nil {
+		if err := currentAPIClient.ReportServiceHealth(s.shutdownCtx, currentCfg.ServerID, changed); err != nil {
 			slog.Error("Failed to report health", "component", "health", "error", err)
 			s.mu.Lock()
 			for _, svc := range changed {
@@ -675,7 +718,10 @@ func (s *Server) fetchLatestVersion() {
 
 // ensureServiceCert ensures a TLS certificate exists for the service.
 func (s *Server) ensureServiceCert(subdomain string) (certPath, keyPath string, err error) {
-	if s.certManager == nil {
+	s.mu.RLock()
+	cm := s.certManager
+	s.mu.RUnlock()
+	if cm == nil {
 		return "", "", nil
 	}
 
@@ -689,8 +735,8 @@ func (s *Server) ensureServiceCert(subdomain string) (certPath, keyPath string, 
 	}
 	domain := subdomain + "." + subdomainHost
 
-	if s.certManager.CertExists(domain) && !s.certManager.NeedsRenewal(domain) {
-		cert, key, err := s.certManager.GetCertPaths(domain)
+	if cm.CertExists(domain) && !cm.NeedsRenewal(domain) {
+		cert, key, err := cm.GetCertPaths(domain)
 		if err != nil {
 			return "", "", err
 		}
@@ -699,27 +745,30 @@ func (s *Server) ensureServiceCert(subdomain string) (certPath, keyPath string, 
 
 	slog.Info("Requesting certificate", "component", "e2e_tls", "domain", domain) // #nosec G706 -- domain from API config
 
-	key, err := s.certManager.GenerateKey()
+	key, err := cm.GenerateKey()
 	if err != nil {
 		return "", "", err
 	}
 
-	csrPEM, err := s.certManager.CreateCSR(key, domain)
+	csrPEM, err := cm.CreateCSR(key, domain)
 	if err != nil {
 		return "", "", err
 	}
 
-	certResp, err := s.apiClient.RequestCertificate(subdomain, csrPEM)
+	s.mu.RLock()
+	apiClient := s.apiClient
+	s.mu.RUnlock()
+	certResp, err := apiClient.RequestCertificate(subdomain, csrPEM)
 	if err != nil {
 		return "", "", err
 	}
 
-	keyPath, err = s.certManager.SaveKey(key, domain)
+	keyPath, err = cm.SaveKey(key, domain)
 	if err != nil {
 		return "", "", err
 	}
 
-	certPath, err = s.certManager.SaveCert([]byte(certResp.Certificate), domain)
+	certPath, err = cm.SaveCert([]byte(certResp.Certificate), domain)
 	if err != nil {
 		return "", "", err
 	}
@@ -730,7 +779,11 @@ func (s *Server) ensureServiceCert(subdomain string) (certPath, keyPath string, 
 
 // configureServiceTLS sets up E2E TLS on a FRP service.
 func (s *Server) configureServiceTLS(frpSvc *frp.Service, subdomain string) {
-	if !s.e2eTLSEnabled || s.certManager == nil {
+	s.mu.RLock()
+	enabled := s.e2eTLSEnabled
+	cm := s.certManager
+	s.mu.RUnlock()
+	if !enabled || cm == nil {
 		return
 	}
 	certPath, keyPath, err := s.ensureServiceCert(subdomain)
@@ -758,7 +811,7 @@ func (s *Server) syncServices() {
 		return
 	}
 
-	apiServices, err := currentAPIClient.ListServices(currentCfg.ServerID)
+	apiServices, err := currentAPIClient.ListServices(s.shutdownCtx, currentCfg.ServerID)
 	if err != nil {
 		slog.Error("Failed to fetch services", "component", "sync", "error", err)
 		return
@@ -837,13 +890,15 @@ func (s *Server) handleFRPCrash() {
 	s.mu.RUnlock()
 
 	if currentAPIClient != nil {
-		if err := currentAPIClient.MarkOffline(currentCfg.ServerID); err != nil {
+		offlineCtx, offlineCancel := context.WithTimeout(s.shutdownCtx, 10*time.Second)
+		if err := currentAPIClient.MarkOffline(offlineCtx, currentCfg.ServerID); err != nil {
 			slog.Error("Failed to mark offline", "component", "frp_recovery", "error", err)
 		}
+		offlineCancel()
 	}
 
 	if currentAPIClient != nil {
-		services, err := currentAPIClient.ListServices(currentCfg.ServerID)
+		services, err := currentAPIClient.ListServices(s.shutdownCtx, currentCfg.ServerID)
 		if err != nil {
 			slog.Error("Failed to reload services", "component", "frp_recovery", "error", err)
 		} else if len(services) > 0 {
@@ -1153,7 +1208,7 @@ func (s *Server) handlePairStart(w http.ResponseWriter, r *http.Request) {
 		req.ServerName = req.ServerName[:100]
 	}
 
-	result, err := s.apiClient.RequestPairing(req.ServerName)
+	result, err := s.apiClient.RequestPairing(r.Context(), req.ServerName)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		writeJSON(w, map[string]string{"error": validation.SanitizeErrorForUI(err, "Failed to request pairing code")})
@@ -1211,7 +1266,7 @@ func (s *Server) pollForApproval(ctx context.Context, deviceCode string) {
 				return
 			}
 
-			status, err := currentAPIClient.PollPairingStatus(deviceCode)
+			status, err := currentAPIClient.PollPairingStatus(ctx, deviceCode)
 			if err != nil {
 				slog.Warn("Pairing poll error", "component", "pairing", "error", err)
 				continue
@@ -1219,7 +1274,7 @@ func (s *Server) pollForApproval(ctx context.Context, deviceCode string) {
 
 			switch status {
 			case "approved":
-				result, err := currentAPIClient.CompletePairing(deviceCode)
+				result, err := currentAPIClient.CompletePairing(ctx, deviceCode)
 				if err != nil {
 					slog.Error("Failed to complete pairing", "component", "pairing", "error", err)
 					s.mu.Lock()
@@ -1263,7 +1318,7 @@ func (s *Server) pollForApproval(ctx context.Context, deviceCode string) {
 
 				// Register any pre-configured local services on the new account.
 				// Empty machine.Services is a no-op in the API client.
-				if err := registerLocalServices(currentAPIClient, currentServerID); err != nil {
+				if err := registerLocalServices(ctx, currentAPIClient, currentServerID); err != nil {
 					slog.Error("Failed to batch-register local services", "component", "pairing", "error", err)
 					// Don't fail the pair — services can be synced later, and the
 					// machine still has them locally for the next retry.
@@ -1420,7 +1475,7 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 	// + subdomain. Failures here are soft — the service still exists locally
 	// and will be batch-registered on the next pair.
 	if isPaired && currentAPIClient != nil && currentCfg != nil {
-		svc, apiErr := currentAPIClient.RegisterService(currentCfg.ServerID, req.Name, req.Host, req.Port)
+		svc, apiErr := currentAPIClient.RegisterService(r.Context(), currentCfg.ServerID, req.Name, req.Host, req.Port)
 		if apiErr != nil {
 			slog.Warn("Registered locally, but server registration failed", "component", "webui", "service_name", req.Name, "error", apiErr)
 			response["warning"] = "Saved locally. Server registration pending — will retry on reconnect."
@@ -1566,7 +1621,7 @@ func (s *Server) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 		serverServiceID = req.ServiceID
 	}
 	if isPaired && currentAPIClient != nil && currentCfg != nil && serverServiceID != "" {
-		if err := currentAPIClient.DeleteService(currentCfg.ServerID, serverServiceID); err != nil {
+		if err := currentAPIClient.DeleteService(r.Context(), currentCfg.ServerID, serverServiceID); err != nil {
 			slog.Warn("Service removed locally, server delete failed", "component", "webui", "service_id", serverServiceID, "error", err)
 		}
 	}
@@ -1602,7 +1657,7 @@ func (s *Server) handleUnpair(w http.ResponseWriter, r *http.Request) {
 	s.mu.RUnlock()
 
 	if currentCfg != nil {
-		if err := currentAPIClient.DeleteServer(currentCfg.ServerID); err != nil {
+		if err := currentAPIClient.DeleteServer(r.Context(), currentCfg.ServerID); err != nil {
 			slog.Warn("Failed to delete server from API", "component", "webui", "error", err)
 		} else {
 			slog.Info("Server removed from dashboard", "component", "webui")
