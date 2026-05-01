@@ -46,7 +46,6 @@ const State = Object.freeze({
 });
 
 let currentState = null;
-let lastStatusJSON = '';
 let lastServicesJSON = '';
 let lastFrpState = '';
 let disconnectToastTimer = null;
@@ -76,7 +75,6 @@ const dom = {
     statusText:       () => document.getElementById('status-text'),
     settingsWrapper:  () => document.querySelector('.settings-wrapper'),
     settingsDropdown: () => document.getElementById('settings-dropdown'),
-    dropdownSetPw:    () => document.getElementById('dropdown-set-pw'),
     dropdownLock:     () => document.getElementById('dropdown-lock'),
 
     // Setup form
@@ -183,8 +181,8 @@ function renderState(data) {
 
 function updateConnectionRow(state, data) {
     const btn = dom.connectionBtn();
-    const name = document.getElementById('server-name');
-    const email = document.getElementById('user-email');
+    const name = dom.serverName();
+    const email = dom.userEmail();
     const iconEl = dom.serverInfoIcon();
 
     if (state === State.PAIRED) {
@@ -462,7 +460,6 @@ function toggleSettingsDropdown(event) {
         dropdown.classList.add('hidden');
         return;
     }
-    dom.dropdownSetPw().classList.remove('hidden');
     dropdown.classList.remove('hidden');
 }
 
@@ -613,12 +610,6 @@ async function confirmDisconnect() {
 }
 
 // ===== Services =====
-
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
-}
 
 async function loadServices() {
     try {
