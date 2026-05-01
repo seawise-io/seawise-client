@@ -15,22 +15,41 @@ func (e *BlockedHostError) Error() string {
 	return "blocked: " + e.Reason
 }
 
+// blockedMetadataIPs are well-known cloud metadata endpoints across providers.
+// Both IPv4 and IPv6 forms are listed; net.IP.Equal handles IPv4-mapped IPv6.
+var blockedMetadataIPs = []net.IP{
+	net.ParseIP("169.254.169.254"), // AWS, Azure, DigitalOcean, OVH, common link-local
+	net.ParseIP("fd00:ec2::254"),   // AWS IPv6 IMDS
+	net.ParseIP("192.0.0.192"),     // Oracle Cloud
+	net.ParseIP("100.100.100.200"), // Alibaba Cloud
+}
+
+// blockedMetadataHostnames are DNS names that resolve to provider metadata.
+var blockedMetadataHostnames = []string{
+	"metadata.google.internal",
+	"metadata.google",
+}
+
 // isCloudMetadata checks if host points to cloud metadata endpoints.
+// Strips the optional :port suffix before comparing.
 func isCloudMetadata(host string) bool {
 	lower := strings.ToLower(host)
-
-	if lower == "169.254.169.254" || strings.HasPrefix(lower, "169.254.169.254:") {
-		return true
+	// Strip [::1]:port style brackets first
+	if h, _, err := net.SplitHostPort(lower); err == nil {
+		lower = h
 	}
 
-	metadataHosts := []string{
-		"metadata.google.internal",
-		"metadata.google",
-	}
-
-	for _, m := range metadataHosts {
-		if lower == m || strings.HasSuffix(lower, "."+m) {
+	for _, name := range blockedMetadataHostnames {
+		if lower == name || strings.HasSuffix(lower, "."+name) {
 			return true
+		}
+	}
+
+	if ip := net.ParseIP(lower); ip != nil {
+		for _, blocked := range blockedMetadataIPs {
+			if blocked != nil && ip.Equal(blocked) {
+				return true
+			}
 		}
 	}
 
@@ -48,16 +67,6 @@ func ValidateServiceHost(host string) error {
 		return &BlockedHostError{
 			Host:   host,
 			Reason: "cloud metadata endpoints cannot be exposed (security risk)",
-		}
-	}
-
-	ip := net.ParseIP(host)
-	if ip != nil {
-		if ip.Equal(net.ParseIP("169.254.169.254")) {
-			return &BlockedHostError{
-				Host:   host,
-				Reason: "cloud metadata endpoints cannot be exposed (security risk)",
-			}
 		}
 	}
 

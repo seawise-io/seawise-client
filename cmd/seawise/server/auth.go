@@ -258,6 +258,24 @@ func (am *authManager) clearRateLimit(ip string) {
 	delete(am.rateLimits, ip)
 }
 
+// isTrustedHostname reports whether a hostname is allowed to appear in the
+// CSRF Origin allowlist. Trusts loopback names, the runtime IP form, and an
+// optional operator-supplied SEAWISE_HOSTNAME. Refuses everything else so a
+// forged Host header from a same-LAN attacker can't widen the allowlist.
+func isTrustedHostname(hostname string) bool {
+	switch hostname {
+	case "localhost", "127.0.0.1", "::1", "[::1]":
+		return true
+	}
+	if ip := net.ParseIP(hostname); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	if explicit := os.Getenv("SEAWISE_HOSTNAME"); explicit != "" && hostname == explicit {
+		return true
+	}
+	return false
+}
+
 // middleware wraps handlers with CSRF and authentication checks.
 func (am *authManager) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -277,13 +295,21 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 					"https://127.0.0.1",
 					"https://[::1]",
 				}
-				// Allow the request's own host as valid origin (Docker port mapping,
-				// LAN access). The Host header is what the browser used to reach us.
+				// SEA-155: allow the request's own host only when the host portion
+				// is a known-safe value (loopback, an explicitly configured public
+				// hostname). Browsers cannot set Host arbitrarily, so the residual
+				// CSRF risk is theoretical, but a same-LAN attacker making direct
+				// HTTP calls can — restrict to reduce attack surface.
 				if host := r.Host; host != "" {
-					validOrigins = append(validOrigins, "http://"+host, "https://"+host)
-					// Also allow without port for standard ports
+					hostname := host
 					if h, _, err := net.SplitHostPort(host); err == nil {
-						validOrigins = append(validOrigins, "http://"+h, "https://"+h)
+						hostname = h
+					}
+					if isTrustedHostname(hostname) {
+						validOrigins = append(validOrigins, "http://"+host, "https://"+host)
+						if hostname != host {
+							validOrigins = append(validOrigins, "http://"+hostname, "https://"+hostname)
+						}
 					}
 				}
 				isValidOrigin := false
