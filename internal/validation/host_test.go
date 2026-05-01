@@ -26,7 +26,16 @@ func TestValidateServiceHost(t *testing.T) {
 		// Blocked hosts - only cloud metadata is blocked
 		{"empty", "", true},
 		{"AWS metadata", "169.254.169.254", true},
+		{"AWS metadata with port", "169.254.169.254:80", true},
 		{"GCP metadata hostname", "metadata.google.internal", true},
+		{"GCP metadata short", "metadata.google", true},
+		{"GCP metadata subdomain", "v1.metadata.google.internal", true},
+		// SEA-155: expanded coverage
+		{"AWS IPv6 IMDS", "fd00:ec2::254", true},
+		{"AWS IPv6 IMDS bracketed with port", "[fd00:ec2::254]:80", true},
+		{"IPv4-mapped IPv6 metadata", "::ffff:169.254.169.254", true},
+		{"Oracle Cloud metadata", "192.0.0.192", true},
+		{"Alibaba Cloud metadata", "100.100.100.200", true},
 	}
 
 	for _, tt := range tests {
