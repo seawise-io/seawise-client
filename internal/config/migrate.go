@@ -13,27 +13,37 @@ import (
 // Order of operations is chosen so a crash mid-migration leaves the client
 // in a usable state:
 //
-//  1. If machine.json already exists, migration is done — return.
-//  2. Read legacy config.json. If absent, fresh install — write an empty
+//  1. If machine.json AND account.json both exist, migration is done —
+//     clean up any stale legacy file and return. The "AND account.json"
+//     guard preserves the legacy file when a previous run crashed between
+//     step 3 and step 4 (machine.json saved, account.json save failed):
+//     the legacy file is the only remaining record of the user's account
+//     binding in that state, so deleting it would strand the user
+//     permanently unpaired.
+//  2. If only machine.json exists (partial migration), leave the legacy
+//     file alone so the user can recover and try again on next start.
+//  3. Read legacy config.json. If absent, fresh install — write an empty
 //     machine.json and return. No account.json is created.
-//  3. Generate machine_id, write machine.json with empty services list.
-//  4. Write account.json from the legacy fields.
-//  5. Delete legacy config.json.
+//  4. Generate machine_id, write machine.json with empty services list.
+//  5. Write account.json from the legacy fields.
+//  6. Delete legacy config.json.
 //
-// Steps 3-5 happen only after the prior step succeeded. A crash between 3
-// and 4 means the client is unpaired (no account.json) but has a machine
-// identity; the next run sees machine.json exists and skips migration.
-// A crash between 4 and 5 leaves both new files plus the legacy file,
-// which the next run also detects and cleans up.
+// Steps 4-6 happen only after the prior step succeeded.
 //
 // Service definitions are not populated here. Phase 3 of SEA-136 wires
 // services into machine.json as the user adds them and as pair flows
 // register them.
 func MigrateLegacy() error {
 	if MachineExists() {
-		// Already migrated. Best-effort cleanup of any stale legacy file.
-		if _, err := os.Stat(LegacyConfigPath()); err == nil {
-			_ = os.Remove(LegacyConfigPath())
+		// Only clean up legacy when migration is GENUINELY complete (both
+		// new files exist). On partial-migration state (machine.json but
+		// no account.json) the legacy file is preserved as a recovery
+		// record — the user can either delete it manually or the next
+		// successful pair flow will rewrite both files.
+		if AccountExists() {
+			if _, err := os.Stat(LegacyConfigPath()); err == nil {
+				_ = os.Remove(LegacyConfigPath())
+			}
 		}
 		return nil
 	}
