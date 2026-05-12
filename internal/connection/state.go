@@ -32,6 +32,16 @@ type Manager struct {
 	consecutiveFails int
 	reconnectAttempt int
 
+	// Unpair confirmation: the API can only destroy pairing config on a
+	// sustained signal, not a single 410. See UnpairRequested.
+	unpairSignals    int
+	firstUnpairAt    time.Time
+	lastUnpairReason string
+
+	// Thresholds (injected via Config so tests can lower them)
+	unpairCount  int
+	unpairWindow time.Duration
+
 	// Configuration
 	heartbeatInterval time.Duration // How often to send heartbeat
 	baseRetryDelay    time.Duration // Initial retry delay
@@ -47,6 +57,8 @@ type Config struct {
 	HeartbeatInterval time.Duration
 	BaseRetryDelay    time.Duration
 	MaxRetryDelay     time.Duration
+	UnpairCount       int
+	UnpairWindow      time.Duration
 }
 
 // DefaultConfig returns production-ready defaults
@@ -55,16 +67,26 @@ func DefaultConfig() Config {
 		HeartbeatInterval: constants.HeartbeatInterval,
 		BaseRetryDelay:    constants.BaseRetryDelay,
 		MaxRetryDelay:     constants.MaxRetryDelay,
+		UnpairCount:       constants.UnpairConfirmationCount,
+		UnpairWindow:      constants.UnpairConfirmationWindow,
 	}
 }
 
 // NewManager creates a new connection state manager
 func NewManager(cfg Config) *Manager {
+	if cfg.UnpairCount <= 0 {
+		cfg.UnpairCount = constants.UnpairConfirmationCount
+	}
+	if cfg.UnpairWindow <= 0 {
+		cfg.UnpairWindow = constants.UnpairConfirmationWindow
+	}
 	return &Manager{
 		state:             StateDisconnected,
 		heartbeatInterval: cfg.HeartbeatInterval,
 		baseRetryDelay:    cfg.BaseRetryDelay,
 		maxRetryDelay:     cfg.MaxRetryDelay,
+		unpairCount:       cfg.UnpairCount,
+		unpairWindow:      cfg.UnpairWindow,
 	}
 }
 
@@ -102,13 +124,18 @@ func (m *Manager) SetState(newState State) {
 	}
 }
 
-// HeartbeatOK reports a successful heartbeat
+// HeartbeatOK reports a successful heartbeat. Also clears any pending unpair
+// signals — a successful response means the server acknowledges the pairing,
+// so any earlier 410 was transient and should not count toward confirmation.
 func (m *Manager) HeartbeatOK() {
 	m.mu.Lock()
 	m.lastHeartbeat = time.Now()
 	m.lastHeartbeatOK = true
 	m.consecutiveFails = 0
 	m.reconnectAttempt = 0
+	m.unpairSignals = 0
+	m.firstUnpairAt = time.Time{}
+	m.lastUnpairReason = ""
 
 	var oldState State
 	var changed bool
@@ -128,30 +155,97 @@ func (m *Manager) HeartbeatOK() {
 	}
 }
 
-// HeartbeatFailed reports a failed heartbeat
-func (m *Manager) HeartbeatFailed(shouldUnpair bool) {
+// HeartbeatFailed reports a transient heartbeat failure (network timeout, 5xx,
+// DB unavailable, etc.). These MUST NOT count toward unpair — transient
+// infrastructure issues should never destroy the client's pairing config.
+//
+// After the configured threshold of consecutive transient failures, transitions
+// to StateReconnecting so FRP restart / backoff logic engages.
+func (m *Manager) HeartbeatFailed() {
 	m.mu.Lock()
 	m.lastHeartbeatOK = false
 	m.consecutiveFails++
 	fails := m.consecutiveFails
-	unpairCallback := m.onUnpair
 	m.mu.Unlock()
-
-	if shouldUnpair {
-		slog.Info("Server requested unpair", "component", "connection")
-		m.SetState(StateUnpaired)
-		if unpairCallback != nil {
-			unpairCallback()
-		}
-		return
-	}
 
 	slog.Warn("Heartbeat failed", "component", "connection", "consecutive_fails", fails)
 
-	// After 3 consecutive failures, enter reconnecting state
 	if fails >= 3 {
 		m.SetState(StateReconnecting)
 	}
+}
+
+// UnpairRequested records a server-initiated unpair signal (HTTP 410).
+// Returns true only when the signal has been confirmed: at least unpairCount
+// consecutive 410 responses AND at least unpairWindow elapsed since the first
+// signal. The caller should actually wipe config only when this returns true.
+//
+// Rationale: wiping pairing is destructive and irreversible. A single 410 from
+// a bug, outage, replica lag, or misconfiguration should not nuke the client.
+// Legitimate server deletions send 410 on every heartbeat for far longer than
+// the window, so the threshold has no practical effect on real deletions.
+func (m *Manager) UnpairRequested(reason string) bool {
+	now := time.Now()
+
+	m.mu.Lock()
+	// Already unpaired — destructive wipe must run at most once per process.
+	// Subsequent 410s would otherwise re-fire onUnpair and spam error logs
+	// from DeleteAccount (file already gone on the second pass).
+	if m.state == StateUnpaired {
+		m.mu.Unlock()
+		return true
+	}
+	if m.unpairSignals == 0 {
+		m.firstUnpairAt = now
+	}
+	m.unpairSignals++
+	signals := m.unpairSignals
+	firstAt := m.firstUnpairAt
+	threshold := m.unpairCount
+	window := m.unpairWindow
+	m.lastUnpairReason = reason
+	m.mu.Unlock()
+
+	elapsed := now.Sub(firstAt)
+	confirmed := signals >= threshold && elapsed >= window
+
+	slog.Warn(
+		"Server requested unpair",
+		"component", "connection",
+		"reason", reason,
+		"signals", signals,
+		"threshold", threshold,
+		"elapsed", elapsed,
+		"window", window,
+		"confirmed", confirmed,
+	)
+
+	if !confirmed {
+		return false
+	}
+
+	// Claim the transition atomically: flip to StateUnpaired under the lock
+	// so a racing confirmed caller sees the new state and skips the wipe.
+	m.mu.Lock()
+	if m.state == StateUnpaired {
+		m.mu.Unlock()
+		return true
+	}
+	oldState := m.state
+	m.state = StateUnpaired
+	unpairCallback := m.onUnpair
+	stateCallback := m.onStateChange
+	m.mu.Unlock()
+
+	slog.Info("Connection state changed", "component", "connection", "old_state", string(oldState), "new_state", string(StateUnpaired))
+	slog.Info("Unpair confirmed, wiping pairing config", "component", "connection", "reason", reason)
+	if stateCallback != nil {
+		stateCallback(oldState, StateUnpaired)
+	}
+	if unpairCallback != nil {
+		unpairCallback()
+	}
+	return true
 }
 
 // CalculateBackoff returns the next retry delay using exponential backoff with jitter

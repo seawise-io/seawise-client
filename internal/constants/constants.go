@@ -21,6 +21,15 @@ const (
 	SupersededRestartDelay = 2 * time.Second
 )
 
+// Unpair confirmation — defense in depth against false unpair signals.
+// Wiping pairing config is destructive and irreversible, so a single 410
+// response is not enough to trigger it. A successful heartbeat in between
+// resets the counter.
+const (
+	UnpairConfirmationCount  = 3
+	UnpairConfirmationWindow = 5 * time.Minute
+)
+
 // Polling intervals
 const (
 	PairPollInterval    = 5 * time.Second

@@ -472,7 +472,8 @@ type HeartbeatResponse struct {
 
 type HeartbeatResult struct {
 	Success      bool
-	ShouldUnpair bool
+	ShouldUnpair bool   // Server requested unpair (410). Caller MUST confirm via connection.Manager.UnpairRequested before wiping config.
+	UnpairReason string // Server-provided reason (e.g. "server_deleted", "server_not_found")
 	Superseded   bool
 	Response     *HeartbeatResponse
 	Error        error
@@ -512,10 +513,18 @@ func (c *Client) Heartbeat(ctx context.Context, serverID string, frpConnected bo
 	}
 
 	if resp.StatusCode == 410 {
+		var body struct {
+			Reason string `json:"reason"`
+		}
+		_ = json.Unmarshal(respBody, &body)
+		if body.Reason == "" {
+			body.Reason = "unspecified"
+		}
 		return HeartbeatResult{
 			Success:      false,
 			ShouldUnpair: true,
-			Error:        fmt.Errorf("server deleted"),
+			UnpairReason: body.Reason,
+			Error:        fmt.Errorf("server requests unpair: %s", body.Reason),
 		}
 	}
 
