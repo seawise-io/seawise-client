@@ -220,6 +220,27 @@ body {
 .disconnect-btn:hover {
     background: #FEE2E2;
 }
+.connect-btn {
+    background: #F0FDF4;
+    color: #16A34A;
+    border: 1px solid #BBF7D0;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.connect-btn:hover {
+    background: #DCFCE7;
+}
+.connect-btn:disabled {
+    background: #F0FDF4;
+    color: #16A34A;
+    border-color: #BBF7D0;
+    cursor: not-allowed;
+    opacity: 0.55;
+}
 
 /* ===== Cards ===== */
 .card {
@@ -403,6 +424,11 @@ input::placeholder { color: #8C8C8C; }
     padding: 0.2rem 0.5rem;
     border-radius: 4px;
 }
+.service-badge-local {
+    color: #6B7280;
+    background: #F3F4F6;
+    font-family: inherit;
+}
 .service-delete {
     width: 24px;
     height: 24px;
@@ -505,6 +531,7 @@ input::placeholder { color: #8C8C8C; }
     visibility: visible;
 }
 .modal {
+    position: relative;
     background: #FFFFFF;
     border: 1px solid #E0E0E0;
     border-radius: 16px;
@@ -513,6 +540,31 @@ input::placeholder { color: #8C8C8C; }
     width: 90%;
     transform: scale(0.95);
     transition: transform 0.2s;
+}
+.modal-close {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: #A3A3A3;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
+}
+.modal-close svg {
+    width: 18px;
+    height: 18px;
+}
+.modal-close:hover {
+    background: #FEF2F2;
+    color: #DC2626;
 }
 .modal-overlay.visible .modal {
     transform: scale(1);

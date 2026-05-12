@@ -44,10 +44,14 @@ const dom = {
     loginScreen:      () => document.getElementById('login-screen'),
     mainContainer:    () => document.getElementById('main-container'),
     setupCard:        () => document.getElementById('setup-card'),
-    connectCard:      () => document.getElementById('connect-card'),
+    connectModal:     () => document.getElementById('connect-modal'),
     connectForm:      () => document.getElementById('connect-form'),
     waitingApproval:  () => document.getElementById('waiting-approval'),
+    connectModalSubmit: () => document.getElementById('connect-modal-submit'),
     mainContent:      () => document.getElementById('main-content'),
+    topRow:           () => document.getElementById('top-row'),
+    connectionBtn:    () => document.getElementById('connection-btn'),
+    serverInfoIcon:   () => document.getElementById('server-info-icon'),
 
     // Header
     statusBadge:      () => document.getElementById('status-badge'),
@@ -101,68 +105,126 @@ const dom = {
 function renderState(data) {
     const state = currentState;
 
-    // Hide everything first
+    // Hide the setup + locked screens by default; the main dashboard shows
+    // otherwise (regardless of pairing state). Services are local-first.
     dom.loginScreen().classList.add('hidden');
     dom.mainContainer().classList.add('hidden');
     dom.setupCard().classList.add('hidden');
-    dom.connectCard().classList.add('hidden');
-    dom.connectForm().classList.add('hidden');
-    dom.waitingApproval().classList.add('hidden');
     dom.mainContent().classList.add('hidden');
     dom.serverIdFooter().classList.add('hidden');
 
-    // Settings visibility
+    // Settings + lock visibility — available whenever authenticated.
     const settingsWrapper = dom.settingsWrapper();
     if (settingsWrapper) {
-        settingsWrapper.style.visibility = (state === State.PAIRED || state === State.CONNECT || state === State.PAIRING) ? 'visible' : 'hidden';
+        settingsWrapper.style.visibility = (state !== State.SETUP && state !== State.LOCKED) ? 'visible' : 'hidden';
     }
-
-    // Lock button visibility
     const lockBtn = dom.dropdownLock();
     if (lockBtn) {
-        if (data && data.password_set && (state === State.PAIRED || state === State.CONNECT || state === State.PAIRING)) {
+        if (data && data.password_set && state !== State.SETUP && state !== State.LOCKED) {
             lockBtn.classList.remove('hidden');
         } else {
             lockBtn.classList.add('hidden');
         }
     }
 
-    // Status badge
     updateStatusBadge(state, data);
 
     switch (state) {
         case State.SETUP:
             dom.mainContainer().classList.remove('hidden');
             dom.setupCard().classList.remove('hidden');
-            break;
+            return;
 
         case State.LOCKED:
             dom.loginScreen().classList.remove('hidden');
-            break;
-
-        case State.CONNECT:
-            dom.mainContainer().classList.remove('hidden');
-            dom.connectCard().classList.remove('hidden');
-            dom.connectForm().classList.remove('hidden');
-            break;
-
-        case State.PAIRING:
-            dom.mainContainer().classList.remove('hidden');
-            dom.connectCard().classList.remove('hidden');
-            dom.waitingApproval().classList.remove('hidden');
-            break;
-
-        case State.PAIRED:
-            dom.mainContainer().classList.remove('hidden');
-            dom.mainContent().classList.remove('hidden');
-            dom.serverIdFooter().classList.remove('hidden');
-            if (data) {
-                dom.serverName().textContent = data.server_name || 'My Server';
-                dom.userEmail().textContent = data.user_email || '-';
-                dom.serverIdFooter().textContent = data.server_id || '';
-            }
-            break;
+            return;
     }
+
+    // From here on: user is authenticated. Show the main dashboard whether
+    // paired, pairing, or disconnected. Only the connection row changes.
+    dom.mainContainer().classList.remove('hidden');
+    dom.mainContent().classList.remove('hidden');
+    updateConnectionRow(state, data);
+
+    if (state === State.PAIRED && data) {
+        dom.serverIdFooter().classList.remove('hidden');
+        dom.serverIdFooter().textContent = data.server_id || '';
+    }
+
+    // Pairing flow: reflect the current step inside the Connect modal.
+    if (state === State.PAIRING) {
+        dom.connectForm().classList.add('hidden');
+        dom.waitingApproval().classList.remove('hidden');
+        dom.connectModalSubmit().classList.add('hidden');
+        dom.connectModal().classList.add('visible');
+    } else if (state === State.PAIRED) {
+        // Pair finished while the modal might still be open — close it.
+        hideConnectModal();
+    }
+}
+
+function updateConnectionRow(state, data) {
+    const btn = dom.connectionBtn();
+    const name = document.getElementById('server-name');
+    const email = document.getElementById('user-email');
+    const iconEl = dom.serverInfoIcon();
+
+    if (state === State.PAIRED) {
+        if (iconEl) {
+            iconEl.classList.remove('orange');
+            iconEl.classList.add('green');
+        }
+        if (name) name.textContent = (data && data.server_name) || 'Connected';
+        if (email) email.textContent = (data && data.user_email) || '-';
+        if (btn) {
+            btn.textContent = 'Disconnect';
+            btn.disabled = false;
+            btn.classList.remove('connect-btn');
+            btn.classList.add('disconnect-btn');
+        }
+        return;
+    }
+
+    if (iconEl) {
+        iconEl.classList.remove('green');
+        iconEl.classList.add('orange');
+    }
+    if (name) name.textContent = state === State.PAIRING ? 'Pairing in progress' : 'Not connected';
+    if (email) email.textContent = state === State.PAIRING ? 'Waiting for authorization…' : 'Link this server to a SeaWise account';
+    if (btn) {
+        btn.textContent = state === State.PAIRING ? 'Pairing…' : 'Connect';
+        btn.disabled = state === State.PAIRING;
+        btn.classList.remove('disconnect-btn');
+        btn.classList.add('connect-btn');
+    }
+}
+
+function handleConnectionBtn() {
+    if (currentState === State.PAIRED) {
+        showDisconnectModal();
+    } else {
+        showConnectModal();
+    }
+}
+
+function showConnectModal() {
+    dom.connectForm().classList.remove('hidden');
+    dom.waitingApproval().classList.add('hidden');
+    dom.connectModalSubmit().classList.remove('hidden');
+    dom.connectModal().classList.add('visible');
+    const input = dom.serverNameInput();
+    if (input) setTimeout(() => input.focus(), 50);
+}
+
+function hideConnectModal() {
+    dom.connectModal().classList.remove('visible');
+}
+
+function cancelOrCloseConnectModal() {
+    if (currentState === State.PAIRING) {
+        cancelPairing();
+    }
+    hideConnectModal();
 }
 
 function updateStatusBadge(state, data) {
@@ -242,8 +304,9 @@ async function poll() {
         // Render
         renderState(data);
 
-        // Load services when paired
-        if (currentState === State.PAIRED) {
+        // Services are a local resource — load them any time the user is in
+        // the main area (connect / pairing / paired), not just when paired.
+        if (currentState === State.PAIRED || currentState === State.CONNECT || currentState === State.PAIRING) {
             await loadServices();
         }
 
@@ -494,6 +557,8 @@ async function cancelPairing() {
         clearInterval(pairingPollInterval);
         pairingPollInterval = null;
     }
+    currentState = State.CONNECT;
+    updateConnectionRow(State.CONNECT, null);
     try { await fetch('/api/pair/cancel', { method: 'POST' }); } catch { /* ignore */ }
     await poll();
 }
@@ -537,11 +602,13 @@ async function loadServices() {
         const data = await resp.json();
         const services = (data.services && data.services.length > 0)
             ? data.services.map(svc => ({
-                id: svc.id,
+                id: svc.id || '',
+                local_id: svc.local_id || '',
                 name: svc.name,
                 host: svc.host,
                 port: svc.port,
-                subdomain: svc.subdomain,
+                subdomain: svc.subdomain || '',
+                status: svc.status || 'local-only',
             }))
             : [];
 
@@ -600,13 +667,19 @@ function renderServices(services) {
 
         const subdomainEl = document.createElement('span');
         subdomainEl.className = 'service-subdomain';
-        subdomainEl.textContent = svc.subdomain;
+        if (svc.subdomain) {
+            subdomainEl.textContent = svc.subdomain;
+        } else {
+            subdomainEl.textContent = 'Local only';
+            subdomainEl.classList.add('service-badge-local');
+        }
 
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'service-delete';
         deleteBtn.title = 'Remove app';
         deleteBtn.textContent = '\u00D7';
-        deleteBtn.addEventListener('click', () => showDeleteServiceModal(svc.id, svc.name));
+        const deleteKey = svc.local_id || svc.id;
+        deleteBtn.addEventListener('click', () => showDeleteServiceModal(deleteKey, svc.name));
 
         item.appendChild(icon);
         item.appendChild(info);
@@ -679,7 +752,7 @@ async function confirmDeleteService() {
         const resp = await fetch('/api/services/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ service_id: serviceId, service_name: serviceName })
+            body: JSON.stringify({ local_id: serviceId, service_name: serviceName })
         });
         const data = await resp.json();
         if (data.error) { showToast(data.error); return; }
