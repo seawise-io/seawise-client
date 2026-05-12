@@ -149,9 +149,25 @@ func TestBackoffCalculation(t *testing.T) {
 		t.Errorf("First backoff = %v, expected between %v and %v", delay1, cfg.BaseRetryDelay, cfg.BaseRetryDelay*3)
 	}
 
-	// Each subsequent call should generally increase (exponential)
+	// SEA-154: previously the next two delays were declared and discarded
+	// without verification. Now: assert exponential growth — each delay's
+	// minimum (delay/2 to account for jitter band) should exceed the prior
+	// delay's minimum, so growth is real and not just jitter noise.
 	delay2 := m.CalculateBackoff()
 	delay3 := m.CalculateBackoff()
+	if delay2 < delay1 {
+		t.Errorf("delay2 (%v) < delay1 (%v) — backoff should not regress", delay2, delay1)
+	}
+	if delay3 < delay2 {
+		t.Errorf("delay3 (%v) < delay2 (%v) — backoff should not regress", delay3, delay2)
+	}
+	// Floor of expected exponential growth: 2^attempt * base, no jitter.
+	// Allow some slack because jitter is additive (0-100%) so the floor is the base
+	// scaling factor alone.
+	floor3 := time.Duration(float64(cfg.BaseRetryDelay) * 4) // 2^2 = 4
+	if delay3 < floor3 {
+		t.Errorf("delay3 (%v) below 2^2 base floor (%v) — exponential growth not happening", delay3, floor3)
+	}
 
 	// After reset, should go back to base
 	m.ResetBackoff()
@@ -168,8 +184,6 @@ func TestBackoffCalculation(t *testing.T) {
 	if capped > cfg.MaxRetryDelay*2 { // Allow for jitter
 		t.Errorf("Capped delay = %v, exceeds max %v (with jitter)", capped, cfg.MaxRetryDelay*2)
 	}
-
-	_ = delay2 // used to verify increase
 }
 
 func TestLastHeartbeatAge(t *testing.T) {
@@ -211,19 +225,29 @@ func TestConcurrentAccess(t *testing.T) {
 	m := NewManager(DefaultConfig())
 	m.SetState(StateConnected)
 
+	const okCount = 100
+	const failCount = 100
+
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
-		wg.Add(3)
+	for i := 0; i < okCount; i++ {
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			m.HeartbeatOK()
 		}()
+	}
+	for i := 0; i < failCount; i++ {
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			m.HeartbeatFailed(false)
 		}()
+	}
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			// Reads — must not panic or return malformed values
 			_ = m.State()
 			_ = m.ConsecutiveFails()
 			_ = m.GetStatus()
@@ -231,5 +255,16 @@ func TestConcurrentAccess(t *testing.T) {
 	}
 	wg.Wait()
 
-	// If we get here without a panic or race, the test passes
+	// SEA-154: previously the test asserted nothing — even if HeartbeatFailed
+	// corrupted internal counters, the test would pass. Now we assert real
+	// invariants: consecutive_fails must be non-negative and bounded by the
+	// number of failure events; if the last event happened to be HeartbeatOK
+	// we expect 0; otherwise <= failCount.
+	fails := m.ConsecutiveFails()
+	if fails < 0 {
+		t.Errorf("ConsecutiveFails went negative: %d (mutex bug or counter underflow)", fails)
+	}
+	if fails > failCount {
+		t.Errorf("ConsecutiveFails (%d) exceeds total failure events (%d) — counter incremented too far", fails, failCount)
+	}
 }
