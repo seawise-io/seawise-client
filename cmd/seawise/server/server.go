@@ -479,6 +479,16 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 		slog.Info("Migration requested", "component", "heartbeat", "addr", migrate.FRPServerAddr, "port", migrate.FRPServerPort, "shard", migrate.ShardID)
 
 		s.mu.Lock()
+		// SEA-164: s.cfg can be nil-ed by handleUnpairInternal between the
+		// RLock+snapshot at the top of sendHeartbeat and this Lock — the
+		// HTTP round-trip above released the lock. If we got unpaired
+		// during the heartbeat, drop the migration: the unpair handler
+		// has already torn down state.
+		if s.cfg == nil {
+			s.mu.Unlock()
+			slog.Info("Migration skipped — unpaired during heartbeat", "component", "heartbeat")
+			return
+		}
 		s.cfg.FRPServerAddr = migrate.FRPServerAddr
 		s.cfg.FRPServerPort = migrate.FRPServerPort
 		if err := s.cfg.Save(); err != nil {
@@ -508,6 +518,11 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 	if result.Response != nil && result.Response.Shard != nil && client != nil {
 		shard := result.Response.Shard
 		s.mu.RLock()
+		// SEA-164: same unpair-race window as the migrate block above.
+		if s.cfg == nil {
+			s.mu.RUnlock()
+			return
+		}
 		storedAddr := s.cfg.FRPServerAddr
 		storedPort := s.cfg.FRPServerPort
 		s.mu.RUnlock()
@@ -521,6 +536,12 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 				slog.Warn("Rejected shard update to untrusted server", "component", "heartbeat", "error", err)
 			} else {
 				s.mu.Lock()
+				// SEA-164: re-check under Lock — UpdateServer above doesn't
+				// hold s.mu, so unpair could land between RUnlock and Lock.
+				if s.cfg == nil {
+					s.mu.Unlock()
+					return
+				}
 				s.cfg.FRPServerAddr = shard.FRPServerAddr
 				s.cfg.FRPServerPort = shard.FRPServerPort
 				if err := s.cfg.Save(); err != nil {
