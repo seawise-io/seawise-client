@@ -73,10 +73,10 @@ func TestIsValidUUID(t *testing.T) {
 		{"ABCDEF12-3456-7890-ABCD-EF1234567890", true}, // upper accepted (note: project chooses to accept this)
 		{"", false},
 		{"not-a-uuid", false},
-		{"00000000_0000_0000_0000_000000000000", false}, // wrong separator
-		{"00000000-0000-0000-0000-00000000000", false},  // 35 chars
+		{"00000000_0000_0000_0000_000000000000", false},  // wrong separator
+		{"00000000-0000-0000-0000-00000000000", false},   // 35 chars
 		{"00000000-0000-0000-0000-0000000000000", false}, // 37 chars
-		{"gggggggg-0000-0000-0000-000000000000", false}, // bad hex
+		{"gggggggg-0000-0000-0000-000000000000", false},  // bad hex
 	}
 	for _, tt := range tests {
 		got := isValidUUID(tt.s)
