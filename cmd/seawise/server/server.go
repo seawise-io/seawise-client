@@ -400,8 +400,15 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 	result := currentAPIClient.Heartbeat(s.shutdownCtx, currentCfg.ServerID, frpConnected, serviceCount, constants.Version, connectionID)
 
 	if result.ShouldUnpair {
-		slog.Info("Server requests unpair", "component", "heartbeat")
-		s.connManager.HeartbeatFailed(true)
+		// Don't act on a single 410. Route through the manager's confirmation
+		// logic — only actually wipe config on a sustained, repeated signal.
+		// This guards against DB hiccups, bad deploys, or other transient
+		// 410s permanently destroying the pairing.
+		confirmed := s.connManager.UnpairRequested(result.UnpairReason)
+		if !confirmed {
+			// Treat as transient until confirmed.
+			s.connManager.HeartbeatFailed()
+		}
 		return
 	}
 
@@ -438,7 +445,7 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 
 	if result.Error != nil {
 		slog.Warn("Heartbeat failed", "component", "heartbeat", "error", result.Error)
-		s.connManager.HeartbeatFailed(false)
+		s.connManager.HeartbeatFailed()
 		return
 	}
 
