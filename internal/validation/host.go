@@ -20,7 +20,7 @@ func (e *BlockedHostError) Error() string {
 var blockedMetadataIPs = []net.IP{
 	net.ParseIP("169.254.169.254"), // AWS, Azure, DigitalOcean, OVH, common link-local
 	net.ParseIP("fd00:ec2::254"),   // AWS IPv6 IMDS
-	net.ParseIP("192.0.0.192"),     // Oracle Cloud
+	net.ParseIP("192.0.0.192"),     // Oracle Cloud legacy Compute Classic (modern OCI uses 169.254.169.254 above)
 	net.ParseIP("100.100.100.200"), // Alibaba Cloud
 }
 
@@ -31,16 +31,26 @@ var blockedMetadataHostnames = []string{
 }
 
 // isCloudMetadata checks if host points to cloud metadata endpoints.
-// Strips the optional :port suffix before comparing.
+// Normalizes brackets, port, and trailing dot before comparing.
 func isCloudMetadata(host string) bool {
 	lower := strings.ToLower(host)
-	// Strip [::1]:port style brackets first
+	// Strip [::1]:port style brackets and port if present.
 	if h, _, err := net.SplitHostPort(lower); err == nil {
 		lower = h
+	} else if len(lower) >= 2 && lower[0] == '[' && lower[len(lower)-1] == ']' {
+		// SEA-168: SplitHostPort errors on a bracketed IPv6 with no port
+		// (e.g. "[fd00:ec2::254]"), and net.ParseIP rejects bracketed forms,
+		// so without this strip a bracketed-no-port input bypasses the
+		// metadata block entirely.
+		lower = lower[1 : len(lower)-1]
 	}
+	// FQDN trailing-dot form ("metadata.google.internal.") is legal in DNS
+	// and resolves identically; normalize so the suffix/equality checks
+	// match both forms.
+	trimmed := strings.TrimSuffix(lower, ".")
 
 	for _, name := range blockedMetadataHostnames {
-		if lower == name || strings.HasSuffix(lower, "."+name) {
+		if trimmed == name || strings.HasSuffix(trimmed, "."+name) {
 			return true
 		}
 	}

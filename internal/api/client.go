@@ -305,7 +305,10 @@ func (c *Client) CancelPairing(ctx context.Context, deviceCode string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		respBody, _ := readResponseBody(resp)
+		respBody, readErr := readResponseBody(resp)
+		if readErr != nil {
+			return fmt.Errorf("cancel pairing failed (status %d, body unreadable): %w", resp.StatusCode, readErr)
+		}
 		return fmt.Errorf("cancel pairing failed: %s", validation.ParseAPIError(respBody, resp.StatusCode))
 	}
 	return nil

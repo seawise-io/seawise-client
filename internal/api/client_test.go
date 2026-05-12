@@ -8,7 +8,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -310,13 +309,7 @@ func TestRequest_RespectsBodySizeLimit(t *testing.T) {
 
 	c := newTestClient(t, srv)
 	_, err := c.RequestPairing(context.Background(), "test")
-	// We don't care if it succeeds or fails to parse — we're asserting that
-	// readResponseBody truncated the read so we didn't OOM. A corrupt JSON
-	// after truncation is the expected outcome.
-	if err == nil {
-		// If parsing somehow succeeded, ensure the device_code length is bounded.
-		// (Truncation may still leave a valid-ish JSON tail in some tests.)
-	}
-	// Smoke pass: the test did not timeout / OOM. That's the assertion.
-	_ = json.Valid // silence unused import in case strings was the only consumer
+	// Smoke pass: the test did not timeout or OOM. That is the assertion.
+	// We do not care whether parsing the truncated body succeeded or failed.
+	_ = err
 }
