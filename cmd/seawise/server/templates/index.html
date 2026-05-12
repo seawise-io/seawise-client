@@ -67,11 +67,15 @@
                     <div class="card-subtitle">Enter your password to access the manager</div>
                 </div>
             </div>
-            <div>
-                <input type="password" id="login-password" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()" />
+            <form onsubmit="event.preventDefault(); doLogin(); return false;">
+                <!-- Hidden username field: required by Chrome/Firefox a11y rules
+                     and lets password managers associate this password with a
+                     stable identity. Single-user local UI, so 'admin' is fine. -->
+                <input type="text" name="username" value="admin" autocomplete="username" hidden />
+                <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" />
                 <div id="login-error" class="form-error hidden"></div>
-                <button class="btn btn-primary" onclick="doLogin()">Unlock</button>
-            </div>
+                <button type="submit" class="btn btn-primary">Unlock</button>
+            </form>
         </div>
     </div>
 
@@ -90,12 +94,13 @@
                     <div class="card-subtitle">Create a password to protect this server's management interface</div>
                 </div>
             </div>
-            <div>
-                <input type="password" id="setup-password" placeholder="Password (min 8 characters)" onkeydown="if(event.key==='Enter')document.getElementById('setup-confirm').focus()" />
-                <input type="password" id="setup-confirm" placeholder="Confirm password" onkeydown="if(event.key==='Enter')doSetupPassword()" />
+            <form onsubmit="event.preventDefault(); doSetupPassword(); return false;">
+                <input type="text" name="username" value="admin" autocomplete="username" hidden />
+                <input type="password" id="setup-password" placeholder="Password (min 8 characters)" autocomplete="new-password" />
+                <input type="password" id="setup-confirm" placeholder="Confirm password" autocomplete="new-password" />
                 <div id="setup-error" class="form-error hidden"></div>
-                <button class="btn btn-primary" onclick="doSetupPassword()">Set Password &amp; Continue</button>
-            </div>
+                <button type="submit" class="btn btn-primary">Set Password &amp; Continue</button>
+            </form>
         </div>
 
         <!-- Main Content: services list and add form — always available once authenticated. -->
@@ -227,14 +232,17 @@
             </div>
             <div class="modal-title">Change Password</div>
             <div class="modal-message">Enter your current password and a new one</div>
-            <input type="password" id="set-pw-current" placeholder="Current password" onkeydown="if(event.key==='Enter')document.getElementById('set-pw-new').focus()" />
-            <input type="password" id="set-pw-new" placeholder="New password (min 8 characters)" onkeydown="if(event.key==='Enter')document.getElementById('set-pw-confirm').focus()" />
-            <input type="password" id="set-pw-confirm" placeholder="Confirm new password" onkeydown="if(event.key==='Enter')doSetPassword()" />
-            <div id="set-pw-error" class="pw-error hidden"></div>
-            <div class="modal-buttons">
-                <button class="btn btn-secondary" onclick="hideSetPasswordModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="doSetPassword()">Change Password</button>
-            </div>
+            <form onsubmit="event.preventDefault(); doSetPassword(); return false;">
+                <input type="text" name="username" value="admin" autocomplete="username" hidden />
+                <input type="password" id="set-pw-current" placeholder="Current password" autocomplete="current-password" />
+                <input type="password" id="set-pw-new" placeholder="New password (min 8 characters)" autocomplete="new-password" />
+                <input type="password" id="set-pw-confirm" placeholder="Confirm new password" autocomplete="new-password" />
+                <div id="set-pw-error" class="pw-error hidden"></div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-secondary" onclick="hideSetPasswordModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Change Password</button>
+                </div>
+            </form>
         </div>
     </div>
 
