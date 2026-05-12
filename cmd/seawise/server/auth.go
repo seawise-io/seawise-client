@@ -335,9 +335,22 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 					"https://127.0.0.1",
 					"https://[::1]",
 				}
-				// Allow the request's own host as valid referer
+				// SEA-173: allow the request's own host only when the host portion
+				// is a known-safe value (loopback, an explicitly configured public
+				// hostname). Mirrors the Origin allowlist hardening in SEA-155 —
+				// without this gate, a same-LAN attacker controlling Referer could
+				// bypass the CSRF check by hitting the client at its r.Host value.
 				if host := r.Host; host != "" {
-					validPrefixes = append(validPrefixes, "http://"+host, "https://"+host)
+					hostname := host
+					if h, _, err := net.SplitHostPort(host); err == nil {
+						hostname = h
+					}
+					if isTrustedHostname(hostname) {
+						validPrefixes = append(validPrefixes, "http://"+host, "https://"+host)
+						if hostname != host {
+							validPrefixes = append(validPrefixes, "http://"+hostname, "https://"+hostname)
+						}
+					}
 				}
 				for _, prefix := range validPrefixes {
 					if strings.HasPrefix(referer, prefix) {
