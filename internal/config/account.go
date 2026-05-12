@@ -46,7 +46,10 @@ func LoadAccount() (*Account, error) {
 	return &a, nil
 }
 
-// Save atomically writes account.json with 0600 permissions.
+// Save atomically and durably writes account.json with 0600 permissions.
+// Uses writeAtomic so a crash or power loss between write and disk flush
+// does not leave a truncated file: the FRP token can't be regenerated
+// without re-pairing, so durability matters.
 func (a *Account) Save() error {
 	if a.ServerID == "" {
 		return errors.New("server_id is required")
@@ -56,8 +59,7 @@ func (a *Account) Save() error {
 	}
 
 	accountPath := AccountPath()
-	dir := filepath.Dir(accountPath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(accountPath), 0700); err != nil {
 		return fmt.Errorf("create account directory: %w", err)
 	}
 
@@ -66,13 +68,8 @@ func (a *Account) Save() error {
 		return fmt.Errorf("marshal account: %w", err)
 	}
 
-	tmpPath := accountPath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
-		return fmt.Errorf("write temp account file: %w", err)
-	}
-	if err := os.Rename(tmpPath, accountPath); err != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("rename account file: %w", err)
+	if err := writeAtomic(accountPath, data, 0600); err != nil {
+		return fmt.Errorf("write account file: %w", err)
 	}
 	return nil
 }

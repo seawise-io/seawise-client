@@ -60,7 +60,10 @@ func LoadMachine() (*Machine, error) {
 	return &m, nil
 }
 
-// Save atomically writes machine.json with 0600 permissions.
+// Save atomically and durably writes machine.json with 0600 permissions.
+// Uses writeAtomic so a crash or power loss between write and disk flush
+// does not leave a truncated file: machine_id is the stable identity the
+// server uses to recognize re-pair events.
 func (m *Machine) Save() error {
 	if m.MachineID == "" {
 		return errors.New("machine_id is required")
@@ -70,8 +73,7 @@ func (m *Machine) Save() error {
 	}
 
 	machinePath := MachinePath()
-	dir := filepath.Dir(machinePath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(machinePath), 0700); err != nil {
 		return fmt.Errorf("create machine directory: %w", err)
 	}
 
@@ -80,13 +82,8 @@ func (m *Machine) Save() error {
 		return fmt.Errorf("marshal machine: %w", err)
 	}
 
-	tmpPath := machinePath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
-		return fmt.Errorf("write temp machine file: %w", err)
-	}
-	if err := os.Rename(tmpPath, machinePath); err != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("rename machine file: %w", err)
+	if err := writeAtomic(machinePath, data, 0600); err != nil {
+		return fmt.Errorf("write machine file: %w", err)
 	}
 	return nil
 }

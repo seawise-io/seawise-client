@@ -361,12 +361,21 @@ func TestMigrateLegacyIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestMigrateLegacyCleansStaleConfigFile(t *testing.T) {
+// SEA-162: legacy config.json is cleaned up only when both machine.json
+// and account.json exist (= migration genuinely complete). Seeds all
+// three files and asserts the legacy is removed. The companion test
+// TestMigrateLegacyPreservesLegacyOnPartialMigration covers the case
+// where account.json is missing (cleanup must NOT happen).
+func TestMigrateLegacyCleansStaleConfigFileAfterFullMigration(t *testing.T) {
 	dir := withTempDataDir(t)
 
 	m := &Machine{MachineID: "abc", Services: []LocalService{}}
 	if err := m.Save(); err != nil {
 		t.Fatalf("seed machine: %v", err)
+	}
+	a := &Account{ServerID: "s", FRPToken: "t"}
+	if err := a.Save(); err != nil {
+		t.Fatalf("seed account: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"server_id":"stale"}`), 0600); err != nil {
 		t.Fatalf("seed stale config: %v", err)
@@ -376,7 +385,41 @@ func TestMigrateLegacyCleansStaleConfigFile(t *testing.T) {
 		t.Fatalf("MigrateLegacy: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "config.json")); !os.IsNotExist(err) {
-		t.Error("stale config.json should be cleaned up")
+		t.Error("stale config.json should be cleaned up after full migration")
+	}
+}
+
+// SEA-162: when a previous migration crashed between writing machine.json
+// and writing account.json, the legacy file is the only remaining record
+// of the user's account binding. MigrateLegacy must NOT delete it on
+// subsequent runs — the user needs it to recover.
+func TestMigrateLegacyPreservesLegacyOnPartialMigration(t *testing.T) {
+	dir := withTempDataDir(t)
+
+	m := &Machine{MachineID: "abc", Services: []LocalService{}}
+	if err := m.Save(); err != nil {
+		t.Fatalf("seed machine: %v", err)
+	}
+	// Legacy file has the original (unrecovered) account data. Account.json
+	// is intentionally absent — that's the partial-migration state.
+	legacy := []byte(`{"server_id":"recoverable","frp_token":"original"}`)
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), legacy, 0600); err != nil {
+		t.Fatalf("seed legacy: %v", err)
+	}
+
+	if err := MigrateLegacy(); err != nil {
+		t.Fatalf("MigrateLegacy: %v", err)
+	}
+
+	// Legacy must still exist — it's the only record of the account binding.
+	if _, err := os.Stat(filepath.Join(dir, "config.json")); err != nil {
+		t.Errorf("legacy config.json must be preserved on partial-migration state, got err=%v", err)
+	}
+	// Account.json must still NOT exist — MigrateLegacy is not allowed to
+	// invent account state from a stale legacy file when machine.json
+	// already exists (the machine_id mismatch would be silent corruption).
+	if AccountExists() {
+		t.Error("account.json must not be auto-created from legacy when machine.json already exists")
 	}
 }
 

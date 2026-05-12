@@ -71,6 +71,11 @@ type Client struct {
 	lastStartTime time.Time
 	crashCount    int
 	stopChan      chan struct{}
+	// SEA-164: cmdDone is closed by monitorProcess after its single cmd.Wait()
+	// returns. Stop() waits on this channel instead of calling cmd.Wait() a
+	// second time (concurrent Wait on the same *exec.Cmd is undefined behavior
+	// per stdlib). A fresh channel is created in Start() per process lifecycle.
+	cmdDone chan struct{}
 
 	connectionID string
 
@@ -439,9 +444,17 @@ func (c *Client) Start() error {
 	c.cmd.Stdout = os.Stdout
 	c.cmd.Stderr = os.Stderr
 	c.lastStartTime = time.Now()
+	// SEA-164: fresh cmdDone for this process lifecycle. monitorProcess closes
+	// it after its cmd.Wait() returns; Stop() reads it to know the process has
+	// exited without itself calling cmd.Wait() (which would race).
+	c.cmdDone = make(chan struct{})
 
 	if err := c.cmd.Start(); err != nil {
 		c.cmd = nil
+		// Close cmdDone so any pending Stop() doesn't block forever waiting
+		// for a monitorProcess that will never run.
+		close(c.cmdDone)
+		c.cmdDone = nil
 		c.mu.Unlock()
 		c.setState(ProcessCrashed)
 		return fmt.Errorf("failed to start frpc: %w", err)
@@ -469,7 +482,22 @@ func (c *Client) monitorProcess() {
 	c.mu.RLock()
 	cmd := c.cmd
 	stopCh := c.stopChan
+	cmdDone := c.cmdDone
 	c.mu.RUnlock()
+
+	// SEA-164: signal Stop() that the process has been reaped, regardless of
+	// how we exit this function. Closing cmdDone is the contract that lets
+	// Stop() avoid calling cmd.Wait() concurrently with us.
+	defer func() {
+		if cmdDone != nil {
+			select {
+			case <-cmdDone:
+				// Already closed (e.g. Start error path) — don't double-close.
+			default:
+				close(cmdDone)
+			}
+		}
+	}()
 
 	if cmd == nil {
 		return
@@ -516,31 +544,33 @@ func (c *Client) Stop() error {
 	}
 
 	cmd := c.cmd // Capture under lock for safe access below
+	cmdDone := c.cmdDone
 	c.cmd = nil
 	c.state = ProcessStopped
 	configPath := c.configPath
 	c.mu.Unlock()
 
-	// Kill the process outside the lock (avoids holding lock during I/O)
+	// Kill the process outside the lock (avoids holding lock during I/O).
+	// SEA-164: monitorProcess is the sole caller of cmd.Wait(); we wait on
+	// cmdDone for its completion instead of spawning a second Wait, which
+	// per stdlib is undefined behavior.
 	if cmd != nil && cmd.Process != nil {
 		if err := cmd.Process.Signal(os.Interrupt); err != nil {
 			if killErr := cmd.Process.Kill(); killErr != nil {
 				slog.Warn("Kill error, process may have already exited", "component", "frp", "error", killErr)
 			}
-		} else {
-			// Wait for graceful exit with timeout — no goroutine needed, no lock needed
+		} else if cmdDone != nil {
+			// Wait up to 5s for graceful exit signaled by monitorProcess.
 			timer := time.NewTimer(5 * time.Second)
 			defer timer.Stop()
-			exited := make(chan struct{})
-			go func() {
-				_ = cmd.Wait()
-				close(exited)
-			}()
 			select {
-			case <-exited:
-				// Graceful exit
+			case <-cmdDone:
+				// Graceful exit — process reaped by monitorProcess.
 			case <-timer.C:
 				_ = cmd.Process.Kill()
+				// Block until monitorProcess has actually reaped the killed
+				// process so the cmd is fully cleaned up before we return.
+				<-cmdDone
 			}
 		}
 	}
