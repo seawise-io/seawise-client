@@ -457,6 +457,12 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 
 	s.connManager.HeartbeatOK()
 
+	go func() {
+		if err := reconcileMachineServicesWithServer(s.shutdownCtx, currentAPIClient, client, currentCfg.ServerID); err != nil {
+			slog.Warn("Service reconcile failed", "component", "heartbeat", "error", err)
+		}
+	}()
+
 	// Adopt server-recommended heartbeat interval (clamped to 10s-5min)
 	if result.Response != nil && result.Response.NextHeartbeatMs > 0 {
 		interval := time.Duration(result.Response.NextHeartbeatMs) * time.Millisecond
