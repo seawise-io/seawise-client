@@ -60,10 +60,13 @@ func writeJSONStatus(w http.ResponseWriter, status int, data interface{}) {
 	}
 }
 
-// isLoopbackBindAddr reports whether bind addresses an interface that is only
-// reachable from the same machine. Used by SEA-151 to gate first-run setup —
-// the unauthenticated /api/auth/set-password endpoint is safe on loopback but
-// dangerous on a wider bind.
+// isLoopbackBindAddr reports whether bindAddr targets a loopback-only interface.
+// Used to surface a clear first-run warning (SEA-176) when the operator binds
+// to a public interface without a password — not as a hard gate. The auth
+// middleware already restricts unauthenticated traffic to the first-run wizard
+// endpoints (`/`, `/static/*`, `/api/auth/*`, `/api/status`); everything else
+// returns 403 until a password is set. This matches the standard self-hosted
+// pattern used by Sonarr, Plex, Gitea, Jellyfin, etc.
 func isLoopbackBindAddr(bindAddr string) bool {
 	switch bindAddr {
 	case "127.0.0.1", "::1", "localhost":
@@ -1041,20 +1044,24 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 		bindAddr = "127.0.0.1"
 	}
 
-	// SEA-151: refuse to listen on a non-loopback address before a password is
-	// set. The /api/auth/set-password endpoint is unauthenticated by design (so
-	// the operator can do the first-run setup), which means anyone reachable on
-	// the bind address can claim the client. Loopback (127.0.0.1, ::1) is safe
-	// because only local processes can hit it. Operators wanting LAN/Docker
-	// access must run a one-time setup over loopback first, then expose it.
-	if !isLoopbackBindAddr(bindAddr) && !s.auth.hasPassword() {
-		slog.Error(
-			"Refusing to bind a non-loopback address without a password set",
+	// SEA-176: first-run wizard pattern (Sonarr/Plex/Gitea/Jellyfin standard).
+	// When no password is set, the auth middleware restricts unauthenticated
+	// traffic to the setup wizard endpoints (`/`, `/static/*`, `/api/auth/*`,
+	// `/api/status`); everything else returns 403 "Password setup required".
+	// This is safe to expose on a public bind because the only thing reachable
+	// is the password-setup form. Log a loud warning so the operator knows to
+	// finish setup ASAP and isn't surprised by the open window.
+	//
+	// Replaces the SEA-151 hard refusal which created a chicken-and-egg on
+	// fresh installs (couldn't reach the UI to set a password without first
+	// binding to loopback, swapping bind, restarting).
+	if !s.auth.hasPassword() && !isLoopbackBindAddr(bindAddr) {
+		slog.Warn(
+			"First-run wizard active on a non-loopback address — set a password immediately",
 			"component", "webui",
 			"bind_addr", bindAddr,
-			"hint", "First run: bind to 127.0.0.1, open the UI, set a password, then re-launch with SEAWISE_BIND_ADDR set to the address you want.",
+			"hint", "Open http://"+bindAddr+":"+strconv.Itoa(port)+"/ in a browser to set a password. Until then, only the setup endpoints are reachable.",
 		)
-		os.Exit(1)
 	}
 
 	handler := s.auth.middleware(mux)
