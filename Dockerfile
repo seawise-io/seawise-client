@@ -23,12 +23,12 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -o /seawise-client ./cmd/seawise
 
 # FRP client download stage (with checksum verification)
-FROM alpine:3.21@sha256:c3f8e73fdb79deaebaa2037150150191b9dcbfba68b4a46d70103204c53f4709 AS frp-downloader
-ARG FRP_VERSION=0.67.0
+FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS frp-downloader
+ARG FRP_VERSION=0.68.1
 ARG TARGETARCH=amd64
-# SHA-256 checksums from https://github.com/fatedier/frp/releases/tag/v0.67.0
-ARG FRP_SHA256_AMD64=f8629ca7ca56b8e7e7a9903779b8d5c47c56ad1b75b99b2d7138477acc4c7105
-ARG FRP_SHA256_ARM64=0e9683226acdcbbb2ac8d073f35ba8be2a8b1e7584684d2073f39d337ebd6de7
+# SHA-256 checksums from https://github.com/fatedier/frp/releases/download/v0.68.1/frp_sha256_checksums.txt
+ARG FRP_SHA256_AMD64=4a4e88987d39561e1b3b3b23d0ede48a457eebf76a87231999957e870f5f02b6
+ARG FRP_SHA256_ARM64=e7ad15b0cfe4cf0125df4217778b66cb4426179270967b59900ecb2362d8cd01
 RUN apk add --no-cache curl tar && \
     FRP_TARBALL="frp_${FRP_VERSION}_linux_${TARGETARCH}.tar.gz" && \
     curl -Lo "/tmp/${FRP_TARBALL}" "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/${FRP_TARBALL}" && \
@@ -39,7 +39,7 @@ RUN apk add --no-cache curl tar && \
     mv /tmp/frp_${FRP_VERSION}_linux_${TARGETARCH}/LICENSE /frp-LICENSE
 
 # Runtime stage
-FROM alpine:3.21@sha256:c3f8e73fdb79deaebaa2037150150191b9dcbfba68b4a46d70103204c53f4709
+FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
 
 RUN apk add --no-cache ca-certificates su-exec
 
