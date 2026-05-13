@@ -7,11 +7,6 @@ import (
 	"testing"
 )
 
-// SEA-176: locks in the first-run wizard contract. When no password is set,
-// only the setup endpoints are reachable; everything else returns 403. After
-// a password is set, normal auth applies. Replaces the SEA-151 loopback-only
-// hard refusal — the wizard endpoints are safe on a public bind because the
-// only thing reachable is the password-setup form.
 func TestMiddleware_FirstRunWizard_NoPassword(t *testing.T) {
 	t.Setenv("SEAWISE_DATA_DIR", t.TempDir())
 
@@ -28,7 +23,6 @@ func TestMiddleware_FirstRunWizard_NoPassword(t *testing.T) {
 	})
 	handler := am.middleware(next)
 
-	// Setup-wizard endpoints MUST be reachable without authentication.
 	reachable := []string{
 		"/",
 		"/static/app.js",
@@ -43,18 +37,13 @@ func TestMiddleware_FirstRunWizard_NoPassword(t *testing.T) {
 			req := httptest.NewRequest("GET", path, nil)
 			rr := httptest.NewRecorder()
 			handler.ServeHTTP(rr, req)
-			// Asserting == 200 (rather than != 403) catches the
-			// quieter regression where a path becomes reachable but
-			// the wrapped handler 500s on it.
+			// `== 200` not `!= 403` so a 500 regression also fails.
 			if rr.Code != http.StatusOK {
 				t.Errorf("path %q should be reachable during first-run wizard with 200, got %d %q", path, rr.Code, rr.Body.String())
 			}
 		})
 	}
 
-	// Everything else MUST be blocked with 403 until a password is set —
-	// prevents an attacker reaching the bind from claiming services or
-	// the pairing flow before the operator finishes setup.
 	blocked := []string{
 		"/api/pair/start",
 		"/api/pair/poll",
@@ -77,8 +66,6 @@ func TestMiddleware_FirstRunWizard_NoPassword(t *testing.T) {
 	}
 }
 
-// Once a password is set the wizard is gone; protected endpoints require
-// authentication. Locks in the transition out of first-run mode.
 func TestMiddleware_AfterPasswordSet_RequiresSession(t *testing.T) {
 	t.Setenv("SEAWISE_DATA_DIR", t.TempDir())
 
@@ -97,8 +84,6 @@ func TestMiddleware_AfterPasswordSet_RequiresSession(t *testing.T) {
 	})
 	handler := am.middleware(next)
 
-	// API endpoints without a session cookie should return 401, not the
-	// first-run 403 "setup required".
 	req := httptest.NewRequest("GET", "/api/services/list", nil)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
@@ -111,9 +96,6 @@ func TestMiddleware_AfterPasswordSet_RequiresSession(t *testing.T) {
 	}
 }
 
-// SEA-176: verifies the loopback bind classifier behaves correctly for the
-// startup warning log path. Loopback addresses suppress the warning; everything
-// else triggers it. (The function lives in server.go.)
 func TestIsLoopbackBindAddr(t *testing.T) {
 	cases := []struct {
 		bind string
@@ -139,9 +121,6 @@ func TestIsLoopbackBindAddr(t *testing.T) {
 	}
 }
 
-// SEA-176: hint URL in the first-run startup warning must produce a URL the
-// operator can actually click — TLS scheme reflected, IPv6 bracketed, wildcard
-// binds substituted with localhost.
 func TestFirstRunHintURL(t *testing.T) {
 	cases := []struct {
 		bind string
