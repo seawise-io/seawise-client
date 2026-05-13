@@ -149,3 +149,57 @@ func TestFirstRunHintURL(t *testing.T) {
 func sanitizeTestName(s string) string {
 	return strings.NewReplacer("/", "_", ".", "_", " ", "_").Replace(strings.TrimPrefix(s, "/"))
 }
+
+func TestMiddleware_CSRF_AcceptsSameOriginDuringFirstRun(t *testing.T) {
+	t.Setenv("SEAWISE_DATA_DIR", t.TempDir())
+	am := newAuthManager()
+	t.Cleanup(am.Stop)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := am.middleware(next)
+
+	cases := []struct {
+		host, origin string
+	}{
+		{"10.0.0.5:8082", "http://10.0.0.5:8082"},
+		{"192.168.1.10:8082", "http://192.168.1.10:8082"},
+		{"my-nas.local:8082", "http://my-nas.local:8082"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.host, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/api/auth/set-password", strings.NewReader(`{}`))
+			req.Host = tc.host
+			req.Header.Set("Origin", tc.origin)
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+			if rr.Code == http.StatusForbidden {
+				t.Errorf("first-run same-origin POST from %q should not be CSRF-blocked, got 403: %q", tc.host, rr.Body.String())
+			}
+		})
+	}
+}
+
+func TestMiddleware_CSRF_StrictAfterPasswordSet(t *testing.T) {
+	t.Setenv("SEAWISE_DATA_DIR", t.TempDir())
+	am := newAuthManager()
+	t.Cleanup(am.Stop)
+	if err := am.setPassword("hunter2-correct-horse"); err != nil {
+		t.Fatalf("setPassword: %v", err)
+	}
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := am.middleware(next)
+
+	req := httptest.NewRequest("POST", "/api/auth/set-password", strings.NewReader(`{}`))
+	req.Host = "10.0.0.5:8082"
+	req.Header.Set("Origin", "http://10.0.0.5:8082")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("post-setup non-loopback same-origin POST should be CSRF-blocked, got %d", rr.Code)
+	}
+}

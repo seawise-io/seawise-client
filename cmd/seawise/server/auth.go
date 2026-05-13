@@ -295,17 +295,15 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 					"https://127.0.0.1",
 					"https://[::1]",
 				}
-				// SEA-155: allow the request's own host only when the host portion
-				// is a known-safe value (loopback, an explicitly configured public
-				// hostname). Browsers cannot set Host arbitrarily, so the residual
-				// CSRF risk is theoretical, but a same-LAN attacker making direct
-				// HTTP calls can — restrict to reduce attack surface.
 				if host := r.Host; host != "" {
 					hostname := host
 					if h, _, err := net.SplitHostPort(host); err == nil {
 						hostname = h
 					}
-					if isTrustedHostname(hostname) {
+					// Without a password the only reachable endpoint is the
+					// setup form, so trust same-origin on whatever bind the
+					// operator chose. Strict allowlist resumes post-setup.
+					if isTrustedHostname(hostname) || !am.hasPassword() {
 						validOrigins = append(validOrigins, "http://"+host, "https://"+host)
 						if hostname != host {
 							validOrigins = append(validOrigins, "http://"+hostname, "https://"+hostname)
@@ -335,17 +333,12 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 					"https://127.0.0.1",
 					"https://[::1]",
 				}
-				// SEA-173: allow the request's own host only when the host portion
-				// is a known-safe value (loopback, an explicitly configured public
-				// hostname). Mirrors the Origin allowlist hardening in SEA-155 —
-				// without this gate, a same-LAN attacker controlling Referer could
-				// bypass the CSRF check by hitting the client at its r.Host value.
 				if host := r.Host; host != "" {
 					hostname := host
 					if h, _, err := net.SplitHostPort(host); err == nil {
 						hostname = h
 					}
-					if isTrustedHostname(hostname) {
+					if isTrustedHostname(hostname) || !am.hasPassword() {
 						validPrefixes = append(validPrefixes, "http://"+host, "https://"+host)
 						if hostname != host {
 							validPrefixes = append(validPrefixes, "http://"+hostname, "https://"+hostname)
