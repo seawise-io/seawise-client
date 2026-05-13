@@ -184,10 +184,8 @@ func TestRefererMatchesHost(t *testing.T) {
 		{"http://10.0.0.5:8082", "10.0.0.5:8082", true},
 		{"https://10.0.0.5:8082/some/path?x=1", "10.0.0.5:8082", true},
 		{"http://nas.example.com/login", "nas.example.com", true},
-		// suffix bypass via attacker.example
 		{"http://10.0.0.5:8082.attacker.example/", "10.0.0.5:8082", false},
 		{"http://10.0.0.5:8082attacker.example/", "10.0.0.5:8082", false},
-		// cross-origin
 		{"http://attacker.example/", "10.0.0.5:8082", false},
 		{"", "10.0.0.5:8082", false},
 		{"http://10.0.0.5:8082/", "", false},
@@ -201,12 +199,6 @@ func TestRefererMatchesHost(t *testing.T) {
 	}
 }
 
-// CSRF middleware should accept POSTs whose Origin matches the URL the user
-// reached the box at, regardless of whether the box is bound on loopback or
-// a LAN IP, before or after a password is set. This is the standard
-// browser-mediated CSRF defense — the browser sets Origin from the page's
-// URL, so a cross-origin attacker page sees its own attacker.example Origin,
-// which fails the match.
 func TestMiddleware_CSRF_SameOriginAlwaysAccepted(t *testing.T) {
 	t.Setenv("SEAWISE_DATA_DIR", t.TempDir())
 	am := newAuthManager()

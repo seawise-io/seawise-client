@@ -258,9 +258,6 @@ func (am *authManager) clearRateLimit(ip string) {
 	delete(am.rateLimits, ip)
 }
 
-// originMatchesHost reports whether origin equals scheme://host where scheme
-// is http or https. Used by CSRF middleware: a state-changing request is
-// rejected unless the browser-set Origin matches the URL we're serving on.
 func originMatchesHost(origin, host string) bool {
 	if origin == "" || origin == "null" || host == "" {
 		return false
@@ -268,10 +265,6 @@ func originMatchesHost(origin, host string) bool {
 	return origin == "http://"+host || origin == "https://"+host
 }
 
-// refererMatchesHost reports whether referer is a URL whose origin (scheme +
-// host) matches the request's Host. The host must be followed by `/`, `?`,
-// `#`, or end-of-string to prevent a prefix-extension bypass like
-// `https://10.0.0.5.attacker.example/`.
 func refererMatchesHost(referer, host string) bool {
 	if referer == "" || host == "" {
 		return false
@@ -281,6 +274,7 @@ func refererMatchesHost(referer, host string) bool {
 		if !strings.HasPrefix(referer, prefix) {
 			continue
 		}
+		// Delimiter check prevents http://10.0.0.5.attacker.example bypass.
 		rest := referer[len(prefix):]
 		if rest == "" || rest[0] == '/' || rest[0] == '?' || rest[0] == '#' {
 			return true
@@ -289,7 +283,7 @@ func refererMatchesHost(referer, host string) bool {
 	return false
 }
 
-// middleware wraps handlers with CSRF and authentication checks.
+func (am *authManager) middleware(next http.Handler) http.Handler {
 func (am *authManager) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
