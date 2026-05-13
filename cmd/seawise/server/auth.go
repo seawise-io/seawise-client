@@ -258,20 +258,33 @@ func (am *authManager) clearRateLimit(ip string) {
 	delete(am.rateLimits, ip)
 }
 
-// isTrustedHostname reports whether a hostname is allowed to appear in the
-// CSRF Origin allowlist. Trusts loopback names, the runtime IP form, and an
-// optional operator-supplied SEAWISE_HOSTNAME. Refuses everything else so a
-// forged Host header from a same-LAN attacker can't widen the allowlist.
-func isTrustedHostname(hostname string) bool {
-	switch hostname {
-	case "localhost", "127.0.0.1", "::1", "[::1]":
-		return true
+// originMatchesHost reports whether origin equals scheme://host where scheme
+// is http or https. Used by CSRF middleware: a state-changing request is
+// rejected unless the browser-set Origin matches the URL we're serving on.
+func originMatchesHost(origin, host string) bool {
+	if origin == "" || origin == "null" || host == "" {
+		return false
 	}
-	if ip := net.ParseIP(hostname); ip != nil && ip.IsLoopback() {
-		return true
+	return origin == "http://"+host || origin == "https://"+host
+}
+
+// refererMatchesHost reports whether referer is a URL whose origin (scheme +
+// host) matches the request's Host. The host must be followed by `/`, `?`,
+// `#`, or end-of-string to prevent a prefix-extension bypass like
+// `https://10.0.0.5.attacker.example/`.
+func refererMatchesHost(referer, host string) bool {
+	if referer == "" || host == "" {
+		return false
 	}
-	if explicit := os.Getenv("SEAWISE_HOSTNAME"); explicit != "" && hostname == explicit {
-		return true
+	for _, scheme := range []string{"http://", "https://"} {
+		prefix := scheme + host
+		if !strings.HasPrefix(referer, prefix) {
+			continue
+		}
+		rest := referer[len(prefix):]
+		if rest == "" || rest[0] == '/' || rest[0] == '?' || rest[0] == '#' {
+			return true
+		}
 	}
 	return false
 }
@@ -281,94 +294,24 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 
-		// CSRF protection for state-changing requests
 		if r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
 			origin := r.Header.Get("Origin")
 			referer := r.Header.Get("Referer")
 
+			if origin == "" && referer == "" {
+				slog.Warn("Blocked request with no origin/referer", "component", "csrf", "path", validation.SanitizeLogValue(path))
+				writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Origin or Referer header required"})
+				return
+			}
 			if origin != "" {
-				validOrigins := []string{
-					"http://localhost",
-					"http://127.0.0.1",
-					"http://[::1]",
-					"https://localhost",
-					"https://127.0.0.1",
-					"https://[::1]",
-				}
-				// SEA-155: allow the request's own host only when the host portion
-				// is a known-safe value (loopback, an explicitly configured public
-				// hostname). Browsers cannot set Host arbitrarily, so the residual
-				// CSRF risk is theoretical, but a same-LAN attacker making direct
-				// HTTP calls can — restrict to reduce attack surface.
-				if host := r.Host; host != "" {
-					hostname := host
-					if h, _, err := net.SplitHostPort(host); err == nil {
-						hostname = h
-					}
-					if isTrustedHostname(hostname) {
-						validOrigins = append(validOrigins, "http://"+host, "https://"+host)
-						if hostname != host {
-							validOrigins = append(validOrigins, "http://"+hostname, "https://"+hostname)
-						}
-					}
-				}
-				isValidOrigin := false
-				for _, valid := range validOrigins {
-					if origin == valid || len(origin) > len(valid) && origin[:len(valid)+1] == valid+":" {
-						isValidOrigin = true
-						break
-					}
-				}
-				if !isValidOrigin {
+				if !originMatchesHost(origin, r.Host) {
 					slog.Warn("Blocked request from invalid origin", "component", "csrf", "origin", validation.SanitizeLogValue(origin), "path", validation.SanitizeLogValue(path))
 					writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
 					return
 				}
-			} else if referer != "" {
-				// Check delimiter after host to prevent subdomain bypass
-				isValidReferer := false
-				validPrefixes := []string{
-					"http://localhost",
-					"http://127.0.0.1",
-					"http://[::1]",
-					"https://localhost",
-					"https://127.0.0.1",
-					"https://[::1]",
-				}
-				// SEA-173: allow the request's own host only when the host portion
-				// is a known-safe value (loopback, an explicitly configured public
-				// hostname). Mirrors the Origin allowlist hardening in SEA-155 —
-				// without this gate, a same-LAN attacker controlling Referer could
-				// bypass the CSRF check by hitting the client at its r.Host value.
-				if host := r.Host; host != "" {
-					hostname := host
-					if h, _, err := net.SplitHostPort(host); err == nil {
-						hostname = h
-					}
-					if isTrustedHostname(hostname) {
-						validPrefixes = append(validPrefixes, "http://"+host, "https://"+host)
-						if hostname != host {
-							validPrefixes = append(validPrefixes, "http://"+hostname, "https://"+hostname)
-						}
-					}
-				}
-				for _, prefix := range validPrefixes {
-					if strings.HasPrefix(referer, prefix) {
-						remainder := referer[len(prefix):]
-						if remainder == "" || remainder[0] == ':' || remainder[0] == '/' {
-							isValidReferer = true
-							break
-						}
-					}
-				}
-				if !isValidReferer {
-					slog.Warn("Blocked request with invalid referer", "component", "csrf", "referer", validation.SanitizeLogValue(referer), "path", validation.SanitizeLogValue(path))
-					writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
-					return
-				}
-			} else {
-				slog.Warn("Blocked request with no origin/referer", "component", "csrf", "path", validation.SanitizeLogValue(path))
-				writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Origin or Referer header required"})
+			} else if !refererMatchesHost(referer, r.Host) {
+				slog.Warn("Blocked request with invalid referer", "component", "csrf", "referer", validation.SanitizeLogValue(referer), "path", validation.SanitizeLogValue(path))
+				writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Cross-origin requests not allowed"})
 				return
 			}
 		}
