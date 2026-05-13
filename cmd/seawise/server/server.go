@@ -60,6 +60,29 @@ func writeJSONStatus(w http.ResponseWriter, status int, data interface{}) {
 	}
 }
 
+// firstRunHintURL builds a clickable URL for the SEA-176 startup warning.
+// Reflects TLS mode, brackets IPv6 addresses, and substitutes wildcard binds
+// (0.0.0.0, ::) with localhost so the operator's terminal doesn't try to open
+// an unroutable URL.
+func firstRunHintURL(bindAddr string, port int) string {
+	scheme := "http"
+	if os.Getenv("SEAWISE_TLS") == "auto" {
+		scheme = "https"
+	}
+	host := bindAddr
+	switch host {
+	case "0.0.0.0", "":
+		host = "127.0.0.1"
+	case "::", "[::]":
+		host = "[::1]"
+	default:
+		if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
+			host = "[" + host + "]"
+		}
+	}
+	return scheme + "://" + host + ":" + strconv.Itoa(port) + "/"
+}
+
 // isLoopbackBindAddr reports whether bindAddr targets a loopback-only interface.
 // Used to surface a clear first-run warning (SEA-176) when the operator binds
 // to a public interface without a password — not as a hard gate. The auth
@@ -1060,7 +1083,7 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 			"First-run wizard active on a non-loopback address — set a password immediately",
 			"component", "webui",
 			"bind_addr", bindAddr,
-			"hint", "Open http://"+bindAddr+":"+strconv.Itoa(port)+"/ in a browser to set a password. Until then, only the setup endpoints are reachable.",
+			"hint", "Open "+firstRunHintURL(bindAddr, port)+" in a browser to set a password. Until then, only the setup endpoints are reachable.",
 		)
 	}
 

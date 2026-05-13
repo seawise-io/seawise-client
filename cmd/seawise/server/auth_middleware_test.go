@@ -43,8 +43,11 @@ func TestMiddleware_FirstRunWizard_NoPassword(t *testing.T) {
 			req := httptest.NewRequest("GET", path, nil)
 			rr := httptest.NewRecorder()
 			handler.ServeHTTP(rr, req)
-			if rr.Code == http.StatusForbidden {
-				t.Errorf("path %q should be reachable during first-run wizard, got 403 %q", path, rr.Body.String())
+			// Asserting == 200 (rather than != 403) catches the
+			// quieter regression where a path becomes reachable but
+			// the wrapped handler 500s on it.
+			if rr.Code != http.StatusOK {
+				t.Errorf("path %q should be reachable during first-run wizard with 200, got %d %q", path, rr.Code, rr.Body.String())
 			}
 		})
 	}
@@ -131,6 +134,34 @@ func TestIsLoopbackBindAddr(t *testing.T) {
 		t.Run(tc.bind, func(t *testing.T) {
 			if got := isLoopbackBindAddr(tc.bind); got != tc.want {
 				t.Errorf("isLoopbackBindAddr(%q) = %v, want %v", tc.bind, got, tc.want)
+			}
+		})
+	}
+}
+
+// SEA-176: hint URL in the first-run startup warning must produce a URL the
+// operator can actually click — TLS scheme reflected, IPv6 bracketed, wildcard
+// binds substituted with localhost.
+func TestFirstRunHintURL(t *testing.T) {
+	cases := []struct {
+		bind string
+		port int
+		tls  string
+		want string
+	}{
+		{"0.0.0.0", 8082, "", "http://127.0.0.1:8082/"},
+		{"0.0.0.0", 8082, "auto", "https://127.0.0.1:8082/"},
+		{"::", 8082, "", "http://[::1]:8082/"},
+		{"127.0.0.1", 8082, "", "http://127.0.0.1:8082/"},
+		{"10.0.0.5", 8082, "", "http://10.0.0.5:8082/"},
+		{"fd00::1", 8082, "", "http://[fd00::1]:8082/"},
+		{"fd00::1", 8082, "auto", "https://[fd00::1]:8082/"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.bind+"_"+tc.tls, func(t *testing.T) {
+			t.Setenv("SEAWISE_TLS", tc.tls)
+			if got := firstRunHintURL(tc.bind, tc.port); got != tc.want {
+				t.Errorf("firstRunHintURL(%q, %d) [TLS=%q] = %q, want %q", tc.bind, tc.port, tc.tls, got, tc.want)
 			}
 		})
 	}
