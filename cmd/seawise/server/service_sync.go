@@ -9,6 +9,7 @@ import (
 
 	"github.com/seawise/client/internal/api"
 	"github.com/seawise/client/internal/config"
+	"github.com/seawise/client/internal/frp"
 )
 
 // ErrDuplicateServiceName is returned when the caller tries to add a
@@ -230,5 +231,118 @@ func syncMachineServicesFromServer(ctx context.Context, apiClient *api.Client, s
 	}
 
 	slog.Info("Synced services from server into machine state", "component", "service_sync", "count", len(services))
+	return nil
+}
+
+// reconcileMachineServicesWithServer brings machine.json into sync with the
+// server's current view: local entries whose ServerServiceID is no longer
+// returned by the API are pruned (web-side deletes propagate down), and
+// server entries not yet in machine.json are added (web-side creates and
+// trash-restores propagate down). Local-only entries pending registration
+// (ServerServiceID == "") are left alone.
+func reconcileMachineServicesWithServer(ctx context.Context, apiClient *api.Client, frpClient *frp.Client, serverID string) error {
+	if apiClient == nil {
+		return fmt.Errorf("nil api client")
+	}
+
+	serverServices, err := apiClient.ListServices(ctx, serverID)
+	if err != nil {
+		return fmt.Errorf("list services: %w", err)
+	}
+	serverByID := make(map[string]api.Service, len(serverServices))
+	for _, s := range serverServices {
+		serverByID[s.ID] = s
+	}
+
+	m, err := config.LoadMachine()
+	if err != nil {
+		return fmt.Errorf("load machine: %w", err)
+	}
+
+	kept := make([]config.LocalService, 0, len(m.Services))
+	pruned := make([]config.LocalService, 0)
+	seenServerID := make(map[string]bool, len(m.Services))
+
+	for _, ls := range m.Services {
+		if ls.ServerServiceID == "" {
+			kept = append(kept, ls)
+			continue
+		}
+		if _, ok := serverByID[ls.ServerServiceID]; ok {
+			kept = append(kept, ls)
+			seenServerID[ls.ServerServiceID] = true
+			continue
+		}
+		pruned = append(pruned, ls)
+	}
+
+	added := make([]config.LocalService, 0)
+	for _, s := range serverServices {
+		if seenServerID[s.ID] {
+			continue
+		}
+		localID, err := config.GenerateLocalID()
+		if err != nil {
+			return fmt.Errorf("generate local id: %w", err)
+		}
+		ls := config.LocalService{
+			LocalID:         localID,
+			Name:            s.Name,
+			Host:            s.Host,
+			Port:            s.Port,
+			ServerServiceID: s.ID,
+			Subdomain:       s.Subdomain,
+		}
+		kept = append(kept, ls)
+		added = append(added, ls)
+	}
+
+	if len(pruned) == 0 && len(added) == 0 {
+		return nil
+	}
+
+	m.Services = kept
+	if err := m.Save(); err != nil {
+		return fmt.Errorf("save machine: %w", err)
+	}
+
+	if frpClient != nil {
+		for _, ls := range pruned {
+			if ls.Name == "" {
+				continue
+			}
+			if err := frpClient.RemoveService(ls.Name); err != nil {
+				slog.Warn("Failed to remove pruned service from FRP tunnel", "component", "service_sync", "name", ls.Name, "error", err)
+			}
+		}
+		for _, ls := range added {
+			frpClient.AddServiceWithoutRestart(frp.Service{
+				Name:      ls.Name,
+				LocalIP:   ls.Host,
+				LocalPort: ls.Port,
+				Subdomain: ls.Subdomain,
+			})
+		}
+		if len(added) > 0 {
+			if err := frpClient.Restart(); err != nil {
+				slog.Warn("Failed to restart FRP after re-hydrating services", "component", "service_sync", "error", err)
+			}
+		}
+	}
+
+	if len(pruned) > 0 {
+		names := make([]string, len(pruned))
+		for i, p := range pruned {
+			names[i] = p.Name
+		}
+		slog.Info("Pruned services deleted on server", "component", "service_sync", "count", len(pruned), "names", names)
+	}
+	if len(added) > 0 {
+		names := make([]string, len(added))
+		for i, a := range added {
+			names[i] = a.Name
+		}
+		slog.Info("Re-hydrated services from server", "component", "service_sync", "count", len(added), "names", names)
+	}
 	return nil
 }
