@@ -414,15 +414,7 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 	result := currentAPIClient.Heartbeat(s.shutdownCtx, currentCfg.ServerID, frpConnected, serviceCount, constants.Version, connectionID)
 
 	if result.ShouldUnpair {
-		// Don't act on a single 410. Route through the manager's confirmation
-		// logic — only actually wipe config on a sustained, repeated signal.
-		// This guards against DB hiccups, bad deploys, or other transient
-		// 410s permanently destroying the pairing.
-		confirmed := s.connManager.UnpairRequested(result.UnpairReason)
-		if !confirmed {
-			// Treat as transient until confirmed.
-			s.connManager.HeartbeatFailed()
-		}
+		s.connManager.UnpairRequested(result.UnpairReason)
 		return
 	}
 

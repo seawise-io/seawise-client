@@ -57,115 +57,38 @@ func TestHeartbeatFailure(t *testing.T) {
 	}
 }
 
-func TestUnpairRequestedRequiresConfirmation(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.UnpairCount = 3
-	cfg.UnpairWindow = 100 * time.Millisecond
-	m := NewManager(cfg)
+func TestUnpairRequestedFiresImmediately(t *testing.T) {
+	m := NewManager(DefaultConfig())
 	m.SetState(StateConnected)
 
-	// First signal: not confirmed, state unchanged
-	if confirmed := m.UnpairRequested("server_deleted"); confirmed {
-		t.Error("First unpair signal should not be confirmed")
-	}
-	if m.State() != StateConnected {
-		t.Errorf("State after 1 signal = %s, want %s", m.State(), StateConnected)
-	}
-
-	// Second signal, still before window elapses
-	if confirmed := m.UnpairRequested("server_deleted"); confirmed {
-		t.Error("Second unpair signal before window should not be confirmed")
-	}
-
-	// Third signal but window not elapsed — still not confirmed
-	if confirmed := m.UnpairRequested("server_deleted"); confirmed {
-		t.Error("Third signal before window elapsed should not be confirmed")
-	}
-	if m.State() == StateUnpaired {
-		t.Error("State should not be Unpaired before window elapses")
-	}
-
-	// Wait past the window, then send another signal — now it should confirm
-	time.Sleep(120 * time.Millisecond)
-	if confirmed := m.UnpairRequested("server_deleted"); !confirmed {
-		t.Error("After count + window met, unpair should be confirmed")
+	if !m.UnpairRequested("server_deleted") {
+		t.Error("UnpairRequested should return true")
 	}
 	if m.State() != StateUnpaired {
-		t.Errorf("State after confirmation = %s, want %s", m.State(), StateUnpaired)
-	}
-}
-
-func TestHeartbeatOKClearsUnpairCounter(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.UnpairCount = 3
-	cfg.UnpairWindow = 1 * time.Millisecond
-	m := NewManager(cfg)
-	m.SetState(StateConnected)
-
-	// Partial unpair signals
-	m.UnpairRequested("server_deleted")
-	m.UnpairRequested("server_deleted")
-
-	// A successful heartbeat in between resets the counter
-	m.HeartbeatOK()
-
-	// Now send signals again — because counter was reset, we need 3 more
-	// plus the window elapsed before confirmation
-	time.Sleep(2 * time.Millisecond)
-	if confirmed := m.UnpairRequested("server_deleted"); confirmed {
-		t.Error("First signal after HeartbeatOK reset should not be confirmed")
-	}
-	time.Sleep(2 * time.Millisecond)
-	if confirmed := m.UnpairRequested("server_deleted"); confirmed {
-		t.Error("Second signal after reset should not be confirmed (only 2 signals)")
-	}
-	time.Sleep(2 * time.Millisecond)
-	if confirmed := m.UnpairRequested("server_deleted"); !confirmed {
-		t.Error("Third signal after reset with window elapsed should confirm")
+		t.Errorf("State after unpair = %s, want %s", m.State(), StateUnpaired)
 	}
 }
 
 func TestUnpairTriggersCallback(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.UnpairCount = 2
-	cfg.UnpairWindow = 10 * time.Millisecond
-	m := NewManager(cfg)
+	m := NewManager(DefaultConfig())
 
 	called := false
 	m.SetCallbacks(nil, func() { called = true })
 
-	// First signal sets firstUnpairAt; not confirmed
-	if confirmed := m.UnpairRequested("server_deleted"); confirmed {
-		t.Fatal("First signal should not confirm")
-	}
-	// Wait past the window so the second signal crosses the threshold
-	time.Sleep(15 * time.Millisecond)
-	if confirmed := m.UnpairRequested("server_deleted"); !confirmed {
-		t.Fatal("Second signal past window should confirm")
-	}
+	m.UnpairRequested("server_deleted")
 	if !called {
-		t.Error("Unpair callback was not invoked after confirmation")
+		t.Error("Unpair callback was not invoked")
 	}
 }
 
 func TestUnpairCallbackFiresOnce(t *testing.T) {
-	// Regression: after the first confirmed unpair, every subsequent 410 used
-	// to fire onUnpair again — producing duplicate DeleteAccount error logs on
-	// every heartbeat until the process exited.
-	cfg := DefaultConfig()
-	cfg.UnpairCount = 2
-	cfg.UnpairWindow = 10 * time.Millisecond
-	m := NewManager(cfg)
+	// Regression: every 410 must not re-fire the destructive onUnpair callback
+	// once the manager is already in StateUnpaired.
+	m := NewManager(DefaultConfig())
 
 	callCount := 0
 	m.SetCallbacks(nil, func() { callCount++ })
 
-	m.UnpairRequested("server_deleted")
-	time.Sleep(15 * time.Millisecond)
-	if !m.UnpairRequested("server_deleted") {
-		t.Fatal("Second signal past window should confirm")
-	}
-	// Subsequent confirmed signals must not re-fire the destructive callback
 	for i := 0; i < 5; i++ {
 		m.UnpairRequested("server_deleted")
 	}
