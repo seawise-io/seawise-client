@@ -657,9 +657,6 @@ func (s *Server) checkAndReportHealth() {
 		}
 
 		status := "offline"
-		// Health-check reaches the local service the same way FRP will —
-		// verbatim from the user's config, no transformation. Matches
-		// checkLocalIPUsability's rationale in internal/frp/frp.go.
 		addr := net.JoinHostPort(svc.LocalIP, fmt.Sprintf("%d", svc.LocalPort))
 		conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
 		if err == nil {

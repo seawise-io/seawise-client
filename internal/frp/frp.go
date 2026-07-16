@@ -312,35 +312,9 @@ func (c *Client) SyncServices(apiServices []Service) (added []string, removed []
 	return added, removed, err
 }
 
-// checkLocalIPUsability warns if the resolved service target looks
-// unreachable given the current runtime. Purely informational —
-// we do NOT mutate the user's input. Every peer tunnel client
-// (ngrok, cloudflared, zrok) uses the target string verbatim and
-// documents the network mode instead of silently rewriting behind
-// the user's back. Silent rewrites mask configuration mistakes and
-// make debugging harder.
-//
-// Three supported ways to reach a local service on the host from a
-// containerised client:
-//
-//  1. Shared Docker network + container name (recommended, matches
-//     the *arr/Plex ecosystem convention): the client joins the
-//     user's existing bridge network; user types "sonarr:8989" etc.
-//  2. host.docker.internal:PORT — requires the client's docker run /
-//     compose to include --add-host=host.docker.internal:host-gateway
-//     so the name resolves on Linux (Docker Desktop supplies it
-//     automatically on Mac / Windows).
-//  3. --network host + SEAWISE_HOST_NETWORK=true (Linux only) — the
-//     client shares the host's network namespace, so "localhost" and
-//     "127.0.0.1" reach the host directly.
-//
-// This function only WARNs on the fourth (broken) shape: bare
-// localhost/127.0.0.1 inside a Docker container that ISN'T on host
-// networking. In that shape, "localhost" resolves to the client
-// container itself, never to the host — the FRP dial will fail with
-// a connection refused and the user will see a "service unavailable"
-// page. Emit a link to docs so they can fix it fast.
-func checkLocalIPUsability(host string) {
+// warnIfLocalhostInBridge logs a hint when the target can't be reached
+// from the container. Never mutates.
+func warnIfLocalhostInBridge(host string) {
 	if host != "localhost" && host != "127.0.0.1" {
 		return
 	}
@@ -380,11 +354,8 @@ func (c *Client) writeConfigLocked() error {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
 
-	// User's LocalIP is passed to FRP verbatim. Warn if it looks
-	// unreachable under the current Docker network mode (see
-	// checkLocalIPUsability comment for the supported shapes).
 	for _, svc := range c.services {
-		checkLocalIPUsability(svc.LocalIP)
+		warnIfLocalhostInBridge(svc.LocalIP)
 	}
 	translatedServices := c.services
 
