@@ -312,22 +312,25 @@ func (c *Client) SyncServices(apiServices []Service) (added []string, removed []
 	return added, removed, err
 }
 
-// TranslateLocalhost converts localhost/127.0.0.1 to host.docker.internal
-// when running inside Docker, so services on the host are accessible.
-// Set SEAWISE_HOST_NETWORK=true to disable translation (for --network host).
-func TranslateLocalhost(host string) string {
-	if host == "localhost" || host == "127.0.0.1" {
-		// Skip translation if using host networking (container shares host's network)
-		if os.Getenv("SEAWISE_HOST_NETWORK") == "true" {
-			return host
-		}
-		// Check if we're running in Docker by looking for /.dockerenv
-		if _, err := os.Stat("/.dockerenv"); err == nil {
-			slog.Info("Translating localhost for Docker", "component", "frp", "original", host, "translated", "host.docker.internal")
-			return "host.docker.internal"
-		}
+// warnIfLocalhostInBridge logs a hint when the target can't be reached
+// from the container. Never mutates.
+func warnIfLocalhostInBridge(host string) {
+	if host != "localhost" && host != "127.0.0.1" {
+		return
 	}
-	return host
+	// Not in Docker at all → localhost points at the host machine.
+	if _, err := os.Stat("/.dockerenv"); err != nil {
+		return
+	}
+	// Host networking → container's localhost IS the host's localhost.
+	if os.Getenv("SEAWISE_HOST_NETWORK") == "true" {
+		return
+	}
+	slog.Warn(
+		"Service target is 'localhost' but the client is running in Docker without host networking. In bridge mode this resolves to the client container itself, not to your host machine — the tunnel will fail with connection refused. Use one of: (1) a shared Docker network with container names like 'sonarr:8989', (2) 'host.docker.internal:PORT' with --add-host=host.docker.internal:host-gateway in the client's docker run, or (3) --network host with SEAWISE_HOST_NETWORK=true. See https://docs.seawise.io/client/configuration",
+		"component", "frp",
+		"host", host,
+	)
 }
 
 // WriteConfig writes the FRP config file (acquires lock)
@@ -351,19 +354,10 @@ func (c *Client) writeConfigLocked() error {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
 
-	// Translate localhost addresses for Docker compatibility
-	translatedServices := make([]Service, len(c.services))
-	for i, svc := range c.services {
-		translatedServices[i] = Service{
-			Name:      svc.Name,
-			LocalIP:   TranslateLocalhost(svc.LocalIP),
-			LocalPort: svc.LocalPort,
-			Subdomain: svc.Subdomain,
-			UseE2ETLS: svc.UseE2ETLS,
-			CertPath:  svc.CertPath,
-			KeyPath:   svc.KeyPath,
-		}
+	for _, svc := range c.services {
+		warnIfLocalhostInBridge(svc.LocalIP)
 	}
+	translatedServices := c.services
 
 	data := struct {
 		ServerAddr   string

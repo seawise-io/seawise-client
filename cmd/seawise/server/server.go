@@ -657,8 +657,7 @@ func (s *Server) checkAndReportHealth() {
 		}
 
 		status := "offline"
-		host := frp.TranslateLocalhost(svc.LocalIP)
-		addr := net.JoinHostPort(host, fmt.Sprintf("%d", svc.LocalPort))
+		addr := net.JoinHostPort(svc.LocalIP, fmt.Sprintf("%d", svc.LocalPort))
 		conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
 		if err == nil {
 			_ = conn.Close()
