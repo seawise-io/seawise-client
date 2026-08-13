@@ -3,6 +3,7 @@ package frp
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -76,6 +77,12 @@ type Client struct {
 	// second time (concurrent Wait on the same *exec.Cmd is undefined behavior
 	// per stdlib). A fresh channel is created in Start() per process lifecycle.
 	cmdDone chan struct{}
+
+	// SEA-219: closed is set by Close() and terminally blocks Start()/Restart().
+	// Distinguishes "stop for restart cycle" (Stop()) from "permanent teardown"
+	// (Close()) so background goroutines with a captured *Client pointer can't
+	// resurrect a frpc process after handleUnpairInternal has released ownership.
+	closed bool
 
 	connectionID string
 
@@ -390,8 +397,17 @@ func (c *Client) writeConfigLocked() error {
 	return nil
 }
 
+// ErrClientClosed is returned by Start/Restart after Close() has been called.
+// Background goroutines with a captured *Client see this and drop.
+var ErrClientClosed = errors.New("frp client closed")
+
 func (c *Client) Start() error {
 	c.mu.Lock()
+
+	if c.closed {
+		c.mu.Unlock()
+		return ErrClientClosed
+	}
 
 	if c.connectionID == "" {
 		connIDBytes := make([]byte, 16)
@@ -581,6 +597,37 @@ func (c *Client) Stop() error {
 	c.mu.Unlock()
 
 	return nil
+}
+
+// Close permanently terminates the client. Subsequent Start/Restart calls
+// return ErrClientClosed. Use this when tearing down a paired session
+// (e.g., handleUnpairInternal) — a captured *Client pointer held by a
+// delayed-restart goroutine (superseded restart, frp_recovery, migrate
+// restart) cannot resurrect a frpc process after Close returns.
+//
+// Contrast with Stop, which is designed to be part of a Stop→Start
+// restart cycle: it terminates the current frpc process but leaves the
+// Client eligible to start a new one.
+//
+// Close first sets the closed flag under the mutex so any concurrent
+// Start racing with Close observes it, then delegates to Stop for the
+// process-teardown work. Multiple Close calls are idempotent.
+func (c *Client) Close() error {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	c.closed = true
+	c.mu.Unlock()
+	return c.Stop()
+}
+
+// IsClosed reports whether Close has been called. For tests and diagnostics.
+func (c *Client) IsClosed() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.closed
 }
 
 // ResetCrashCount resets the crash counter.

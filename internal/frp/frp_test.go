@@ -1,6 +1,7 @@
 package frp
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -260,5 +261,56 @@ func TestWriteConfigPermissions(t *testing.T) {
 
 	if !strings.Contains(string(content), `serverAddr = "frp.example.com"`) {
 		t.Error("Config file missing expected content")
+	}
+}
+
+// TestCloseTerminallyBlocksStart verifies the SEA-219 orphan-frpc guard: a
+// *Client captured by a background goroutine cannot start a frpc process
+// after Close has been called on it (which handleUnpairInternal does when
+// the user unpairs mid-restart-delay).
+func TestCloseTerminallyBlocksStart(t *testing.T) {
+	c := New(Config{ServerAddr: "frp.example.com", ServerPort: 7000, Token: "tok", ServerID: "srv"})
+	c.SetServices([]Service{{Name: "app", LocalIP: "127.0.0.1", LocalPort: 8080, Subdomain: "app"}})
+
+	if c.IsClosed() {
+		t.Fatal("fresh client reports closed")
+	}
+	if err := c.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if !c.IsClosed() {
+		t.Fatal("client not marked closed after Close")
+	}
+
+	if err := c.Start(); !errors.Is(err, ErrClientClosed) {
+		t.Errorf("Start after Close: got %v, want ErrClientClosed", err)
+	}
+	if err := c.Restart(); !errors.Is(err, ErrClientClosed) {
+		t.Errorf("Restart after Close: got %v, want ErrClientClosed", err)
+	}
+}
+
+// TestCloseIsIdempotent verifies repeated Close calls are safe. handleUnpairInternal
+// races with the shutdown path (which also touches the client); a second Close
+// must not panic or double-close channels.
+func TestCloseIsIdempotent(t *testing.T) {
+	c := New(Config{ServerAddr: "frp.example.com", ServerPort: 7000, Token: "tok", ServerID: "srv"})
+	if err := c.Close(); err != nil {
+		t.Fatalf("first Close: %v", err)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+}
+
+// TestStopDoesNotClose verifies Stop remains eligible for Stop→Start restart
+// cycles (frp_recovery, superseded restart, migrate). Only Close is terminal.
+func TestStopDoesNotClose(t *testing.T) {
+	c := New(Config{ServerAddr: "frp.example.com", ServerPort: 7000, Token: "tok", ServerID: "srv"})
+	if err := c.Stop(); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+	if c.IsClosed() {
+		t.Error("Stop should not mark closed — only Close does")
 	}
 }

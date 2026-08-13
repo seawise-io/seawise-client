@@ -1025,7 +1025,12 @@ func (s *Server) handleFRPCrash() {
 func (s *Server) handleUnpairInternal() {
 	s.mu.Lock()
 	if s.frpClient != nil {
-		_ = s.frpClient.Stop()
+		// SEA-219: Close (not Stop) marks the client terminally closed.
+		// Delayed-restart goroutines (superseded, frp_recovery, migrate)
+		// that captured a *frp.Client pointer before this Lock will see
+		// ErrClientClosed from Start/Restart and drop cleanly instead of
+		// spawning an orphan frpc process against a revoked FRP token.
+		_ = s.frpClient.Close()
 		s.frpClient = nil
 	}
 
