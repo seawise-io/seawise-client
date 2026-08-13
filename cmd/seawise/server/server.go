@@ -497,15 +497,38 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 		migrate := result.Response.MigrateTo
 		slog.Info("Migration requested", "component", "heartbeat", "addr", migrate.FRPServerAddr, "port", migrate.FRPServerPort, "shard", migrate.ShardID)
 
-		s.mu.Lock()
 		// SEA-164: s.cfg can be nil-ed by handleUnpairInternal between the
-		// RLock+snapshot at the top of sendHeartbeat and this Lock — the
-		// HTTP round-trip above released the lock. If we got unpaired
-		// during the heartbeat, drop the migration: the unpair handler
-		// has already torn down state.
+		// RLock+snapshot at the top of sendHeartbeat and now. If we got
+		// unpaired during the heartbeat, drop the migration — the unpair
+		// handler has already torn down state.
+		s.mu.RLock()
+		cfgGone := s.cfg == nil
+		s.mu.RUnlock()
+		if cfgGone {
+			slog.Info("Migration skipped — unpaired during heartbeat", "component", "heartbeat")
+			return
+		}
+		if client == nil {
+			slog.Info("Migration skipped — no active FRP client", "component", "heartbeat")
+			return
+		}
+
+		// SEA-218: validate BEFORE mutating s.cfg / persisting to disk.
+		// UpdateServer's isAllowedFRPDomain gate rejects addresses outside
+		// the trusted allowlist. Prior order saved first, so a rejected
+		// migrate response left an attacker-controlled address on disk;
+		// startServices dialed it on the next container restart with no
+		// re-check.
+		if err := client.UpdateServer(migrate.FRPServerAddr, migrate.FRPServerPort); err != nil {
+			slog.Warn("Rejected migration to untrusted server", "component", "heartbeat", "error", err)
+			return
+		}
+
+		s.mu.Lock()
+		// Re-check under Lock — UpdateServer above didn't hold s.mu, unpair
+		// could have landed. Match the shard self-heal block below.
 		if s.cfg == nil {
 			s.mu.Unlock()
-			slog.Info("Migration skipped — unpaired during heartbeat", "component", "heartbeat")
 			return
 		}
 		s.cfg.FRPServerAddr = migrate.FRPServerAddr
@@ -515,20 +538,14 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 		}
 		s.mu.Unlock()
 
-		if client != nil {
-			if err := client.UpdateServer(migrate.FRPServerAddr, migrate.FRPServerPort); err != nil {
-				slog.Warn("Rejected migration to untrusted server", "component", "heartbeat", "error", err)
-			} else {
-				client.ResetConnectionID()
-				if err := client.Restart(); err != nil {
-					slog.Error("Migration restart failed", "component", "heartbeat", "error", err)
-				} else {
-					slog.Info("Migration complete", "component", "heartbeat", "shard", migrate.ShardID)
-					s.mu.Lock()
-					s.lastHealthStatus = make(map[string]string)
-					s.mu.Unlock()
-				}
-			}
+		client.ResetConnectionID()
+		if err := client.Restart(); err != nil {
+			slog.Error("Migration restart failed", "component", "heartbeat", "error", err)
+		} else {
+			slog.Info("Migration complete", "component", "heartbeat", "shard", migrate.ShardID)
+			s.mu.Lock()
+			s.lastHealthStatus = make(map[string]string)
+			s.mu.Unlock()
 		}
 		return
 	}
