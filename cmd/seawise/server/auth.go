@@ -258,6 +258,42 @@ func (am *authManager) clearRateLimit(ip string) {
 	delete(am.rateLimits, ip)
 }
 
+// isHostAllowed returns true when the Host header's hostname portion is
+// unreachable by public-DNS rebinding:
+//
+//   - IP literal (127.0.0.1, 192.168.x.x, ::1, [fe80::1], …)
+//   - "localhost"
+//   - a *.local mDNS name (LAN-broadcast, can't be rebound via public DNS)
+//
+// DNS rebinding requires a name resolvable through the browser's system DNS
+// resolver (a public multi-label name). The attacker registers evil.example,
+// serves the malicious page from their IP, then TTLs the record to 127.0.0.1
+// so the next XHR from the page hits the local client. Origin and Host both
+// end up as "evil.example" so originMatchesHost passes even though the request
+// is crossing origins semantically.
+//
+// The three allowed shapes above all sidestep public DNS: IP literals skip
+// resolution, "localhost" is browser-hardcoded, .local goes over mDNS
+// (broadcast to the local link — attacker can't poison it remotely). This
+// keeps the two legitimate access paths open: loopback (default) and LAN
+// IP / mDNS name (SEA-191).
+func isHostAllowed(host string) bool {
+	if host == "" {
+		return false
+	}
+	// Strip :port if present. SplitHostPort handles both v4 and bracketed v6.
+	h, _, err := net.SplitHostPort(host)
+	if err != nil {
+		// No port suffix — treat the whole value as the hostname.
+		h = host
+	}
+	h = strings.ToLower(h)
+	if h == "localhost" || strings.HasSuffix(h, ".local") {
+		return true
+	}
+	return net.ParseIP(h) != nil
+}
+
 func originMatchesHost(origin, host string) bool {
 	if origin == "" || origin == "null" || host == "" {
 		return false
@@ -288,6 +324,18 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 		path := r.URL.Path
 
 		if r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
+			// SEA-228: DNS-rebinding guard. r.Host MUST be an IP literal or
+			// "localhost" — a DNS-name Host means the browser resolved a
+			// public hostname (that rebound to a local address) to reach us,
+			// and Origin/Host will match even though the request is crossing
+			// origins semantically. Rebinding needs a DNS name; reject the
+			// class entirely.
+			if !isHostAllowed(r.Host) {
+				slog.Warn("Blocked request with disallowed host", "component", "csrf", "host", validation.SanitizeLogValue(r.Host), "path", validation.SanitizeLogValue(path))
+				writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Invalid host"})
+				return
+			}
+
 			origin := r.Header.Get("Origin")
 			referer := r.Header.Get("Referer")
 

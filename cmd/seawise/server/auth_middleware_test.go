@@ -287,3 +287,68 @@ func TestMiddleware_CSRF_RejectsMissingOriginAndReferer(t *testing.T) {
 		t.Errorf("POST without Origin or Referer must be 403, got %d", rr.Code)
 	}
 }
+
+// SEA-228: DNS rebinding — attacker's page loads from a DNS name that
+// resolves to 127.0.0.1, so Origin and Host both look like the same DNS
+// name and originMatchesHost passes. The isHostAllowed gate rejects it
+// because the Host isn't an IP literal or "localhost".
+func TestMiddleware_CSRF_RejectsDNSRebindingHost(t *testing.T) {
+	t.Setenv("SEAWISE_DATA_DIR", t.TempDir())
+	am := newAuthManager()
+	t.Cleanup(am.Stop)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := am.middleware(next)
+
+	// Attacker's page + Host both "evil.example" — rebinding scenario.
+	req := httptest.NewRequest("POST", "/api/auth/set-password", strings.NewReader(`{}`))
+	req.Host = "evil.example"
+	req.Header.Set("Origin", "http://evil.example")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("DNS-name Host must be 403, got %d %q", rr.Code, rr.Body.String())
+	}
+
+	// Same but with port suffix — still a DNS name.
+	req2 := httptest.NewRequest("POST", "/api/auth/set-password", strings.NewReader(`{}`))
+	req2.Host = "evil.example:8082"
+	req2.Header.Set("Origin", "http://evil.example:8082")
+	rr2 := httptest.NewRecorder()
+	handler.ServeHTTP(rr2, req2)
+	if rr2.Code != http.StatusForbidden {
+		t.Errorf("DNS-name Host with port must be 403, got %d %q", rr2.Code, rr2.Body.String())
+	}
+}
+
+// Confirm the legitimate access paths still work.
+func TestIsHostAllowed(t *testing.T) {
+	cases := []struct {
+		host string
+		want bool
+	}{
+		{"127.0.0.1:8082", true},
+		{"127.0.0.1", true},
+		{"[::1]:8082", true},
+		{"::1", true},
+		{"localhost:8082", true},
+		{"localhost", true},
+		{"192.168.2.86:8082", true}, // LAN access — SEA-191 requirement
+		{"10.0.0.5:8082", true},
+		{"[fe80::1]:8082", true},
+		{"nas.local:8082", true},   // mDNS — LAN broadcast, not rebindable
+		{"NAS.Local", true},        // case-insensitive
+		{"evil.example", false},
+		{"evil.example:8082", false},
+		{"127.0.0.1.evil.example", false}, // IP-prefixed DNS name
+		{"evil.local.example", false},     // .local as non-suffix
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := isHostAllowed(tc.host); got != tc.want {
+			t.Errorf("isHostAllowed(%q) = %v, want %v", tc.host, got, tc.want)
+		}
+	}
+}
