@@ -310,7 +310,8 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 		}
 
 		// Auth endpoints and status are always accessible (needed for setup + login UI)
-		if path == "/api/auth/status" || path == "/api/auth/login" || path == "/api/auth/set-password" || path == "/api/status" {
+		// SEA-231: /healthz + /readyz are K8s probe conventions — must be unauth.
+		if path == "/api/auth/status" || path == "/api/auth/login" || path == "/api/auth/set-password" || path == "/api/status" || path == "/healthz" || path == "/readyz" {
 			next.ServeHTTP(w, r)
 			return
 		}

@@ -1039,6 +1039,8 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 	mux.HandleFunc("/static/", handleStatic)
 	mux.HandleFunc("/", s.handleHome)
 	mux.HandleFunc("/api/status", s.handleStatus)
+	mux.HandleFunc("/healthz", s.handleHealthz)
+	mux.HandleFunc("/readyz", s.handleReadyz)
 	mux.HandleFunc("/api/pair/start", s.handlePairStart)
 	mux.HandleFunc("/api/pair/poll", s.handlePairPoll)
 	mux.HandleFunc("/api/pair/cancel", s.handlePairCancel)
@@ -1134,6 +1136,40 @@ func handleStatic(w http.ResponseWriter, r *http.Request) {
 	if _, err := w.Write(data); err != nil { // #nosec G705
 		slog.Error("Failed to write response", "component", "static", "error", err)
 	}
+}
+
+// SEA-231: /healthz — K8s liveness probe convention. 200 as long as the HTTP
+// server is answering. Never gated by pair state or auth so a probe won't
+// mistake "unpaired" or "no password" for "unhealthy".
+func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, map[string]string{"status": "ok", "version": constants.Version})
+}
+
+// SEA-231: /readyz — K8s readiness probe convention. 200 iff the client is
+// paired AND the FRP tunnel is currently running. During pairing, FRP crash
+// backoff, or if the operator has unpaired, ready returns 503 so K8s can
+// route traffic away (matters if someone puts a Service in front of a pod
+// pool). Reports the underlying state so the probe output is diagnosable.
+func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) {
+	s.mu.RLock()
+	paired := s.pairingState == "paired"
+	frpClient := s.frpClient
+	s.mu.RUnlock()
+
+	frpRunning := frpClient != nil && frpClient.IsRunning()
+
+	body := map[string]interface{}{
+		"paired":      paired,
+		"frp_running": frpRunning,
+		"version":     constants.Version,
+	}
+	if paired && frpRunning {
+		body["status"] = "ready"
+		writeJSON(w, body)
+		return
+	}
+	body["status"] = "not_ready"
+	writeJSONStatus(w, http.StatusServiceUnavailable, body)
 }
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {

@@ -287,3 +287,25 @@ func TestMiddleware_CSRF_RejectsMissingOriginAndReferer(t *testing.T) {
 		t.Errorf("POST without Origin or Referer must be 403, got %d", rr.Code)
 	}
 }
+
+// SEA-231: /healthz and /readyz must be unauth and never gated by password state.
+func TestMiddleware_HealthEndpointsUnauth(t *testing.T) {
+	t.Setenv("SEAWISE_DATA_DIR", t.TempDir())
+	am := newAuthManager()
+	t.Cleanup(am.Stop)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	handler := am.middleware(next)
+
+	for _, path := range []string{"/healthz", "/readyz"} {
+		req := httptest.NewRequest("GET", path, nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("%s unauthenticated must reach the handler (200), got %d body=%q", path, rr.Code, rr.Body.String())
+		}
+	}
+}
