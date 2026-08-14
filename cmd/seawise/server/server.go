@@ -90,6 +90,22 @@ func isLoopbackBindAddr(bindAddr string) bool {
 	return false
 }
 
+// parseLogLevel maps SEAWISE_LOG_LEVEL to slog.Level. Empty / unrecognised
+// values fall back to Info so a typo doesn't accidentally silence the app.
+// Peers: cloudflared --loglevel, Coder --verbose, Alloy --server.log.level.
+func parseLogLevel(v string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
 // Server owns all runtime state for the SeaWise client.
 type Server struct {
 	mu          sync.RWMutex
@@ -129,7 +145,7 @@ func Run(port int) {
 
 func (s *Server) run(port int) {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: parseLogLevel(os.Getenv("SEAWISE_LOG_LEVEL")),
 	})))
 	slog.Info("SeaWise Client starting", "component", "main", "version", constants.Version)
 

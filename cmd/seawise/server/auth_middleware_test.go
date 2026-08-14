@@ -287,3 +287,26 @@ func TestMiddleware_CSRF_RejectsMissingOriginAndReferer(t *testing.T) {
 		t.Errorf("POST without Origin or Referer must be 403, got %d", rr.Code)
 	}
 }
+
+// SEA-230: SEAWISE_LOG_LEVEL controls slog level. Empty / unknown → Info.
+func TestParseLogLevel(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"debug", "DEBUG"},
+		{"DEBUG", "DEBUG"},
+		{"  Debug  ", "DEBUG"},
+		{"info", "INFO"},
+		{"", "INFO"},
+		{"warn", "WARN"},
+		{"warning", "WARN"},
+		{"error", "ERROR"},
+		{"trace", "INFO"}, // unrecognised — safe fallback
+	}
+	for _, tc := range cases {
+		if got := parseLogLevel(tc.in).String(); got != tc.want {
+			t.Errorf("parseLogLevel(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
