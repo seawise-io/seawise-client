@@ -27,7 +27,9 @@ const (
 
 	rateLimitWindow    = 15 * time.Minute
 	rateLimitBaseDelay = 1 * time.Second
-	rateLimitMaxDelay  = 10 * time.Second
+	// 5min cap matches Vaultwarden's default; 10s was short enough for a
+	// LAN-exposed attacker to keep sustained pressure well within window.
+	rateLimitMaxDelay = 5 * time.Minute
 )
 
 // rateLimitEntry tracks failed login attempts per IP
