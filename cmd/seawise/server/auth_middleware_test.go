@@ -290,7 +290,6 @@ func TestMiddleware_CSRF_RejectsMissingOriginAndReferer(t *testing.T) {
 	}
 }
 
-// SEA-230: SEAWISE_LOG_LEVEL controls slog level. Empty / unknown → Info.
 func TestParseLogLevel(t *testing.T) {
 	cases := []struct {
 		in   string
@@ -304,11 +303,69 @@ func TestParseLogLevel(t *testing.T) {
 		{"warn", "WARN"},
 		{"warning", "WARN"},
 		{"error", "ERROR"},
-		{"trace", "INFO"}, // unrecognised — safe fallback
+		{"trace", "INFO"},
 	}
 	for _, tc := range cases {
 		if got := parseLogLevel(tc.in).String(); got != tc.want {
 			t.Errorf("parseLogLevel(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestMiddleware_CSRF_RejectsDNSRebindingHost(t *testing.T) {
+	t.Setenv("SEAWISE_DATA_DIR", t.TempDir())
+	am := newAuthManager()
+	t.Cleanup(am.Stop)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := am.middleware(next)
+
+	req := httptest.NewRequest("POST", "/api/auth/set-password", strings.NewReader(`{}`))
+	req.Host = "evil.example"
+	req.Header.Set("Origin", "http://evil.example")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("DNS-name Host must be 403, got %d %q", rr.Code, rr.Body.String())
+	}
+
+	req2 := httptest.NewRequest("POST", "/api/auth/set-password", strings.NewReader(`{}`))
+	req2.Host = "evil.example:8082"
+	req2.Header.Set("Origin", "http://evil.example:8082")
+	rr2 := httptest.NewRecorder()
+	handler.ServeHTTP(rr2, req2)
+	if rr2.Code != http.StatusForbidden {
+		t.Errorf("DNS-name Host with port must be 403, got %d %q", rr2.Code, rr2.Body.String())
+	}
+}
+
+func TestIsHostAllowed(t *testing.T) {
+	cases := []struct {
+		host string
+		want bool
+	}{
+		{"127.0.0.1:8082", true},
+		{"127.0.0.1", true},
+		{"[::1]:8082", true},
+		{"::1", true},
+		{"localhost:8082", true},
+		{"localhost", true},
+		{"192.168.2.86:8082", true},
+		{"10.0.0.5:8082", true},
+		{"[fe80::1]:8082", true},
+		{"nas.local:8082", true},
+		{"NAS.Local", true},
+		{"evil.example", false},
+		{"evil.example:8082", false},
+		{"127.0.0.1.evil.example", false},
+		{"evil.local.example", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := isHostAllowed(tc.host); got != tc.want {
+			t.Errorf("isHostAllowed(%q) = %v, want %v", tc.host, got, tc.want)
 		}
 	}
 }
