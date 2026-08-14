@@ -361,11 +361,74 @@ func TestIsHostAllowed(t *testing.T) {
 		{"evil.example:8082", false},
 		{"127.0.0.1.evil.example", false},
 		{"evil.local.example", false},
+		{"localhost.", true},
+		{"127.0.0.1.", true},
 		{"", false},
 	}
 	for _, tc := range cases {
 		if got := isHostAllowed(tc.host); got != tc.want {
 			t.Errorf("isHostAllowed(%q) = %v, want %v", tc.host, got, tc.want)
 		}
+	}
+}
+
+// SEA-228 cloud escape hatch: SEAWISE_ALLOWED_HOSTS explicitly lists DNS
+// names the operator wants to accept (EKS ingress, Cloud Run URL, ECS ALB,
+// etc.). Case-insensitive, comma-separated, optional :port entries.
+func TestIsHostAllowed_AllowedHostsEnv(t *testing.T) {
+	t.Setenv("SEAWISE_ALLOWED_HOSTS", "client.mycompany.com, seawise-client.example.io:8443 ,LOUD.EXAMPLE")
+	cases := []struct {
+		host string
+		want bool
+	}{
+		{"client.mycompany.com", true},
+		{"client.mycompany.com:8082", true}, // port stripped before compare
+		{"seawise-client.example.io", true}, // port on the env entry, request without
+		{"seawise-client.example.io:8443", true},
+		{"loud.example", true},            // case-insensitive match
+		{"attacker.mycompany.com", false}, // subdomain not covered
+		{"mycompany.com", false},          // parent domain not covered
+		{"127.0.0.1", true},               // defaults still work
+		{"nas.local", true},
+	}
+	for _, tc := range cases {
+		if got := isHostAllowed(tc.host); got != tc.want {
+			t.Errorf("isHostAllowed(%q) with SEAWISE_ALLOWED_HOSTS set = %v, want %v", tc.host, got, tc.want)
+		}
+	}
+}
+
+// Empty env var must be identical to unset — no accidental "match anything"
+// behaviour from a blank string.
+func TestIsHostAllowed_EmptyAllowedHostsEnv(t *testing.T) {
+	t.Setenv("SEAWISE_ALLOWED_HOSTS", "")
+	if isHostAllowed("evil.example") {
+		t.Error("empty SEAWISE_ALLOWED_HOSTS must not allow arbitrary DNS names")
+	}
+	if !isHostAllowed("127.0.0.1") {
+		t.Error("empty SEAWISE_ALLOWED_HOSTS must not disable the default rules")
+	}
+}
+
+// SEA-228 CSRF integration: with the env var set, a POST from that Origin
+// against the same Host actually reaches the handler.
+func TestMiddleware_CSRF_AllowedHostsEnvIntegration(t *testing.T) {
+	t.Setenv("SEAWISE_DATA_DIR", t.TempDir())
+	t.Setenv("SEAWISE_ALLOWED_HOSTS", "client.mycompany.com")
+	am := newAuthManager()
+	t.Cleanup(am.Stop)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := am.middleware(next)
+
+	req := httptest.NewRequest("POST", "/api/auth/set-password", strings.NewReader(`{}`))
+	req.Host = "client.mycompany.com"
+	req.Header.Set("Origin", "https://client.mycompany.com")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code == http.StatusForbidden && strings.Contains(rr.Body.String(), "Invalid host") {
+		t.Errorf("SEAWISE_ALLOWED_HOSTS host must pass rebinding gate, got %d %q", rr.Code, rr.Body.String())
 	}
 }
