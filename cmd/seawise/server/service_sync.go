@@ -239,10 +239,14 @@ func syncMachineServicesFromServer(ctx context.Context, apiClient *api.Client, s
 // returned by the API are pruned (web-side deletes propagate down), and
 // server entries not yet in machine.json are added (web-side creates and
 // trash-restores propagate down). Local-only entries pending registration
-// (ServerServiceID == "") are left alone.
+// are retried via the batch endpoint on every reconcile.
 func reconcileMachineServicesWithServer(ctx context.Context, apiClient *api.Client, frpClient *frp.Client, serverID string) error {
 	if apiClient == nil {
 		return fmt.Errorf("nil api client")
+	}
+
+	if err := registerLocalServices(ctx, apiClient, serverID); err != nil {
+		slog.Warn("Retry of local-only services failed", "component", "service_sync", "error", err)
 	}
 
 	serverServices, err := apiClient.ListServices(ctx, serverID)

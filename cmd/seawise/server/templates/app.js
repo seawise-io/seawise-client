@@ -685,7 +685,8 @@ function renderServices(services) {
         if (svc.subdomain) {
             subdomainEl.textContent = svc.subdomain;
         } else {
-            subdomainEl.textContent = 'Local only';
+            subdomainEl.textContent = 'Syncing…';
+            subdomainEl.title = 'Not yet registered with Seawise. The client retries automatically on each sync.';
             subdomainEl.classList.add('service-badge-local');
         }
 
