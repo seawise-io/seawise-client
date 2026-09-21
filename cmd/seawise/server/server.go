@@ -1047,9 +1047,13 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 	mux.HandleFunc("/api/services/delete", s.handleDeleteService)
 	mux.HandleFunc("/api/unpair", s.handleUnpair)
 
+	// Default to all interfaces so headless server users can reach the UI from
+	// another device without manually setting SEAWISE_BIND_ADDR. Matches the
+	// out-of-the-box behavior of Home Assistant, Immich, Portainer, etc.
+	// The first-run wizard log below warns loudly until a password is set.
 	bindAddr := os.Getenv("SEAWISE_BIND_ADDR")
 	if bindAddr == "" {
-		bindAddr = "127.0.0.1"
+		bindAddr = "0.0.0.0"
 	}
 
 	if !s.auth.hasPassword() && !isLoopbackBindAddr(bindAddr) {
