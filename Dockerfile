@@ -60,8 +60,6 @@ RUN chmod +x /app/entrypoint.sh
 RUN mkdir -p /config && chown seawise:seawise /config /app
 VOLUME ["/config"]
 
-# Bind to all interfaces inside the container
-ENV SEAWISE_BIND_ADDR=0.0.0.0
 # Tell the app to store data in /config (instead of ~/.seawise)
 ENV SEAWISE_DATA_DIR=/config
 

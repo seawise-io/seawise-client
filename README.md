@@ -82,7 +82,7 @@ In the web UI, add an app by entering a name, host, and port:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SEAWISE_PORT` | `8082` | Web UI port |
-| `SEAWISE_BIND_ADDR` | `127.0.0.1` | Bind address |
+| `SEAWISE_BIND_ADDR` | `0.0.0.0` | Bind address. Set to `127.0.0.1` to restrict the UI to the local machine only. |
 | `SEAWISE_DATA_DIR` | `/config` | Persistent data directory |
 | `PUID` / `PGID` | `1000` | Run as specific user/group ID |
 
