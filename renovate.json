@@ -1,0 +1,56 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "minimumReleaseAge": "3 days",
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "timezone": "America/Toronto",
+  "schedule": ["before 6am on monday"],
+  "labels": ["deps"],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["deps", "security"],
+    "minimumReleaseAge": null,
+    "schedule": ["at any time"]
+  },
+  "packageRules": [
+    {
+      "description": "Group + auto-merge patch GitHub Actions bumps",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "commitMessagePrefix": "deps(ci):"
+    },
+    {
+      "description": "Auto-merge patch GitHub Actions bumps",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Group Go module updates",
+      "matchManagers": ["gomod"],
+      "groupName": "go-modules",
+      "commitMessagePrefix": "deps(client):"
+    },
+    {
+      "description": "Auto-merge patch Go module bumps",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "Major bumps always need manual review",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["deps", "major-bump"]
+    }
+  ]
+}
