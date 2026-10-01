@@ -84,7 +84,8 @@ In the web UI, add an app by entering a name, host, and port:
 | `SEAWISE_PORT` | `8082` | Web UI port |
 | `SEAWISE_BIND_ADDR` | `0.0.0.0` | Bind address. Set to `127.0.0.1` to restrict the UI to the local machine only. |
 | `SEAWISE_DATA_DIR` | `/config` | Persistent data directory |
-| `SEAWISE_LOG_LEVEL` | `info` | Log verbosity — `debug`, `info`, `warn`, `error` |
+| `SEAWISE_LOG_LEVEL` | `info` | Log verbosity. One of `debug`, `info`, `warn`, `error`. |
+| `SEAWISE_ALLOWED_HOSTS` | _(unset)_ | Comma-separated DNS names to allow (cloud deployments behind an ingress, e.g. `client.mycompany.com`). Not needed for localhost, LAN IP, or `*.local` access. |
 | `PUID` / `PGID` | `1000` | Run as specific user/group ID |
 
 ## Health checks

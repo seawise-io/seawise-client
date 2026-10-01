@@ -258,6 +258,86 @@ func (am *authManager) clearRateLimit(ip string) {
 	delete(am.rateLimits, ip)
 }
 
+// allowedHostsFromEnv reads SEAWISE_ALLOWED_HOSTS at each call. Comma-separated
+// hostnames (case-insensitive, ports stripped). Cloud deployments (EKS/ALB,
+// Cloud Run, ECS behind an ingress) address the client via a public DNS name
+// which the default rebinding guard rejects; this env var is the opt-in door.
+//
+// Not cached because the client is a long-lived process and the operator may
+// reload the env via SIGHUP / systemctl reload down the road. The lookup is
+// cheap (one Getenv + tiny string split) — no reason to be clever.
+func allowedHostsFromEnv() []string {
+	raw := os.Getenv("SEAWISE_ALLOWED_HOSTS")
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		h := strings.ToLower(strings.TrimSpace(p))
+		if h == "" {
+			continue
+		}
+		// Accept "host:port" entries too — strip the port to match how
+		// isHostAllowed normalises the request Host.
+		if hh, _, err := net.SplitHostPort(h); err == nil {
+			h = hh
+		}
+		out = append(out, h)
+	}
+	return out
+}
+
+// isHostAllowed returns true when the Host header's hostname portion is
+// unreachable by public-DNS rebinding:
+//
+//   - IP literal (127.0.0.1, 192.168.x.x, ::1, [fe80::1], …)
+//   - "localhost"
+//   - a *.local mDNS name (LAN-broadcast, can't be rebound via public DNS)
+//   - any hostname explicitly listed in SEAWISE_ALLOWED_HOSTS (cloud opt-in)
+//
+// DNS rebinding requires a name resolvable through the browser's system DNS
+// resolver (a public multi-label name). The attacker registers evil.example,
+// serves the malicious page from their IP, then TTLs the record to 127.0.0.1
+// so the next XHR from the page hits the local client. Origin and Host both
+// end up as "evil.example" so originMatchesHost passes even though the request
+// is crossing origins semantically.
+//
+// The three default-allowed shapes all sidestep public DNS: IP literals skip
+// resolution, "localhost" is browser-hardcoded, .local goes over mDNS
+// (broadcast to the local link — attacker can't poison it remotely).
+//
+// SEAWISE_ALLOWED_HOSTS is the escape hatch for cloud deployments where the
+// client sits behind an ingress with a public/private DNS name (EKS ALB,
+// Cloud Run, ECS). The operator explicitly names those hosts so we're not
+// blindly trusting arbitrary DNS resolution.
+func isHostAllowed(host string) bool {
+	if host == "" {
+		return false
+	}
+	// Strip :port if present. SplitHostPort handles both v4 and bracketed v6.
+	h, _, err := net.SplitHostPort(host)
+	if err != nil {
+		// No port suffix — treat the whole value as the hostname.
+		h = host
+	}
+	h = strings.ToLower(h)
+	// Normalise trailing dot (fully-qualified DNS form is a valid Host value).
+	h = strings.TrimSuffix(h, ".")
+	if h == "localhost" || strings.HasSuffix(h, ".local") {
+		return true
+	}
+	if net.ParseIP(h) != nil {
+		return true
+	}
+	for _, allowed := range allowedHostsFromEnv() {
+		if h == allowed {
+			return true
+		}
+	}
+	return false
+}
+
 func originMatchesHost(origin, host string) bool {
 	if origin == "" || origin == "null" || host == "" {
 		return false
@@ -288,6 +368,18 @@ func (am *authManager) middleware(next http.Handler) http.Handler {
 		path := r.URL.Path
 
 		if r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
+			// SEA-228: DNS-rebinding guard. r.Host MUST be an IP literal or
+			// "localhost" — a DNS-name Host means the browser resolved a
+			// public hostname (that rebound to a local address) to reach us,
+			// and Origin/Host will match even though the request is crossing
+			// origins semantically. Rebinding needs a DNS name; reject the
+			// class entirely.
+			if !isHostAllowed(r.Host) {
+				slog.Warn("Blocked request with disallowed host", "component", "csrf", "host", validation.SanitizeLogValue(r.Host), "path", validation.SanitizeLogValue(path))
+				writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Invalid host"})
+				return
+			}
+
 			origin := r.Header.Get("Origin")
 			referer := r.Header.Get("Referer")
 
