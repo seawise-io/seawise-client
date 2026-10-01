@@ -1039,6 +1039,8 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 	mux.HandleFunc("/static/", handleStatic)
 	mux.HandleFunc("/", s.handleHome)
 	mux.HandleFunc("/api/status", s.handleStatus)
+	mux.HandleFunc("/healthz", s.handleHealthz)
+	mux.HandleFunc("/readyz", s.handleReadyz)
 	mux.HandleFunc("/api/pair/start", s.handlePairStart)
 	mux.HandleFunc("/api/pair/poll", s.handlePairPoll)
 	mux.HandleFunc("/api/pair/cancel", s.handlePairCancel)
@@ -1158,6 +1160,35 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	if err := indexTemplate.Execute(w, data); err != nil {
 		slog.Error("Template render error", "component", "webui", "error", err)
 	}
+}
+
+func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, map[string]string{
+		"status":  "ok",
+		"version": constants.Version,
+	})
+}
+
+func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) {
+	s.mu.RLock()
+	paired := s.pairingState == "paired"
+	frpClient := s.frpClient
+	s.mu.RUnlock()
+
+	frpRunning := frpClient != nil && frpClient.IsRunning()
+
+	body := map[string]interface{}{
+		"paired":      paired,
+		"frp_running": frpRunning,
+		"version":     constants.Version,
+	}
+	if paired && frpRunning {
+		body["status"] = "ready"
+		writeJSON(w, body)
+		return
+	}
+	body["status"] = "not_ready"
+	writeJSONStatus(w, http.StatusServiceUnavailable, body)
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
