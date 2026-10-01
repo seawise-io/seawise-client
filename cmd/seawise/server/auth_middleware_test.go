@@ -31,6 +31,8 @@ func TestMiddleware_FirstRunWizard_NoPassword(t *testing.T) {
 		"/api/auth/status",
 		"/api/auth/login",
 		"/api/auth/set-password",
+		"/healthz",
+		"/readyz",
 	}
 	for _, path := range reachable {
 		t.Run("reachable_"+sanitizeTestName(path), func(t *testing.T) {

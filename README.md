@@ -86,6 +86,19 @@ In the web UI, add an app by entering a name, host, and port:
 | `SEAWISE_DATA_DIR` | `/config` | Persistent data directory |
 | `PUID` / `PGID` | `1000` | Run as specific user/group ID |
 
+## Health checks
+
+The client exposes two unauthenticated endpoints that follow the standard
+Kubernetes probe convention:
+
+| Endpoint | Status | Purpose |
+|----------|--------|---------|
+| `GET /healthz` | 200 always (while the HTTP server responds) | Liveness. Use for Docker HEALTHCHECK or K8s `livenessProbe`. Never fails on unpaired or FRP-reconnecting states. |
+| `GET /readyz` | 200 iff paired AND FRP tunnel running; 503 otherwise | Readiness. Use for K8s `readinessProbe` or any system that should route traffic away during pairing / FRP backoff. Body includes `paired`, `frp_running`, and `version` for diagnostics. |
+
+The Docker image's built-in HEALTHCHECK uses `/healthz` automatically on the
+current `SEAWISE_PORT`. No configuration needed.
+
 ## Updating
 
 ```bash
