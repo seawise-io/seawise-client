@@ -93,8 +93,9 @@ type Client struct {
 const frpcTemplate = `serverAddr = "{{ tomlEscape .ServerAddr }}"
 serverPort = {{ .ServerPort }}
 {{ if .UseTLS }}
-# TLS encryption enabled (configured by server)
 transport.tls.enable = true
+transport.tls.serverName = "{{ tomlEscape .ServerAddr }}"
+transport.tls.trustedCaFile = "/etc/ssl/certs/ca-certificates.crt"
 {{ end }}
 # Authentication - token and server ID sent via metadata for plugin validation
 metadatas.token = "{{ tomlEscape .Token }}"

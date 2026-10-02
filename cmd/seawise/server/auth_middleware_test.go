@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/seawise/client/internal/constants"
 )
 
 func TestMiddleware_FirstRunWizard_NoPassword(t *testing.T) {
@@ -287,6 +289,25 @@ func TestMiddleware_CSRF_RejectsMissingOriginAndReferer(t *testing.T) {
 
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("POST without Origin or Referer must be 403, got %d", rr.Code)
+	}
+}
+
+func TestIsDevBuild(t *testing.T) {
+	orig := constants.Version
+	t.Cleanup(func() { constants.Version = orig })
+
+	cases := map[string]bool{
+		"dev":     true,
+		"dev-abc": true,
+		"v1.0.11": false,
+		"1.2.3":   false,
+		"":        false,
+	}
+	for v, want := range cases {
+		constants.Version = v
+		if got := isDevBuild(); got != want {
+			t.Errorf("isDevBuild() with Version=%q = %v, want %v", v, got, want)
+		}
 	}
 }
 
