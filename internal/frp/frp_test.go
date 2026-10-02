@@ -201,6 +201,12 @@ func TestTemplateWithE2ETLS(t *testing.T) {
 	if !strings.Contains(output, "transport.tls.enable = true") {
 		t.Error("Missing TLS transport config")
 	}
+	if !strings.Contains(output, `transport.tls.serverName = "frp.example.com"`) {
+		t.Error("Missing TLS serverName — frpc would skip cert verification")
+	}
+	if !strings.Contains(output, `transport.tls.trustedCaFile = "/etc/ssl/certs/ca-certificates.crt"`) {
+		t.Error("Missing TLS trustedCaFile — frpc defaults to InsecureSkipVerify=true without it")
+	}
 	if !strings.Contains(output, `type = "https"`) {
 		t.Error("Missing https proxy type for E2E TLS service")
 	}

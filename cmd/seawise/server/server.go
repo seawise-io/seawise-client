@@ -204,7 +204,13 @@ func (s *Server) startServices(ctx context.Context) {
 
 	frpToken := cfgSnapshot.FRPToken
 
-	slog.Info("Connecting to FRP server", "component", "frp", "addr", frpServerAddr, "port", frpServerPort, "tls", cfgSnapshot.FRPUseTLS) // #nosec G706
+	useTLS := cfgSnapshot.FRPUseTLS
+	if !useTLS && !isDevBuild() {
+		slog.Warn("API reported FRPUseTLS=false in a release build; forcing TLS on", "component", "frp")
+		useTLS = true
+	}
+
+	slog.Info("Connecting to FRP server", "component", "frp", "addr", frpServerAddr, "port", frpServerPort, "tls", useTLS) // #nosec G706
 
 	var e2eTLSEnabled bool
 	var certManager *certs.CertManager
@@ -231,7 +237,7 @@ func (s *Server) startServices(ctx context.Context) {
 		ServerPort: frpServerPort,
 		Token:      frpToken,
 		ServerID:   cfgSnapshot.ServerID,
-		UseTLS:     cfgSnapshot.FRPUseTLS,
+		UseTLS:     useTLS,
 	})
 
 	frpClient.SetOnStateChange(func(state frp.ProcessState) {

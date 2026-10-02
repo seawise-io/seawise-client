@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/seawise/client/internal/constants"
 )
 
 func writeJSON(w http.ResponseWriter, data interface{}) {
@@ -33,4 +35,8 @@ func parseLogLevel(v string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+func isDevBuild() bool {
+	return constants.Version == "dev" || strings.HasPrefix(constants.Version, "dev-")
 }
