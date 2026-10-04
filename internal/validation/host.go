@@ -32,7 +32,6 @@ var blockedMetadataHostnames = []string{
 	"metadata.google",
 }
 
-// Link-local also covers credential endpoints like AWS ECS at 169.254.170.2.
 var blockedNets = []*net.IPNet{
 	mustCIDR("169.254.0.0/16"),
 	mustCIDR("fe80::/10"),
@@ -52,13 +51,11 @@ var lookupIP = func(ctx context.Context, host string) ([]net.IP, error) {
 	return net.DefaultResolver.LookupIP(ctx, "ip", host)
 }
 
-// normalizeHost strips brackets, port, case, and trailing dot.
 func normalizeHost(host string) string {
 	lower := strings.ToLower(host)
 	if h, _, err := net.SplitHostPort(lower); err == nil {
 		lower = h
 	} else if len(lower) >= 2 && lower[0] == '[' && lower[len(lower)-1] == ']' {
-		// Bracketed IPv6 without a port fails SplitHostPort and ParseIP.
 		lower = lower[1 : len(lower)-1]
 	}
 	return strings.TrimSuffix(lower, ".")
@@ -78,7 +75,6 @@ func isBlockedIP(ip net.IP) bool {
 	return false
 }
 
-// isCloudMetadata reports whether host is a metadata hostname or a blocked IP.
 func isCloudMetadata(host string) bool {
 	h := normalizeHost(host)
 	for _, name := range blockedMetadataHostnames {
@@ -99,7 +95,6 @@ func blockedError(host string) error {
 	}
 }
 
-// ValidateServiceHost checks the host string only, no DNS.
 func ValidateServiceHost(host string) error {
 	if host == "" {
 		return &BlockedHostError{Host: host, Reason: "host cannot be empty"}
@@ -110,8 +105,6 @@ func ValidateServiceHost(host string) error {
 	return nil
 }
 
-// ValidateServiceHostResolved also blocks names that resolve to a blocked
-// address. Lookup failures pass since frpc can't reach those either.
 func ValidateServiceHostResolved(host string) error {
 	if err := ValidateServiceHost(host); err != nil {
 		return err

@@ -222,8 +222,6 @@ func (c *Client) setState(newState ProcessState) {
 	}
 }
 
-// allowedServices drops services whose host is blocked. Runs DNS, so call it
-// before taking c.mu.
 func allowedServices(in []Service) []Service {
 	out := make([]Service, 0, len(in))
 	for _, svc := range in {

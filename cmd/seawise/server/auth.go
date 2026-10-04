@@ -47,7 +47,7 @@ type authManager struct {
 	rateLimits   map[string]*rateLimitEntry // IP -> rate limit state
 	stopChan     chan struct{}              // Signal cleanup goroutine to exit
 	stopOnce     sync.Once                  // Prevents double-close panic on stopChan
-	setupCode    string                     // required to set the first password
+	setupCode    string
 }
 
 func newAuthManager() *authManager {
@@ -78,7 +78,6 @@ func newAuthManager() *authManager {
 	return am
 }
 
-// Crockford base32 minus lookalike characters. 12 chars = 60 bits.
 const setupCodeAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
 func generateSetupCode() (string, error) {

@@ -345,7 +345,6 @@ func TestBlockedHostsNeverReachConfig(t *testing.T) {
 		t.Fatal("AddService accepted a link-local host")
 	}
 
-	// Backstop: a blocked host that got into c.services is still left out of the file.
 	client.mu.Lock()
 	client.services = append(client.services, Service{Name: "sneaky", LocalIP: "169.254.169.254", LocalPort: 80, Subdomain: "sneaky"})
 	client.mu.Unlock()
