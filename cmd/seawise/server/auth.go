@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -46,6 +47,7 @@ type authManager struct {
 	rateLimits   map[string]*rateLimitEntry // IP -> rate limit state
 	stopChan     chan struct{}              // Signal cleanup goroutine to exit
 	stopOnce     sync.Once                  // Prevents double-close panic on stopChan
+	setupCode    string                     // required to set the first password
 }
 
 func newAuthManager() *authManager {
@@ -62,12 +64,56 @@ func newAuthManager() *authManager {
 		am.passwordHash = data
 		slog.Info("Password protection enabled", "component", "auth")
 	} else {
-		slog.Info("No password set — password will be required on first web UI visit", "component", "auth")
+		code, err := generateSetupCode()
+		if err != nil {
+			slog.Error("Failed to generate setup code", "component", "auth", "error", err)
+			os.Exit(1)
+		}
+		am.setupCode = code
+		slog.Warn("No password set. Enter this setup code in the web UI to create one.", "component", "auth", "setup_code", code)
 	}
 
 	am.startCleanup()
 
 	return am
+}
+
+// Crockford base32 minus lookalike characters. 12 chars = 60 bits.
+const setupCodeAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+func generateSetupCode() (string, error) {
+	b := make([]byte, 12)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	out := make([]byte, 0, 14)
+	for i, v := range b {
+		if i > 0 && i%4 == 0 {
+			out = append(out, '-')
+		}
+		out = append(out, setupCodeAlphabet[int(v)%len(setupCodeAlphabet)])
+	}
+	return string(out), nil
+}
+
+func normalizeSetupCode(s string) string {
+	s = strings.ToUpper(s)
+	return strings.Map(func(r rune) rune {
+		if r == '-' || r == ' ' {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+func (am *authManager) checkSetupCode(code string) bool {
+	am.mu.RLock()
+	want := am.setupCode
+	am.mu.RUnlock()
+	if want == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(normalizeSetupCode(code)), []byte(normalizeSetupCode(want))) == 1
 }
 
 func (am *authManager) hasPassword() bool {
@@ -84,6 +130,7 @@ func (am *authManager) setPassword(password string) error {
 
 	am.mu.Lock()
 	am.passwordHash = hash
+	am.setupCode = ""
 	am.mu.Unlock()
 
 	slog.Info("Password set/updated", "component", "auth")
@@ -497,6 +544,7 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Password        string `json:"password"`
 		CurrentPassword string `json:"current_password"`
+		SetupCode       string `json:"setup_code"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
@@ -511,6 +559,23 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 	if s.auth.hasPassword() && !s.auth.checkPassword(req.CurrentPassword) {
 		writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Current password is incorrect"})
 		return
+	}
+
+	if !s.auth.hasPassword() {
+		ip := clientIPFrom(r)
+		if allowed, retryAfter := s.auth.checkRateLimit(ip); !allowed {
+			w.Header().Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())))
+			writeJSONStatus(w, http.StatusTooManyRequests, map[string]string{
+				"error": fmt.Sprintf("Too many failed attempts. Try again in %d seconds.", int(retryAfter.Seconds())),
+			})
+			return
+		}
+		if !s.auth.checkSetupCode(req.SetupCode) {
+			s.auth.recordFailedLogin(ip)
+			writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Setup code is incorrect. Find it in the client logs."})
+			return
+		}
+		s.auth.clearRateLimit(ip)
 	}
 
 	if err := s.auth.setPassword(req.Password); err != nil {
@@ -529,13 +594,7 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{"success": true})
 }
 
-func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Strip port from RemoteAddr for consistent rate limit bucketing
+func clientIPFrom(r *http.Request) string {
 	clientIP := r.RemoteAddr
 	if host, _, err := net.SplitHostPort(clientIP); err == nil {
 		clientIP = host
@@ -543,12 +602,21 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 	if os.Getenv("SEAWISE_TRUST_PROXY") == "true" {
 		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
 			candidate := strings.TrimSpace(strings.Split(forwarded, ",")[0])
-			// Validate it's actually an IP
 			if net.ParseIP(candidate) != nil {
 				clientIP = candidate
 			}
 		}
 	}
+	return clientIP
+}
+
+func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	clientIP := clientIPFrom(r)
 
 	allowed, retryAfter := s.auth.checkRateLimit(clientIP)
 	if !allowed {

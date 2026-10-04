@@ -46,6 +46,9 @@ type Server struct {
 }
 
 func Run(port int) {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: parseLogLevel(os.Getenv("SEAWISE_LOG_LEVEL")),
+	})))
 	s := &Server{
 		pairingState:     "none",
 		auth:             newAuthManager(),
@@ -56,9 +59,6 @@ func Run(port int) {
 }
 
 func (s *Server) run(port int) {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: parseLogLevel(os.Getenv("SEAWISE_LOG_LEVEL")),
-	})))
 	slog.Info("SeaWise Client starting", "component", "main", "version", constants.Version)
 
 	ctx, cancel := context.WithCancel(context.Background())

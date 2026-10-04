@@ -78,6 +78,7 @@ const dom = {
     dropdownLock:     () => document.getElementById('dropdown-lock'),
 
     // Setup form
+    setupCode:        () => document.getElementById('setup-code'),
     setupPassword:    () => document.getElementById('setup-password'),
     setupConfirm:     () => document.getElementById('setup-confirm'),
     setupError:       () => document.getElementById('setup-error'),
@@ -368,11 +369,17 @@ function showToast(message, type = 'error') {
 // ===== Auth Functions =====
 
 async function doSetupPassword() {
+    const code = dom.setupCode().value.trim();
     const pw = dom.setupPassword().value;
     const confirm = dom.setupConfirm().value;
     const errEl = dom.setupError();
     errEl.classList.add('hidden');
 
+    if (!code) {
+        errEl.textContent = 'Enter the setup code from the client logs';
+        errEl.classList.remove('hidden');
+        return;
+    }
     if (pw.length < 8) {
         errEl.textContent = 'Password must be at least 8 characters';
         errEl.classList.remove('hidden');
@@ -388,7 +395,7 @@ async function doSetupPassword() {
         const resp = await fetch('/api/auth/set-password', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: pw })
+            body: JSON.stringify({ password: pw, setup_code: code })
         });
         if (resp.ok) {
             showToast('Password set! Logging you in...', 'success');

@@ -96,6 +96,7 @@
             </div>
             <form onsubmit="event.preventDefault(); doSetupPassword(); return false;">
                 <input type="text" name="username" value="admin" autocomplete="username" hidden />
+                <input type="text" id="setup-code" placeholder="Setup code (shown in the client logs)" autocomplete="off" spellcheck="false" />
                 <input type="password" id="setup-password" placeholder="Password (min 8 characters)" autocomplete="new-password" />
                 <input type="password" id="setup-confirm" placeholder="Confirm password" autocomplete="new-password" />
                 <div id="setup-error" class="form-error hidden"></div>

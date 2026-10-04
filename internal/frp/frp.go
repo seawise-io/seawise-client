@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/seawise/client/internal/paths"
+	"github.com/seawise/client/internal/validation"
 
 	"github.com/seawise/client/internal/constants"
 )
@@ -221,7 +222,24 @@ func (c *Client) setState(newState ProcessState) {
 	}
 }
 
+// allowedServices drops services whose host is blocked. Runs DNS, so call it
+// before taking c.mu.
+func allowedServices(in []Service) []Service {
+	out := make([]Service, 0, len(in))
+	for _, svc := range in {
+		if err := validation.ValidateServiceHostResolved(svc.LocalIP); err != nil {
+			slog.Warn("Refusing to tunnel blocked host", "component", "frp", "service", svc.Name, "host", svc.LocalIP, "error", err)
+			continue
+		}
+		out = append(out, svc)
+	}
+	return out
+}
+
 func (c *Client) AddService(svc Service) error {
+	if err := validation.ValidateServiceHostResolved(svc.LocalIP); err != nil {
+		return err
+	}
 	c.mu.Lock()
 	c.services = append(c.services, svc)
 	c.mu.Unlock()
@@ -230,6 +248,9 @@ func (c *Client) AddService(svc Service) error {
 }
 
 func (c *Client) AddServiceWithoutRestart(svc Service) {
+	if len(allowedServices([]Service{svc})) == 0 {
+		return
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.services = append(c.services, svc)
@@ -238,6 +259,7 @@ func (c *Client) AddServiceWithoutRestart(svc Service) {
 // SetServices replaces the current services list without restarting FRP.
 // Used by crash recovery to reload services from API before restart.
 func (c *Client) SetServices(services []Service) {
+	services = allowedServices(services)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.services = services
@@ -283,6 +305,7 @@ func (c *Client) RemoveServiceWithoutRestart(name string) {
 
 // SyncServices updates the services list to match the provided list and restarts if needed
 func (c *Client) SyncServices(apiServices []Service) (added []string, removed []string, err error) {
+	apiServices = allowedServices(apiServices)
 	c.mu.Lock()
 
 	// Build maps for comparison
@@ -362,10 +385,15 @@ func (c *Client) writeConfigLocked() error {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
 
+	translatedServices := make([]Service, 0, len(c.services))
 	for _, svc := range c.services {
+		if err := validation.ValidateServiceHost(svc.LocalIP); err != nil {
+			slog.Warn("Refusing to tunnel blocked host", "component", "frp", "service", svc.Name, "host", svc.LocalIP, "error", err)
+			continue
+		}
 		warnIfLocalhostInBridge(svc.LocalIP)
+		translatedServices = append(translatedServices, svc)
 	}
-	translatedServices := c.services
 
 	data := struct {
 		ServerAddr   string
@@ -394,7 +422,7 @@ func (c *Client) writeConfigLocked() error {
 		return fmt.Errorf("failed to flush config file: %w", err)
 	}
 
-	slog.Info("Config written", "component", "frp", "service_count", len(c.services))
+	slog.Info("Config written", "component", "frp", "service_count", len(translatedServices))
 	return nil
 }
 
