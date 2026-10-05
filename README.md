@@ -12,11 +12,24 @@
 
 # Seawise.io Client
 
-Share your local apps with anyone through secure dashboards. Run one Docker container, connect it to your [Seawise.io](https://seawise.io) account, and share access with specific people — no networking required.
+Open the apps running on your machine from any browser, and share them with people through portals. Run one Docker container, connect it to your [Seawise.io](https://seawise.io) account, and pick which apps to make reachable. Nothing for the people you share with to install.
 
-Works behind CGNAT, double NAT, and firewalls. No port forwarding, no VPN, no DNS setup.
+Works behind CGNAT, double NAT and firewalls. No port forwarding, no VPN, no DNS setup.
 
 ## Quick Start
+
+Linux:
+
+```bash
+docker run -d --name seawise \
+  --restart unless-stopped \
+  --network host \
+  -e SEAWISE_HOST_NETWORK=true \
+  -v seawise-data:/config \
+  ghcr.io/seawise-io/seawise-client:latest
+```
+
+Docker Desktop (macOS, Windows):
 
 ```bash
 docker run -d --name seawise \
@@ -26,18 +39,26 @@ docker run -d --name seawise \
   ghcr.io/seawise-io/seawise-client:latest
 ```
 
-Open [http://localhost:8082](http://localhost:8082) to get started.
+Open [http://localhost:8082](http://localhost:8082).
 
-## How It Works
+## Setup
 
-1. Run the container on your server
-2. Set a password to protect the web UI within 5 minutes of starting it
-3. Click **Connect to Seawise.io** — your browser opens the authorization page
-4. Approve the connection
-5. Add apps by name, host, and port
-6. Each app gets a public URL on `seawise.dev`
+1. Set a password for the web UI. This has to happen within 5 minutes of the container starting. If the window passes, run `docker restart seawise` to open it again.
+2. Click **Connect to Seawise.io** and approve the connection in your browser.
+3. Add apps by name, host and port.
 
-The client creates an outbound tunnel to Seawise.io. Traffic flows through the tunnel to your local apps. Your network is never exposed directly. Tunnels are powered by [FRP](https://github.com/fatedier/frp) (Fast Reverse Proxy).
+Each app gets its own address on `seawise.dev`. Apps are private: only you can open them after signing in, until you add them to a portal and invite people.
+
+## Adding Apps
+
+| Your app runs... | Host to use |
+|------------------|-------------|
+| On the same machine, client started with `--network host` | `localhost` |
+| In the same Docker Compose file | The service name, e.g. `grafana` |
+| On the same machine, client on Docker Desktop | `host.docker.internal` |
+| On another device on your network | Its IP, e.g. `192.168.1.50` |
+
+Link-local addresses (`169.254.0.0/16`, `fe80::/10`), including cloud metadata endpoints, can't be added.
 
 ## Docker Compose
 
@@ -47,8 +68,9 @@ services:
     image: ghcr.io/seawise-io/seawise-client:latest
     container_name: seawise
     restart: unless-stopped
-    ports:
-      - "8082:8082"
+    network_mode: host
+    environment:
+      SEAWISE_HOST_NETWORK: "true"
     volumes:
       - seawise-data:/config
 
@@ -56,74 +78,64 @@ volumes:
   seawise-data:
 ```
 
-## Adding Apps
+On Docker Desktop, replace `network_mode` and `environment` with `ports: ["8082:8082"]`.
 
-In the web UI, add an app by entering a name, host, and port:
+## Security
 
-| Your app runs... | Host to use |
-|-----------------|-------------|
-| In the same Docker Compose file | Service name (e.g., `grafana`) |
-| In a separate container or directly on the server | `host.docker.internal` |
-| On another device on your network | Device IP (e.g., `192.168.1.50`) |
-
-## Features
-
-- **One-command install** — single Docker container
-- **Web UI** — manage apps, connect servers, set passwords
-- **Outbound-only** — no ports to open, no firewall rules
-- **Dashboard sharing** — organize apps into dashboards, share by email with per-user access control
-- **Works anywhere** — CGNAT, double NAT, IPv6, corporate firewalls
-- **Multi-platform** — Linux amd64 and arm64 (Raspberry Pi, NAS devices)
-- **Password protection** — required on first run, bcrypt-hashed with rate limiting
-- **Auto-reconnect** — exponential backoff, survives network interruptions
+- **Outbound only.** The client opens the connection to Seawise.io. Nothing on your network is opened to the internet.
+- **This client decides what is reachable.** Apps are added and changed only here. The Seawise.io website and servers can't add apps or change where they point.
+- **Verified tunnel.** The client only connects to `*.seawise.dev` and checks the server's TLS certificate.
+- **Protected web UI.** Password required, stored as a bcrypt hash, with a growing delay after failed attempts. The first-run password window closes after 5 minutes.
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SEAWISE_PORT` | `8082` | Web UI port |
-| `SEAWISE_BIND_ADDR` | `0.0.0.0` | Bind address. Set to `127.0.0.1` to restrict the UI to the local machine only. |
+| `SEAWISE_BIND_ADDR` | `0.0.0.0` | Bind address. Set to `127.0.0.1` to only allow the UI from the same machine. |
 | `SEAWISE_DATA_DIR` | `/config` | Persistent data directory |
-| `SEAWISE_LOG_LEVEL` | `info` | Log verbosity. One of `debug`, `info`, `warn`, `error`. |
-| `SEAWISE_ALLOWED_HOSTS` | _(unset)_ | Comma-separated DNS names to allow (cloud deployments behind an ingress, e.g. `client.mycompany.com`). Not needed for localhost, LAN IP, or `*.local` access. |
-| `PUID` / `PGID` | `1000` | Run as specific user/group ID |
+| `SEAWISE_HOST_NETWORK` | `false` | Set to `true` when running with `--network host`. |
+| `SEAWISE_TLS` | _(unset)_ | Set to `auto` to serve the web UI over HTTPS with a self-signed certificate. |
+| `SEAWISE_TRUST_PROXY` | `false` | Set to `true` behind a reverse proxy so login rate limiting uses `X-Forwarded-For`. |
+| `SEAWISE_ALLOWED_HOSTS` | _(unset)_ | Comma-separated DNS names allowed to reach the web UI, e.g. `client.mycompany.com` behind an ingress. Not needed for localhost, LAN IPs or `*.local`. |
+| `SEAWISE_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
+| `PUID` / `PGID` | `1000` | User and group ID to run as |
 
-## Health checks
+## Health Checks
 
-The client exposes two unauthenticated endpoints that follow the standard
-Kubernetes probe convention:
+| Endpoint | Returns | Use for |
+|----------|---------|---------|
+| `GET /healthz` | 200 while the web server responds | Liveness. The image's built-in Docker `HEALTHCHECK` uses it. |
+| `GET /readyz` | 200 when paired and the tunnel is running, otherwise 503 | Readiness. The body includes `paired`, `frp_running` and `version`. |
 
-| Endpoint | Status | Purpose |
-|----------|--------|---------|
-| `GET /healthz` | 200 always (while the HTTP server responds) | Liveness. Use for Docker HEALTHCHECK or K8s `livenessProbe`. Never fails on unpaired or FRP-reconnecting states. |
-| `GET /readyz` | 200 iff paired AND FRP tunnel running; 503 otherwise | Readiness. Use for K8s `readinessProbe` or any system that should route traffic away during pairing / FRP backoff. Body includes `paired`, `frp_running`, and `version` for diagnostics. |
-
-The Docker image's built-in HEALTHCHECK uses `/healthz` automatically on the
-current `SEAWISE_PORT`. No configuration needed.
+Both are unauthenticated.
 
 ## Updating
 
 ```bash
 docker pull ghcr.io/seawise-io/seawise-client:latest
 docker stop seawise && docker rm seawise
-# Re-run the docker run command above — config is preserved in the volume
+# Run the same docker run command again. Pairing, apps and password are kept in the volume.
 ```
 
-The client checks for updates automatically and shows a banner when a new version is available.
+With Compose: `docker compose pull && docker compose up -d`.
+
+The web UI shows a banner when a new version is available.
 
 ## Platform Support
 
-- **Linux:** amd64, arm64
-- **Docker:** Any host that runs Docker (Linux, macOS, Windows, Unraid, Synology, TrueNAS)
+- **Images:** Linux amd64 and arm64 (Raspberry Pi, most NAS devices)
+- **Hosts:** Linux, macOS and Windows with Docker, Unraid, Synology, TrueNAS
 - **Requirements:** Docker 20+, outbound HTTPS (port 443)
 
 ## Documentation
 
-- [Getting Started](https://docs.seawise.io/getting-started/quick-start)
+- [Quick start](https://docs.seawise.io/getting-started/quick-start)
 - [Apps](https://docs.seawise.io/apps)
-- [Dashboards & Sharing](https://docs.seawise.io/dashboards)
+- [Portals and sharing](https://docs.seawise.io/dashboards)
+- [Client configuration](https://docs.seawise.io/client/configuration)
 - [Security](https://docs.seawise.io/security)
 
 ## License
 
-MIT
+MIT. Tunnels use [FRP](https://github.com/fatedier/frp) (Apache 2.0); its license ships in the image at `/app/licenses/frp-LICENSE`.
