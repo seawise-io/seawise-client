@@ -133,6 +133,60 @@ func (s *Server) handleAddService(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, response)
 }
 
+func (s *Server) handleEnableService(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, constants.MaxRequestBodySize)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeJSONStatus(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "Request body too large"})
+		return
+	}
+	var req struct {
+		LocalID string `json:"local_id"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil || req.LocalID == "" {
+		writeJSONStatus(w, http.StatusBadRequest, map[string]string{"error": "local_id is required"})
+		return
+	}
+
+	svc, err := setLocalServiceDisabled(req.LocalID, false)
+	if err != nil {
+		slog.Error("Failed to re-enable service", "component", "webui", "error", err)
+		writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"error": "Failed to re-enable app"})
+		return
+	}
+	if svc == nil {
+		writeJSONStatus(w, http.StatusNotFound, map[string]string{"error": "App not found"})
+		return
+	}
+
+	s.mu.RLock()
+	paired := s.pairingState == "paired" && s.cfg != nil
+	apiClient := s.apiClient
+	var serverID string
+	if s.cfg != nil {
+		serverID = s.cfg.ServerID
+	}
+	s.mu.RUnlock()
+
+	if paired && apiClient != nil {
+		go func() {
+			if err := registerLocalServices(s.shutdownCtx, apiClient, serverID); err != nil {
+				slog.Warn("Re-enabled app not registered yet, will retry", "component", "webui", "error", err)
+				return
+			}
+			s.syncServices()
+		}()
+	}
+
+	slog.Info("Re-enabled service", "component", "webui", "service_name", svc.Name)
+	writeJSON(w, map[string]interface{}{"success": true})
+}
+
 func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -147,7 +201,9 @@ func (s *Server) handleListServices(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]interface{}, 0, len(m.Services))
 	for _, svc := range m.Services {
 		status := "local-only"
-		if svc.ServerServiceID != "" {
+		if svc.Disabled {
+			status = "disabled"
+		} else if svc.ServerServiceID != "" {
 			status = "registered"
 		}
 		out = append(out, map[string]interface{}{

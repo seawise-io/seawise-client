@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/seawise/client/internal/paths"
 )
@@ -24,6 +25,7 @@ type LocalService struct {
 	IconURL         string `json:"icon_url,omitempty"`
 	ServerServiceID string `json:"server_service_id,omitempty"`
 	Subdomain       string `json:"subdomain,omitempty"`
+	Disabled        bool   `json:"disabled,omitempty"`
 }
 
 // Machine is the persistent, account-independent layer of client state.
@@ -42,6 +44,21 @@ func MachinePath() string {
 func MachineExists() bool {
 	_, err := os.Stat(MachinePath())
 	return err == nil
+}
+
+var machineMu sync.Mutex
+
+func UpdateMachine(fn func(*Machine) error) error {
+	machineMu.Lock()
+	defer machineMu.Unlock()
+	m, err := LoadMachine()
+	if err != nil {
+		return err
+	}
+	if err := fn(m); err != nil {
+		return err
+	}
+	return m.Save()
 }
 
 // LoadMachine reads machine.json from disk.
