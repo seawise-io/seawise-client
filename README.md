@@ -26,16 +26,12 @@ docker run -d --name seawise \
   ghcr.io/seawise-io/seawise-client:latest
 ```
 
-Open [http://localhost:8082](http://localhost:8082) to get started. You'll need the setup code from the container logs:
-
-```bash
-docker logs seawise 2>&1 | grep setup_code
-```
+Open [http://localhost:8082](http://localhost:8082) to get started.
 
 ## How It Works
 
 1. Run the container on your server
-2. Set a password to protect the web UI, using the setup code from the logs
+2. Set a password to protect the web UI within 5 minutes of starting it
 3. Click **Connect to Seawise.io** — your browser opens the authorization page
 4. Approve the connection
 5. Add apps by name, host, and port

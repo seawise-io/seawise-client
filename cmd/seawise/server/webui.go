@@ -92,7 +92,7 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 			"First-run wizard active on a non-loopback address, set a password immediately",
 			"component", "webui",
 			"bind_addr", bindAddr,
-			"hint", "Open "+firstRunHintURL(bindAddr, port)+" and enter the setup code logged above to set a password.",
+			"hint", "Open "+firstRunHintURL(bindAddr, port)+" within 5 minutes to set a password. Until then, only the setup endpoints are reachable.",
 		)
 	}
 
@@ -242,6 +242,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"default_hostname": hostname,
 		"version":          constants.Version,
 		"password_set":     s.auth.hasPassword(),
+		"setup_timed_out":  s.auth.setupTimedOut(),
 		"authenticated":    authenticated,
 	}
 	if s.latestVersion != "" {

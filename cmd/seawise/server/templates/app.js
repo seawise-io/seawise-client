@@ -78,7 +78,8 @@ const dom = {
     dropdownLock:     () => document.getElementById('dropdown-lock'),
 
     // Setup form
-    setupCode:        () => document.getElementById('setup-code'),
+    setupTimeout:     () => document.getElementById('setup-timeout'),
+    setupForm:        () => document.getElementById('setup-form'),
     setupPassword:    () => document.getElementById('setup-password'),
     setupConfirm:     () => document.getElementById('setup-confirm'),
     setupError:       () => document.getElementById('setup-error'),
@@ -147,10 +148,14 @@ function renderState(data) {
     updateStatusBadge(state, data);
 
     switch (state) {
-        case State.SETUP:
+        case State.SETUP: {
             dom.mainContainer().classList.remove('hidden');
             dom.setupCard().classList.remove('hidden');
+            const timedOut = !!(data && data.setup_timed_out);
+            dom.setupTimeout().classList.toggle('hidden', !timedOut);
+            dom.setupForm().classList.toggle('hidden', timedOut);
             return;
+        }
 
         case State.LOCKED:
             dom.loginScreen().classList.remove('hidden');
@@ -369,17 +374,11 @@ function showToast(message, type = 'error') {
 // ===== Auth Functions =====
 
 async function doSetupPassword() {
-    const code = dom.setupCode().value.trim();
     const pw = dom.setupPassword().value;
     const confirm = dom.setupConfirm().value;
     const errEl = dom.setupError();
     errEl.classList.add('hidden');
 
-    if (!code) {
-        errEl.textContent = 'Enter the setup code from the client logs';
-        errEl.classList.remove('hidden');
-        return;
-    }
     if (pw.length < 8) {
         errEl.textContent = 'Password must be at least 8 characters';
         errEl.classList.remove('hidden');
@@ -395,7 +394,7 @@ async function doSetupPassword() {
         const resp = await fetch('/api/auth/set-password', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: pw, setup_code: code })
+            body: JSON.stringify({ password: pw })
         });
         if (resp.ok) {
             showToast('Password set! Logging you in...', 'success');

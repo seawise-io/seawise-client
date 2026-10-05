@@ -9,10 +9,11 @@ var Version = "dev"
 
 // Timing constants for connection management
 const (
-	HeartbeatInterval = 30 * time.Second // API may override via next_heartbeat_ms
-	BaseRetryDelay    = 1 * time.Second
-	MaxRetryDelay     = 5 * time.Minute
-	HTTPClientTimeout = 30 * time.Second
+	HeartbeatInterval   = 30 * time.Second // API may override via next_heartbeat_ms
+	FirstRunSetupWindow = 5 * time.Minute
+	BaseRetryDelay      = 1 * time.Second
+	MaxRetryDelay       = 5 * time.Minute
+	HTTPClientTimeout   = 30 * time.Second
 	// PostReconnectHealthCheckDelay gives the network a moment to settle after
 	// a successful reconnect before probing service health.
 	PostReconnectHealthCheckDelay = 5 * time.Second
