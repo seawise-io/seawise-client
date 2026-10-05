@@ -44,6 +44,7 @@ type Server struct {
 
 	restartInProgress   atomic.Bool
 	reconcileInProgress atomic.Bool
+	loopsStarted        atomic.Bool
 }
 
 func Run(port int) {
@@ -186,8 +187,9 @@ func (s *Server) startServices(ctx context.Context) {
 
 	frpServerAddr := cfgSnapshot.FRPServerAddr
 	if frpServerAddr != "" && !frp.IsAllowedServerAddr(frpServerAddr) {
-		slog.Error("Refusing to connect: saved FRP server address is not a SeaWise domain. Unpair and pair again.", "component", "frp", "addr", frpServerAddr)
+		slog.Warn("Saved FRP server address is not a SeaWise domain; waiting for the server to send a valid one", "component", "frp", "addr", frpServerAddr)
 		s.connManager.SetState(connection.StateDisconnected)
+		s.startBackgroundLoops(ctx)
 		return
 	}
 	if frpServerAddr == "" {
@@ -271,6 +273,13 @@ func (s *Server) startServices(ctx context.Context) {
 		s.connManager.SetState(connection.StateConnected)
 	}
 
+	s.startBackgroundLoops(ctx)
+}
+
+func (s *Server) startBackgroundLoops(ctx context.Context) {
+	if !s.loopsStarted.CompareAndSwap(false, true) {
+		return
+	}
 	go s.heartbeatLoop(ctx)
 	go s.serviceSyncLoop(ctx)
 	go s.serviceHealthLoop(ctx)
