@@ -31,7 +31,7 @@ Open [http://localhost:8082](http://localhost:8082) to get started.
 ## How It Works
 
 1. Run the container on your server
-2. Set a password to protect the web UI
+2. Set a password to protect the web UI within 5 minutes of starting it
 3. Click **Connect to Seawise.io** — your browser opens the authorization page
 4. Approve the connection
 5. Add apps by name, host, and port

@@ -1,6 +1,9 @@
 package validation
 
 import (
+	"context"
+	"errors"
+	"net"
 	"testing"
 )
 
@@ -40,6 +43,11 @@ func TestValidateServiceHost(t *testing.T) {
 		// SEA-168: trailing-dot FQDN form
 		{"GCP metadata trailing dot", "metadata.google.internal.", true},
 		{"GCP metadata subdomain trailing dot", "v1.metadata.google.internal.", true},
+		{"AWS ECS credentials", "169.254.170.2", true},
+		{"link-local v4 with port", "169.254.1.1:8080", true},
+		{"IPv4 metadata trailing dot", "169.254.169.254.", true},
+		{"link-local v6", "fe80::1", true},
+		{"link-local v6 bracketed with port", "[fe80::1]:80", true},
 	}
 
 	for _, tt := range tests {
@@ -55,5 +63,46 @@ func TestValidateServiceHost(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestValidateServiceHostResolved(t *testing.T) {
+	orig := lookupIP
+	t.Cleanup(func() { lookupIP = orig })
+
+	lookups := 0
+	lookupIP = func(_ context.Context, host string) ([]net.IP, error) {
+		lookups++
+		switch host {
+		case "meta.evil.example":
+			return []net.IP{net.ParseIP("10.0.0.5"), net.ParseIP("169.254.169.254")}, nil
+		case "nas":
+			return []net.IP{net.ParseIP("192.168.1.20")}, nil
+		default:
+			return nil, errors.New("no such host")
+		}
+	}
+
+	tests := []struct {
+		host    string
+		wantErr bool
+	}{
+		{"meta.evil.example", true},
+		{"META.evil.example:80", true},
+		{"nas", false},
+		{"unresolvable.local", false},
+		{"169.254.169.254", true},
+		{"192.168.1.20", false},
+	}
+	for _, tt := range tests {
+		if err := ValidateServiceHostResolved(tt.host); (err != nil) != tt.wantErr {
+			t.Errorf("ValidateServiceHostResolved(%q) err = %v, wantErr %v", tt.host, err, tt.wantErr)
+		}
+	}
+
+	lookups = 0
+	_ = ValidateServiceHostResolved("192.168.1.20")
+	if lookups != 0 {
+		t.Errorf("IP literal triggered %d DNS lookups, want 0", lookups)
 	}
 }

@@ -39,13 +39,14 @@ type rateLimitEntry struct {
 
 // authManager handles local password authentication for the web UI.
 type authManager struct {
-	mu           sync.RWMutex
-	passwordHash []byte               // bcrypt hash loaded from disk
-	sessions     map[string]time.Time // token -> expiry
-	passwordFile string
-	rateLimits   map[string]*rateLimitEntry // IP -> rate limit state
-	stopChan     chan struct{}              // Signal cleanup goroutine to exit
-	stopOnce     sync.Once                  // Prevents double-close panic on stopChan
+	mu            sync.RWMutex
+	passwordHash  []byte               // bcrypt hash loaded from disk
+	sessions      map[string]time.Time // token -> expiry
+	passwordFile  string
+	rateLimits    map[string]*rateLimitEntry // IP -> rate limit state
+	stopChan      chan struct{}              // Signal cleanup goroutine to exit
+	stopOnce      sync.Once                  // Prevents double-close panic on stopChan
+	setupDeadline time.Time
 }
 
 func newAuthManager() *authManager {
@@ -62,12 +63,24 @@ func newAuthManager() *authManager {
 		am.passwordHash = data
 		slog.Info("Password protection enabled", "component", "auth")
 	} else {
-		slog.Info("No password set — password will be required on first web UI visit", "component", "auth")
+		am.setupDeadline = time.Now().Add(constants.FirstRunSetupWindow)
+		slog.Warn("No password set. Open the web UI and set one within 5 minutes.", "component", "auth")
+		time.AfterFunc(constants.FirstRunSetupWindow, func() {
+			if !am.hasPassword() {
+				slog.Warn("Setup window closed. Restart the client to set a password.", "component", "auth")
+			}
+		})
 	}
 
 	am.startCleanup()
 
 	return am
+}
+
+func (am *authManager) setupTimedOut() bool {
+	am.mu.RLock()
+	defer am.mu.RUnlock()
+	return len(am.passwordHash) == 0 && time.Now().After(am.setupDeadline)
 }
 
 func (am *authManager) hasPassword() bool {
@@ -510,6 +523,11 @@ func (s *Server) handleAuthSetPassword(w http.ResponseWriter, r *http.Request) {
 
 	if s.auth.hasPassword() && !s.auth.checkPassword(req.CurrentPassword) {
 		writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Current password is incorrect"})
+		return
+	}
+
+	if s.auth.setupTimedOut() {
+		writeJSONStatus(w, http.StatusForbidden, map[string]string{"error": "Setup timed out for security. Restart the client to set a password."})
 		return
 	}
 

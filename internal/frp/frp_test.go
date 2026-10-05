@@ -320,3 +320,45 @@ func TestStopDoesNotClose(t *testing.T) {
 		t.Error("Stop should not mark closed — only Close does")
 	}
 }
+
+func TestBlockedHostsNeverReachConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "frpc.toml")
+	client := &Client{
+		config:     Config{ServerAddr: "frp.example.com", ServerPort: 7000, Token: "tok", ServerID: "srv"},
+		configPath: configPath,
+	}
+
+	client.SetServices([]Service{
+		{Name: "nas", LocalIP: "192.168.1.20", LocalPort: 5000, Subdomain: "nas"},
+		{Name: "meta", LocalIP: "169.254.169.254", LocalPort: 80, Subdomain: "meta"},
+	})
+	if got := client.ServiceCount(); got != 1 {
+		t.Fatalf("SetServices kept %d services, want 1", got)
+	}
+
+	client.AddServiceWithoutRestart(Service{Name: "ecs", LocalIP: "169.254.170.2", LocalPort: 80, Subdomain: "ecs"})
+	if got := client.ServiceCount(); got != 1 {
+		t.Fatalf("AddServiceWithoutRestart accepted a blocked host, count = %d", got)
+	}
+
+	if err := client.AddService(Service{Name: "v6", LocalIP: "fe80::1", LocalPort: 80, Subdomain: "v6"}); err == nil {
+		t.Fatal("AddService accepted a link-local host")
+	}
+
+	client.mu.Lock()
+	client.services = append(client.services, Service{Name: "sneaky", LocalIP: "169.254.169.254", LocalPort: 80, Subdomain: "sneaky"})
+	client.mu.Unlock()
+	if err := client.WriteConfig(); err != nil {
+		t.Fatalf("WriteConfig: %v", err)
+	}
+	content, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(content), "169.254") {
+		t.Errorf("blocked host written to frpc config:\n%s", content)
+	}
+	if !strings.Contains(string(content), "192.168.1.20") {
+		t.Error("allowed host missing from frpc config")
+	}
+}
