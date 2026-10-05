@@ -36,6 +36,7 @@ jobs:
   build:
     needs: test
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: write     # Attach SBOM to GitHub Release
       packages: write
