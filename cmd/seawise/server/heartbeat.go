@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/seawise/client/internal/connection"
 	"github.com/seawise/client/internal/constants"
 	"github.com/seawise/client/internal/frp"
 )
@@ -148,7 +149,7 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 			return
 		}
 		if client == nil {
-			slog.Info("Migration skipped, no active FRP client", "component", "heartbeat")
+			s.connectToReceivedAddr(migrate.FRPServerAddr, migrate.FRPServerPort)
 			return
 		}
 
@@ -181,8 +182,12 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 		return
 	}
 
-	if result.Response != nil && result.Response.Shard != nil && client != nil {
+	if result.Response != nil && result.Response.Shard != nil && result.Response.Shard.FRPServerAddr != "" {
 		shard := result.Response.Shard
+		if client == nil {
+			s.connectToReceivedAddr(shard.FRPServerAddr, shard.FRPServerPort)
+			return
+		}
 		s.mu.RLock()
 		if s.cfg == nil {
 			s.mu.RUnlock()
@@ -224,6 +229,33 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 			}
 		}
 	}
+}
+
+func (s *Server) connectToReceivedAddr(addr string, port int) {
+	if !s.adoptFRPServerAddr(addr, port) {
+		return
+	}
+	slog.Info("Received a valid FRP server address, connecting", "component", "heartbeat", "addr", addr, "port", port)
+	s.connManager.SetState(connection.StateConnecting)
+	s.startServices(s.shutdownCtx)
+}
+
+func (s *Server) adoptFRPServerAddr(addr string, port int) bool {
+	if !frp.IsAllowedServerAddr(addr) {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cfg == nil || s.frpClient != nil {
+		return false
+	}
+	s.cfg.FRPServerAddr = addr
+	s.cfg.FRPServerPort = port
+	if err := s.cfg.Save(); err != nil {
+		slog.Error("Failed to save FRP server address", "component", "heartbeat", "error", err)
+		return false
+	}
+	return true
 }
 
 func (s *Server) checkForUpdates(ctx context.Context) {
