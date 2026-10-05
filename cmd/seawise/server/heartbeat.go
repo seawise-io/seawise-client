@@ -96,11 +96,19 @@ func (s *Server) sendHeartbeat(ticker *time.Ticker) {
 
 	s.connManager.HeartbeatOK()
 
-	go func() {
-		if err := reconcileMachineServicesWithServer(s.shutdownCtx, currentAPIClient, client, currentCfg.ServerID); err != nil {
-			slog.Warn("Service reconcile failed", "component", "heartbeat", "error", err)
-		}
-	}()
+	if s.reconcileInProgress.CompareAndSwap(false, true) {
+		go func() {
+			defer s.reconcileInProgress.Store(false)
+			changed, err := reconcileMachineServicesWithServer(s.shutdownCtx, currentAPIClient, currentCfg.ServerID)
+			if err != nil {
+				slog.Warn("Service reconcile failed", "component", "heartbeat", "error", err)
+				return
+			}
+			if changed {
+				s.syncServices()
+			}
+		}()
+	}
 
 	if result.Response != nil && result.Response.NextHeartbeatMs > 0 {
 		interval := time.Duration(result.Response.NextHeartbeatMs) * time.Millisecond

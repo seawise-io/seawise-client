@@ -362,3 +362,20 @@ func TestBlockedHostsNeverReachConfig(t *testing.T) {
 		t.Error("allowed host missing from frpc config")
 	}
 }
+
+func TestIsAllowedServerAddr(t *testing.T) {
+	cases := map[string]bool{
+		"frp-0.seawise.dev":         true,
+		"FRP-0.SEAWISE.DEV":         true,
+		"10.0.0.1":                  false,
+		"192.168.1.1":               false,
+		"evilseawise.dev":           false,
+		"frp-0.seawise.dev.evil.io": false,
+		"attacker.example":          false,
+	}
+	for addr, want := range cases {
+		if got := IsAllowedServerAddr(addr); got != want {
+			t.Errorf("IsAllowedServerAddr(%q) = %v, want %v", addr, got, want)
+		}
+	}
+}

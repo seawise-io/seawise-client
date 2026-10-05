@@ -688,7 +688,16 @@ function renderServices(services) {
 
         const subdomainEl = document.createElement('span');
         subdomainEl.className = 'service-subdomain';
-        if (svc.subdomain) {
+        let enableBtn = null;
+        if (svc.status === 'disabled') {
+            subdomainEl.textContent = 'Removed from account';
+            subdomainEl.title = 'This app was deleted on Seawise.io. Re-enable to publish it again, or delete it here.';
+            subdomainEl.classList.add('service-badge-local');
+            enableBtn = document.createElement('button');
+            enableBtn.className = 'service-enable';
+            enableBtn.textContent = 'Re-enable';
+            enableBtn.addEventListener('click', () => enableService(svc.local_id, svc.name));
+        } else if (svc.subdomain) {
             subdomainEl.textContent = svc.subdomain;
         } else {
             subdomainEl.textContent = 'Syncing…';
@@ -706,6 +715,7 @@ function renderServices(services) {
         item.appendChild(icon);
         item.appendChild(info);
         item.appendChild(subdomainEl);
+        if (enableBtn) item.appendChild(enableBtn);
         item.appendChild(deleteBtn);
 
         list.appendChild(item);
@@ -749,6 +759,23 @@ async function addService() {
         await loadServices();
     } catch {
         showToast('Failed to add app — check your connection');
+    }
+}
+
+async function enableService(localId, name) {
+    try {
+        const resp = await fetch('/api/services/enable', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ local_id: localId })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) { showToast(data.error || 'Failed to re-enable app'); return; }
+        showToast('Re-enabled: ' + name, 'success');
+        lastServicesJSON = '';
+        await loadServices();
+    } catch {
+        showToast('Failed to re-enable app — check your connection');
     }
 }
 

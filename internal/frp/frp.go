@@ -677,6 +677,10 @@ func (c *Client) UpdateServer(addr string, port int) error {
 	return nil
 }
 
+func IsAllowedServerAddr(addr string) bool {
+	return isAllowedFRPDomain(strings.ToLower(addr))
+}
+
 func isAllowedFRPDomain(addr string) bool {
 	for _, allowed := range constants.AllowedFRPDomains {
 		if strings.HasSuffix(addr, allowed) || addr == allowed {

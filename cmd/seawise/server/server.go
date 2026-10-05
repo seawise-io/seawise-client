@@ -42,7 +42,8 @@ type Server struct {
 	serviceCache     map[string]string
 	lastHealthStatus map[string]string
 
-	restartInProgress atomic.Bool
+	restartInProgress   atomic.Bool
+	reconcileInProgress atomic.Bool
 }
 
 func Run(port int) {
@@ -120,12 +121,6 @@ func (s *Server) run(port int) {
 			s.pairingState = "paired"
 			s.connManager.SetState(connection.StateConnecting)
 
-			go func() {
-				if err := syncMachineServicesFromServer(s.shutdownCtx, s.apiClient, s.cfg.ServerID); err != nil {
-					slog.Warn("Initial machine-services sync failed", "component", "main", "error", err)
-				}
-			}()
-
 			s.startServices(ctx)
 		}
 	} else {
@@ -190,6 +185,11 @@ func (s *Server) startServices(ctx context.Context) {
 	}
 
 	frpServerAddr := cfgSnapshot.FRPServerAddr
+	if frpServerAddr != "" && !frp.IsAllowedServerAddr(frpServerAddr) {
+		slog.Error("Refusing to connect: saved FRP server address is not a SeaWise domain. Unpair and pair again.", "component", "frp", "addr", frpServerAddr)
+		s.connManager.SetState(connection.StateDisconnected)
+		return
+	}
 	if frpServerAddr == "" {
 		frpServerAddr = os.Getenv("FRP_SERVER_ADDR")
 	}
@@ -256,22 +256,12 @@ func (s *Server) startServices(ctx context.Context) {
 
 	slog.Info("FRP client initialized, ready to add services", "component", "frp")
 
-	services, err := s.apiClient.ListServices(ctx, cfgSnapshot.ServerID)
+	tunnels, err := s.desiredTunnels(ctx, apiClient, cfgSnapshot.ServerID)
 	if err != nil {
-		slog.Error("Failed to load services from API", "component", "main", "error", err)
-	} else if len(services) > 0 {
-		slog.Info("Loading services from API", "component", "main", "count", len(services))
-		for _, svc := range services {
-			frpSvc := frp.Service{
-				Name:      svc.Name,
-				LocalIP:   svc.Host,
-				LocalPort: svc.Port,
-				Subdomain: svc.Subdomain,
-			}
-
-			s.configureServiceTLS(&frpSvc, svc.Subdomain)
-			s.frpClient.AddServiceWithoutRestart(frpSvc)
-		}
+		slog.Error("Failed to load services", "component", "main", "error", err)
+	} else {
+		slog.Info("Loading services", "component", "main", "count", len(tunnels))
+		frpClient.SetServices(tunnels)
 	}
 
 	if err := s.frpClient.Start(); err != nil {

@@ -11,6 +11,7 @@ import (
 	"github.com/seawise/client/internal/config"
 	"github.com/seawise/client/internal/connection"
 	"github.com/seawise/client/internal/constants"
+	"github.com/seawise/client/internal/frp"
 	"github.com/seawise/client/internal/validation"
 )
 
@@ -116,6 +117,16 @@ func (s *Server) pollForApproval(ctx context.Context, deviceCode string) {
 					return
 				}
 
+				if addr := result.Data.FRPServerAddr; addr != "" && !frp.IsAllowedServerAddr(addr) {
+					slog.Error("Pairing rejected: FRP server address is not a SeaWise domain", "component", "pairing", "addr", addr)
+					s.mu.Lock()
+					s.pairingState = "none"
+					s.pairingCode = ""
+					s.pairingDeviceCode = ""
+					s.mu.Unlock()
+					return
+				}
+
 				s.mu.Lock()
 				s.cfg = &config.Config{
 					ServerID:      result.Data.ServerID,
@@ -148,6 +159,9 @@ func (s *Server) pollForApproval(ctx context.Context, deviceCode string) {
 
 				slog.Info("Pairing successful", "component", "pairing", "server_name", serverName)
 
+				if err := clearServerRegistrations(); err != nil {
+					slog.Error("Failed to clear old server IDs", "component", "pairing", "error", err)
+				}
 				if err := registerLocalServices(ctx, currentAPIClient, currentServerID); err != nil {
 					slog.Error("Failed to batch-register local services", "component", "pairing", "error", err)
 				}

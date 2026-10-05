@@ -206,21 +206,14 @@ func (s *Server) configureServiceTLS(frpSvc *frp.Service, subdomain string) {
 	}
 }
 
-func (s *Server) syncServices() {
-	s.mu.RLock()
-	currentCfg := s.cfg
-	client := s.frpClient
-	currentAPIClient := s.apiClient
-	s.mu.RUnlock()
-
-	if currentCfg == nil || client == nil {
-		return
-	}
-
-	apiServices, err := currentAPIClient.ListServices(s.shutdownCtx, currentCfg.ServerID)
+func (s *Server) desiredTunnels(ctx context.Context, apiClient *api.Client, serverID string) ([]frp.Service, error) {
+	apiServices, err := apiClient.ListServices(ctx, serverID)
 	if err != nil {
-		slog.Error("Failed to fetch services", "component", "sync", "error", err)
-		return
+		return nil, err
+	}
+	m, err := config.LoadMachine()
+	if err != nil {
+		return nil, err
 	}
 
 	s.mu.Lock()
@@ -230,20 +223,31 @@ func (s *Server) syncServices() {
 	}
 	s.mu.Unlock()
 
-	frpServices := make([]frp.Service, len(apiServices))
-	for i, svc := range apiServices {
-		frpSvc := frp.Service{
-			Name:      svc.Name,
-			LocalIP:   svc.Host,
-			LocalPort: svc.Port,
-			Subdomain: svc.Subdomain,
-		}
+	tunnels := buildTunnelServices(m, apiServices)
+	for i := range tunnels {
+		s.configureServiceTLS(&tunnels[i], tunnels[i].Subdomain)
+	}
+	return tunnels, nil
+}
 
-		s.configureServiceTLS(&frpSvc, svc.Subdomain)
-		frpServices[i] = frpSvc
+func (s *Server) syncServices() {
+	s.mu.RLock()
+	currentCfg := s.cfg
+	client := s.frpClient
+	currentAPIClient := s.apiClient
+	s.mu.RUnlock()
+
+	if currentCfg == nil || client == nil || currentAPIClient == nil {
+		return
 	}
 
-	added, removed, err := client.SyncServices(frpServices)
+	tunnels, err := s.desiredTunnels(s.shutdownCtx, currentAPIClient, currentCfg.ServerID)
+	if err != nil {
+		slog.Error("Failed to fetch services", "component", "sync", "error", err)
+		return
+	}
+
+	added, removed, err := client.SyncServices(tunnels)
 	if err != nil {
 		slog.Error("Failed to sync services", "component", "sync", "error", err)
 		return
@@ -303,23 +307,12 @@ func (s *Server) handleFRPCrash() {
 	}
 
 	if currentAPIClient != nil {
-		services, err := currentAPIClient.ListServices(s.shutdownCtx, currentCfg.ServerID)
+		tunnels, err := s.desiredTunnels(s.shutdownCtx, currentAPIClient, currentCfg.ServerID)
 		if err != nil {
 			slog.Error("Failed to reload services", "component", "frp_recovery", "error", err)
-		} else if len(services) > 0 {
-			var frpServices []frp.Service
-			for _, svc := range services {
-				frpSvc := frp.Service{
-					Name:      svc.Name,
-					LocalIP:   svc.Host,
-					LocalPort: svc.Port,
-					Subdomain: svc.Subdomain,
-				}
-				s.configureServiceTLS(&frpSvc, svc.Subdomain)
-				frpServices = append(frpServices, frpSvc)
-			}
-			client.SetServices(frpServices)
-			slog.Info("Reloaded services from API", "component", "frp_recovery", "count", len(frpServices))
+		} else {
+			client.SetServices(tunnels)
+			slog.Info("Reloaded services", "component", "frp_recovery", "count", len(tunnels))
 		}
 	}
 
@@ -350,22 +343,8 @@ func (s *Server) handleUnpairInternal() {
 		slog.Error("Failed to delete account file", "component", "unpair", "error", err)
 	}
 
-	if m, err := config.LoadMachine(); err == nil {
-		changed := false
-		for i := range m.Services {
-			if m.Services[i].ServerServiceID != "" || m.Services[i].Subdomain != "" {
-				m.Services[i].ServerServiceID = ""
-				m.Services[i].Subdomain = ""
-				changed = true
-			}
-		}
-		if changed {
-			if err := m.Save(); err != nil {
-				slog.Error("Failed to clear stale server IDs on machine state", "component", "unpair", "error", err)
-			}
-		}
-	} else {
-		slog.Warn("Machine state not loadable during unpair (nothing to clean)", "component", "unpair", "error", err)
+	if err := clearServerRegistrations(); err != nil {
+		slog.Warn("Failed to clear server IDs on machine state", "component", "unpair", "error", err)
 	}
 
 	s.cfg = nil

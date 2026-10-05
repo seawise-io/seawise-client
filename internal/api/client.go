@@ -341,12 +341,13 @@ type BatchServiceInput struct {
 // BatchRegisterResult is one entry returned by /services/register/batch —
 // the server-assigned ID plus any server-decided fields.
 type BatchRegisterResult struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Host      string `json:"host"`
-	Port      int    `json:"port"`
-	Subdomain string `json:"subdomain"`
-	Status    string `json:"status"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	RequestedName string `json:"requested_name"`
+	Host          string `json:"host"`
+	Port          int    `json:"port"`
+	Subdomain     string `json:"subdomain"`
+	Status        string `json:"status"`
 }
 
 func (c *Client) RegisterService(ctx context.Context, serverID, name, host string, port int) (*Service, error) {

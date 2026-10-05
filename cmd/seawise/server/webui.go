@@ -80,6 +80,7 @@ func (s *Server) startWebUI(ctx context.Context, port int) *http.Server {
 	mux.HandleFunc("/api/services/add", s.handleAddService)
 	mux.HandleFunc("/api/services/list", s.handleListServices)
 	mux.HandleFunc("/api/services/delete", s.handleDeleteService)
+	mux.HandleFunc("/api/services/enable", s.handleEnableService)
 	mux.HandleFunc("/api/unpair", s.handleUnpair)
 
 	bindAddr := os.Getenv("SEAWISE_BIND_ADDR")

@@ -7,5 +7,6 @@ var allowedFRPDomains = []string{
 	".seawise.dev",
 	".seawise.io",
 	"localhost",
+	"127.0.0.1",
 	"host.docker.internal",
 }

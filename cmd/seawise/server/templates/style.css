@@ -443,6 +443,20 @@ input::placeholder { color: #8C8C8C; }
 .service-delete:hover {
     background: #FEE2E2;
 }
+.service-enable {
+    padding: 0.2rem 0.6rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: #EFF6FF;
+    color: #2563EB;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.service-enable:hover {
+    background: #DBEAFE;
+}
 .empty-state {
     text-align: center;
     padding: 2rem;
