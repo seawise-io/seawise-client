@@ -13,10 +13,14 @@ on:
     - cron: "0 3 * * 0"
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
   govulncheck:
     name: Go Vulnerability Check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
 
@@ -34,6 +38,8 @@ jobs:
   gosec:
     name: Go Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
 
