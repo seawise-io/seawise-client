@@ -2,10 +2,12 @@ package controlplane
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -278,5 +280,42 @@ func TestSyncerServerDisableNeedsOwner(t *testing.T) {
 	a := st.State().Targets[0]
 	if a.Disabled || a.ServerDisableRequestedAt == nil || ag.reconciles != 0 || len(st.State().ServerDisableLog) != 1 {
 		t.Fatalf("server disable not left to the owner: %+v reconciles %d", a, ag.reconciles)
+	}
+}
+
+func TestPublicImportOnlyCountsOnceSaved(t *testing.T) {
+	var public atomic.Bool
+	public.Store(true)
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, n int) {
+		if r.Method == "GET" {
+			jsonReply(w, 200, fmt.Sprintf(`{"data":[{"id":"%s","name":"jellyfin","host":"192.168.1.20","port":8096,"subdomain":"calm-otter","is_public":%t}]}`, sidA, public.Load()))
+			return
+		}
+		jsonReply(w, 200, okHeartbeat)
+	})
+	st, _ := pairedStore(t)
+	if err := st.Update(func(s *store.State) error { s.Targets[0].Grandfathered = true; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	s := newSyncer(t, f, st, &fakeAgent{}, &clock{now: t0})
+	if err := os.Chmod(st.Dir(), 0o500); err != nil {
+		t.Fatal(err)
+	}
+	s.Step(context.Background())
+	if err := os.Chmod(st.Dir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if p := st.State().Targets[0].Public; p != nil {
+		t.Fatalf("import applied in memory without being saved: %v", *p)
+	}
+	public.Store(false)
+	s.Step(context.Background())
+	if p := st.State().Targets[0].Public; p == nil || *p {
+		t.Fatalf("toggle = %v, want the first saved import (private)", p)
+	}
+	public.Store(true)
+	s.Step(context.Background())
+	if st.State().Targets[0].IsPublicLocally() {
+		t.Fatal("import repeated after it was saved")
 	}
 }
