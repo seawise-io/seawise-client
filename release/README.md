@@ -60,3 +60,19 @@ names the dispatched version, that `:<version>` still points at the signed
 digest, and that the digest was signed by `release.yml` for tag
 `v<version>`. Only then does it move `:stable`. Rolling back is the same
 procedure with an earlier version.
+
+## Signed update metadata (TUF)
+
+Update notices and the signing key set are published as a TUF repository
+(`tools/tuf/README.md`). Root and targets keys stay offline like the
+release key. The snapshot and timestamp keys are the only signing keys in
+CI, as secrets of the `tuf-online` environment used by
+`.github/workflows/tuf-refresh.yml`. Before any secret is added to it:
+
+- limit `tuf-online` to the `main` branch (deployment branches: `main`
+  only), and
+- require a reviewer for it.
+
+The workflow also refuses to run outside `main`, and stays off until the
+repository variable `TUF_REFRESH_ENABLED` is `true`. Branch protection on
+`main` is required for these checks to mean anything.

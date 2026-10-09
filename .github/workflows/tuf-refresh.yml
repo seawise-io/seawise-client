@@ -1,7 +1,9 @@
 # Weekly refresh of the online TUF roles (snapshot and timestamp, 14-day
-# expiry). Off until the repository variable TUF_REFRESH_ENABLED is "true".
-# The snapshot and timestamp keys are secrets of the protected "tuf-online"
-# environment; root and targets keys are never in CI. See tools/tuf/README.md.
+# expiry). Off until the repository variable TUF_REFRESH_ENABLED is "true",
+# and runs only on main. The snapshot and timestamp keys are secrets of the
+# "tuf-online" environment, which must be limited to main with required
+# reviewers before any secret is added; root and targets keys are never in
+# CI. See tools/tuf/README.md and release/README.md.
 
 name: TUF refresh
 
@@ -18,12 +20,21 @@ concurrency:
 
 jobs:
   refresh:
-    if: vars.TUF_REFRESH_ENABLED == 'true'
+    if: vars.TUF_REFRESH_ENABLED == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: tuf-online
     permissions:
       contents: read
     steps:
+      - name: Refuse to run outside main
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "::error::TUF refresh runs only on main"
+            exit 1
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           persist-credentials: false
@@ -32,18 +43,18 @@ jobs:
         with:
           go-version: '1.26'
 
-      - name: Pull published metadata
+      - name: Pull and verify published metadata against the pinned root
         env:
           TUF_REPO_URL: ${{ vars.TUF_REPO_URL }}
-        run: go run ./tools/tuf pull -url "$TUF_REPO_URL" -dir "$RUNNER_TEMP/tuf"
+        run: go run ./tools/tuf pull -url "$TUF_REPO_URL" -dir "$RUNNER_TEMP/tuf" -root internal/updatecheck/root/production.json
 
-      - name: Sign new snapshot and timestamp
+      - name: Verify again and sign new snapshot and timestamp
         env:
           TUF_SNAPSHOT_KEY: ${{ secrets.TUF_SNAPSHOT_KEY }}
           TUF_TIMESTAMP_KEY: ${{ secrets.TUF_TIMESTAMP_KEY }}
-        run: go run ./tools/tuf refresh -dir "$RUNNER_TEMP/tuf" -snapshot-key env:TUF_SNAPSHOT_KEY -timestamp-key env:TUF_TIMESTAMP_KEY
+        run: go run ./tools/tuf refresh -dir "$RUNNER_TEMP/tuf" -root internal/updatecheck/root/production.json -snapshot-key env:TUF_SNAPSHOT_KEY -timestamp-key env:TUF_TIMESTAMP_KEY
 
-      - name: Verify against the pinned root
+      - name: Verify the result as a client would
         run: go run ./tools/tuf verify -metadata-only -dir "$RUNNER_TEMP/tuf" -root internal/updatecheck/root/production.json
 
       - name: Publish
