@@ -219,6 +219,8 @@ func (r reader) read(name string) (data []byte, ok bool, err error) {
 		return nil, false, fmt.Errorf("%s: %w", name, ErrTooLarge)
 	}
 
+	// #nosec G304 -- fixed file name under the data dir, opened without
+	// following symlinks and checked to be the same regular file as above.
 	f, err := os.OpenFile(path, readOnlyFlags, 0)
 	if err != nil {
 		return nil, false, fmt.Errorf("%s: %w", name, err)

@@ -24,7 +24,7 @@ func detectContainer(root string, getenv func(string) string) bool {
 			return true
 		}
 	}
-	b, err := os.ReadFile(filepath.Join(root, "proc/1/cgroup"))
+	b, err := os.ReadFile(filepath.Join(root, "proc/1/cgroup")) // #nosec G304 -- fixed name under root, which is "/" outside tests
 	if err != nil {
 		return false
 	}

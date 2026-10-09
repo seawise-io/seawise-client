@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"math"
 	"net/netip"
 	"strings"
 
@@ -107,8 +108,13 @@ func admit(targets []store.Target, gateways []netip.Addr) ([]store.Target, []Ref
 			refused = append(refused, RefusedApp{LocalID: t.LocalID, Reason: "public on SeaWise but private on this machine"})
 			continue
 		}
+		port := t.Port
+		if port < 1 || port > math.MaxUint16 {
+			refused = append(refused, RefusedApp{LocalID: t.LocalID, Reason: "invalid port"})
+			continue
+		}
 		if addr, ok := literal(t.Host); ok {
-			if err := targetpolicy.Check(targetpolicy.RuleFor(t), netip.AddrPortFrom(addr, uint16(t.Port)), gateways); err != nil {
+			if err := targetpolicy.Check(targetpolicy.RuleFor(t), netip.AddrPortFrom(addr, uint16(port)), gateways); err != nil {
 				refused = append(refused, RefusedApp{LocalID: t.LocalID, Reason: err.Error()})
 				continue
 			}

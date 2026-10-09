@@ -1,6 +1,6 @@
 module github.com/seawise/client
 
-go 1.26.6
+go 1.26.9
 
 require (
 	github.com/sigstore/sigstore v1.10.6

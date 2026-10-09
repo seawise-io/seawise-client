@@ -266,17 +266,21 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	s.serveFile(w, "index.html", "text/html; charset=utf-8")
 }
 
+// handleStatic serves only the embedded assets named here; the request path
+// selects a case but never reaches the file name.
 func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
-	switch name := r.PathValue("file"); name {
+	switch r.PathValue("file") {
 	case "app.js":
-		s.serveFile(w, name, "text/javascript; charset=utf-8")
+		s.serveFile(w, "app.js", "text/javascript; charset=utf-8")
 	case "app.css":
-		s.serveFile(w, name, "text/css; charset=utf-8")
+		s.serveFile(w, "app.css", "text/css; charset=utf-8")
 	default:
 		http.NotFound(w, r)
 	}
 }
 
+// serveFile writes an embedded asset. Callers pass constant names, and the
+// headers middleware sets nosniff and a script-src 'self' CSP.
 func (s *Server) serveFile(w http.ResponseWriter, name, ct string) {
 	b, err := staticFS.ReadFile("static/" + name)
 	if err != nil {
