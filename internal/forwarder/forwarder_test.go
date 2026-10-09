@@ -200,3 +200,67 @@ func TestListenersOnLoopbackOnly(t *testing.T) {
 		}
 	}
 }
+
+func loopApp(port int) App {
+	return App{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1", Grants: []string{targetpolicy.GrantLoopback}}}
+}
+
+func TestMaxLifetime(t *testing.T) {
+	port, _ := echoServer(t)
+	f := newFwd(t, Config{MaxLifetime: 300 * time.Millisecond, CheckEvery: 50 * time.Millisecond})
+	c := dialApp(t, f.Sync([]App{loopApp(port)})["a"])
+	defer c.Close()
+	r := bufio.NewReader(c)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := io.WriteString(c, "x\n"); err != nil {
+			return
+		}
+		if _, err := r.ReadString('\n'); err != nil {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("busy connection outlived the maximum lifetime")
+}
+
+func TestSlowDripClosed(t *testing.T) {
+	port, _ := echoServer(t)
+	f := newFwd(t, Config{MinBytes: 100, CheckEvery: 100 * time.Millisecond})
+	c := dialApp(t, f.Sync([]App{loopApp(port)})["a"])
+	defer c.Close()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := c.Write([]byte("x")); err != nil {
+			return
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
+	t.Fatal("slow-drip connection kept its slot")
+}
+
+func TestTargetResetClosesClient(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		c, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		c.(*net.TCPConn).SetLinger(0)
+		time.Sleep(50 * time.Millisecond)
+		c.Close() // RST
+	}()
+	f := newFwd(t, Config{})
+	c := dialApp(t, f.Sync([]App{loopApp(ln.Addr().(*net.TCPAddr).Port)})["a"])
+	defer c.Close()
+	_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := c.Read(make([]byte, 1)); err == nil {
+		t.Fatal("client not closed after target reset")
+	} else if ne, ok := err.(net.Error); ok && ne.Timeout() {
+		t.Fatal("client left open after target reset")
+	}
+}

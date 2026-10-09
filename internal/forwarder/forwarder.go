@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/seawise/client/internal/targetpolicy"
@@ -23,7 +24,13 @@ const (
 	DefaultMaxConns    = 64
 	DefaultIdleTimeout = 5 * time.Minute
 	DefaultDialTimeout = 10 * time.Second
-	refusalLogEvery    = time.Minute
+	DefaultMaxLifetime = 24 * time.Hour
+	// A connection must move DefaultMinBytes in each DefaultCheckEvery
+	// window. Low enough for WebSocket and SSE keepalives, high enough that
+	// a one-byte drip cannot hold a slot.
+	DefaultMinBytes   = 64
+	DefaultCheckEvery = 5 * time.Minute
+	refusalLogEvery   = time.Minute
 )
 
 type App struct {
@@ -44,6 +51,9 @@ type Config struct {
 	MaxConns    int
 	IdleTimeout time.Duration
 	DialTimeout time.Duration
+	MaxLifetime time.Duration
+	MinBytes    int64
+	CheckEvery  time.Duration
 	Logger      *slog.Logger
 }
 
@@ -63,6 +73,15 @@ func New(cfg Config) *Forwarder {
 	}
 	if cfg.DialTimeout <= 0 {
 		cfg.DialTimeout = DefaultDialTimeout
+	}
+	if cfg.MaxLifetime <= 0 {
+		cfg.MaxLifetime = DefaultMaxLifetime
+	}
+	if cfg.MinBytes <= 0 {
+		cfg.MinBytes = DefaultMinBytes
+	}
+	if cfg.CheckEvery <= 0 {
+		cfg.CheckEvery = DefaultCheckEvery
 	}
 	if cfg.Resolve == nil {
 		cfg.Resolve = func(ctx context.Context, host string) ([]netip.Addr, error) {
@@ -217,11 +236,43 @@ func (l *listener) handle(in net.Conn) {
 	}
 	defer l.untrack(out)
 	idle := l.f.cfg.IdleTimeout
+	var moved atomic.Int64
+	closeBoth := func() { _ = in.Close(); _ = out.Close() }
+	done := make(chan struct{})
+	go l.watch(&moved, closeBoth, done)
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); pipe(out, in, idle) }()
-	go func() { defer wg.Done(); pipe(in, out, idle) }()
+	go func() { defer wg.Done(); pipe(out, in, idle, &moved, closeBoth) }()
+	go func() { defer wg.Done(); pipe(in, out, idle, &moved, closeBoth) }()
 	wg.Wait()
+	close(done)
+}
+
+// watch closes a connection that outlives MaxLifetime or moves fewer than
+// MinBytes in a CheckEvery window.
+func (l *listener) watch(moved *atomic.Int64, closeBoth func(), done <-chan struct{}) {
+	cfg := l.f.cfg
+	life := time.NewTimer(cfg.MaxLifetime)
+	defer life.Stop()
+	tick := time.NewTicker(cfg.CheckEvery)
+	defer tick.Stop()
+	var last int64
+	for {
+		select {
+		case <-done:
+			return
+		case <-life.C:
+			closeBoth()
+			return
+		case <-tick.C:
+			now := moved.Load()
+			if now-last < cfg.MinBytes {
+				closeBoth()
+				return
+			}
+			last = now
+		}
+	}
 }
 
 // dial resolves the target and connects to the first address the policy
@@ -268,28 +319,28 @@ func (l *listener) refusal(err error) {
 	}
 }
 
-// pipe copies src to dst, closing on idle and half-closing dst at EOF.
-func pipe(dst, src net.Conn, idle time.Duration) {
+// pipe copies src to dst. A clean EOF half-closes dst; any other error,
+// including an idle timeout, closes both sides.
+func pipe(dst, src net.Conn, idle time.Duration, moved *atomic.Int64, closeBoth func()) {
 	buf := make([]byte, 32<<10)
 	for {
 		_ = src.SetReadDeadline(time.Now().Add(idle))
 		n, err := src.Read(buf)
 		if n > 0 {
+			moved.Add(int64(n))
 			_ = dst.SetWriteDeadline(time.Now().Add(idle))
 			if _, werr := dst.Write(buf[:n]); werr != nil {
-				_ = src.Close()
+				closeBoth()
 				return
 			}
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				if cw, ok := dst.(interface{ CloseWrite() error }); ok {
-					_ = cw.CloseWrite()
+				if cw, ok := dst.(interface{ CloseWrite() error }); ok && cw.CloseWrite() == nil {
 					return
 				}
 			}
-			_ = dst.Close()
-			_ = src.Close()
+			closeBoth()
 			return
 		}
 	}
