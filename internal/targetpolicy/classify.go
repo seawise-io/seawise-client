@@ -79,16 +79,6 @@ func Classify(a netip.Addr) (Class, string) {
 			return Forbidden, "cloud metadata address"
 		}
 	}
-	if v4, ok := embeddedIPv4(a); ok {
-		c, reason := Classify(v4)
-		switch c {
-		case Forbidden:
-			return Forbidden, reason + " behind an IPv6 translation prefix"
-		case Loopback, Private:
-			return Forbidden, "translated local address"
-		}
-		return Public, ""
-	}
 	// Loopback first: ::1 also sits inside the deprecated ::/96 range.
 	for _, p := range loopbackPrefixes {
 		if p.Contains(a) {
@@ -99,6 +89,18 @@ func Classify(a netip.Addr) (Class, string) {
 		if f.p.Contains(a) {
 			return Forbidden, f.reason
 		}
+	}
+	// Embedded IPv4 forms are checked after the outer address, so an
+	// interface ID that looks like ISATAP cannot hide a forbidden range.
+	if v4, ok := embeddedIPv4(a); ok {
+		c, reason := Classify(v4)
+		switch c {
+		case Forbidden:
+			return Forbidden, reason + " behind an IPv6 translation prefix"
+		case Loopback, Private:
+			return Forbidden, "translated local address"
+		}
+		return Public, ""
 	}
 	for _, p := range privatePrefixes {
 		if p.Contains(a) {
