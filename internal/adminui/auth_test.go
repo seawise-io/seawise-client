@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -39,7 +42,7 @@ func codeFromFile(t *testing.T, a *Auth) string {
 func TestSetupCodeFile(t *testing.T) {
 	st := newStore(t, nil)
 	a := newAuth(t, st, &testClock{now: t0}, "")
-	code := a.SetupCode()
+	code := a.currentCode()
 	if !regexp.MustCompile(`^[A-Z2-7]{4}(-[A-Z2-7]{4}){4}$`).MatchString(code) {
 		t.Fatalf("code %q", code)
 	}
@@ -50,13 +53,13 @@ func TestSetupCodeFile(t *testing.T) {
 	if codeFromFile(t, a) != code {
 		t.Fatal("file and log code differ")
 	}
-	if err := a.Setup(strings.ToLower(strings.ReplaceAll(code, "-", " ")), "correct horse battery"); err != nil {
+	if err := a.Setup("10.0.0.1", strings.ToLower(strings.ReplaceAll(code, "-", " ")), "correct horse battery"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(a.CodePath()); !os.IsNotExist(err) {
 		t.Fatal("code file kept after setup")
 	}
-	if a.SetupRequired() || a.SetupCode() != "" || st.Secrets().AdminPasswordHash == "" {
+	if a.SetupRequired() || a.currentCode() != "" || st.Secrets().AdminPasswordHash == "" {
 		t.Fatal("setup not recorded")
 	}
 	if bcrypt.CompareHashAndPassword([]byte(st.Secrets().AdminPasswordHash), []byte("correct horse battery")) != nil {
@@ -68,22 +71,22 @@ func TestNewCodeEveryStart(t *testing.T) {
 	st := newStore(t, nil)
 	a := newAuth(t, st, &testClock{now: t0}, "")
 	b := newAuth(t, st, &testClock{now: t0}, "")
-	if a.SetupCode() == b.SetupCode() || codeFromFile(t, b) != b.SetupCode() {
+	if a.currentCode() == b.currentCode() || codeFromFile(t, b) != b.currentCode() {
 		t.Fatal("code reused across starts")
 	}
 }
 
 func TestSetupRequiresCode(t *testing.T) {
 	a := newAuth(t, newStore(t, nil), &testClock{now: t0}, "")
-	for _, c := range []string{"", "AAAA-AAAA-AAAA-AAAA-AAAA", a.SetupCode() + "A", a.SetupCode()[:20]} {
-		if err := a.Setup(c, "correct horse battery"); !errors.Is(err, ErrSetupCode) {
+	for _, c := range []string{"", "AAAA-AAAA-AAAA-AAAA-AAAA", a.currentCode() + "A", a.currentCode()[:20]} {
+		if err := a.Setup("10.0.0.1", c, "correct horse battery"); !errors.Is(err, ErrSetupCode) {
 			t.Fatalf("code %q: %v", c, err)
 		}
 	}
-	if err := a.Setup(a.SetupCode(), "short"); !errors.Is(err, ErrBadPassword) {
+	if err := a.Setup("10.0.0.1", a.currentCode(), "short"); !errors.Is(err, ErrBadPassword) {
 		t.Fatal(err)
 	}
-	if err := a.Setup(a.SetupCode(), strings.Repeat("x", 73)); !errors.Is(err, ErrBadPassword) {
+	if err := a.Setup("10.0.0.1", a.currentCode(), strings.Repeat("x", 73)); !errors.Is(err, ErrBadPassword) {
 		t.Fatal(err)
 	}
 	if !a.SetupRequired() {
@@ -91,44 +94,83 @@ func TestSetupRequiresCode(t *testing.T) {
 	}
 }
 
-func TestSetupRateLimit(t *testing.T) {
+func ipN(i int) string { return "10.1." + strconv.Itoa(i/250) + "." + strconv.Itoa(i%250+1) }
+
+func TestSetupRateLimitPerIP(t *testing.T) {
 	clk := &testClock{now: t0}
 	a := newAuth(t, newStore(t, nil), clk, "")
-	code := a.SetupCode()
-	for i := 0; i < setupMaxFails; i++ {
-		_ = a.Setup("WRONG", "correct horse battery")
+	code := a.currentCode()
+	for i := 0; i < setupMaxFailsPerIP; i++ {
+		_ = a.Setup("10.0.0.9", "WRONG", "correct horse battery")
 	}
-	if err := a.Setup(code, "correct horse battery"); !errors.Is(err, ErrRateLimited) {
-		t.Fatalf("not limited: %v", err)
+	if err := a.Setup("10.0.0.9", code, "correct horse battery"); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("address not limited: %v", err)
 	}
-	clk.now = clk.now.Add(setupWindow)
-	if err := a.Setup(code, "correct horse battery"); err != nil {
-		t.Fatalf("after window: %v", err)
+	// Another address on the LAN is not locked out by the first.
+	if err := a.Setup("10.0.0.10", code, "correct horse battery"); err != nil {
+		t.Fatalf("other address blocked: %v", err)
+	}
+}
+
+func TestSetupGlobalBudgetSparesLoopback(t *testing.T) {
+	clk := &testClock{now: t0}
+	a := newAuth(t, newStore(t, nil), clk, "")
+	code := a.currentCode()
+	for i := 0; i < setupMaxFailsGlobal; i++ {
+		_ = a.Setup(ipN(i), "WRONG", "correct horse battery")
+	}
+	if err := a.Setup("10.9.9.9", code, "correct horse battery"); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("global budget not enforced: %v", err)
+	}
+	if err := a.Setup("127.0.0.1", code, "correct horse battery"); err != nil {
+		t.Fatalf("loopback locked out: %v", err)
 	}
 }
 
 func TestSetupRotates(t *testing.T) {
 	clk := &testClock{now: t0}
 	a := newAuth(t, newStore(t, nil), clk, "")
-	first := a.SetupCode()
+	first := a.currentCode()
 	for i := 0; i < setupRotateAfter; i++ {
-		if i%setupMaxFails == 0 {
+		if i%setupMaxFailsGlobal == 0 {
 			clk.now = clk.now.Add(setupWindow)
 		}
-		_ = a.Setup("WRONG", "correct horse battery")
+		_ = a.Setup(ipN(i), "WRONG", "correct horse battery")
 	}
-	if a.SetupCode() == first || codeFromFile(t, a) != a.SetupCode() {
+	if a.currentCode() == first || codeFromFile(t, a) != a.currentCode() {
 		t.Fatal("code not rotated")
 	}
-	clk.now = clk.now.Add(setupWindow)
-	if err := a.Setup(first, "correct horse battery"); !errors.Is(err, ErrSetupCode) {
+	if err := a.Setup("10.0.0.77", first, "correct horse battery"); !errors.Is(err, ErrSetupCode) {
 		t.Fatalf("old code still valid: %v", err)
+	}
+}
+
+func TestSetupCodeNeverLogged(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, nil))
+	clk := &testClock{now: t0}
+	a, err := NewAuth(AuthConfig{Store: newStore(t, nil), Now: clk.Now, BcryptCost: bcrypt.MinCost, Logger: log})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < setupRotateAfter; i++ {
+		if i%setupMaxFailsGlobal == 0 {
+			clk.now = clk.now.Add(setupWindow)
+		}
+		_ = a.Setup(ipN(i), "WRONG", "correct horse battery")
+	}
+	code := a.currentCode()
+	if strings.Contains(buf.String(), code) || strings.Contains(buf.String(), strings.ReplaceAll(code, "-", "")) {
+		t.Fatalf("setup code logged: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), a.CodePath()) {
+		t.Fatal("rotation log does not name the file")
 	}
 }
 
 func TestSetupOnce(t *testing.T) {
 	a := newAuth(t, newStore(t, nil), &testClock{now: t0}, "")
-	code := a.SetupCode()
+	code := a.currentCode()
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	ok, done := 0, 0
@@ -136,7 +178,7 @@ func TestSetupOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := a.Setup(code, "correct horse battery")
+			err := a.Setup("10.0.0.1", code, "correct horse battery")
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
@@ -223,7 +265,7 @@ func TestLoginRateLimit(t *testing.T) {
 	if _, err := a.Login("10.0.0.1", "x"); !errors.Is(err, ErrSetupPending) {
 		t.Fatalf("login in setup mode: %v", err)
 	}
-	a.Setup(a.SetupCode(), "correct horse battery")
+	a.Setup("10.0.0.1", a.currentCode(), "correct horse battery")
 	if _, err := a.Login("10.0.0.1", "wrong"); !errors.Is(err, ErrWrongLogin) {
 		t.Fatal(err)
 	}
@@ -237,15 +279,65 @@ func TestLoginRateLimit(t *testing.T) {
 	if _, err := a.Login("10.0.0.1", "correct horse battery"); err != nil {
 		t.Fatalf("after backoff: %v", err)
 	}
+}
+
+func TestLoginGlobalBudgetSparesLoopback(t *testing.T) {
+	clk := &testClock{now: t0}
+	a := newAuth(t, newStore(t, nil), clk, "")
+	a.Setup("10.0.0.1", a.currentCode(), "correct horse battery")
 	for i := 0; i < loginGlobalMax; i++ {
-		a.Login("10.1.0."+string(rune('a'+i%26))+string(rune('a'+i/26)), "wrong")
+		a.Login(ipN(i), "wrong")
 	}
 	if _, err := a.Login("10.9.9.9", "correct horse battery"); !errors.Is(err, ErrRateLimited) {
-		t.Fatalf("global cap: %v", err)
+		t.Fatalf("global budget: %v", err)
+	}
+	if _, err := a.Login("127.0.0.1", "correct horse battery"); err != nil {
+		t.Fatalf("owner on loopback locked out: %v", err)
 	}
 	clk.now = clk.now.Add(loginGlobalWindow)
 	if _, err := a.Login("10.9.9.9", "correct horse battery"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLoginReservesBeforeCompare(t *testing.T) {
+	a := newAuth(t, newStore(t, nil), &testClock{now: t0}, "")
+	a.Setup("10.0.0.1", a.currentCode(), "correct horse battery")
+	var inFlight, peak atomic.Int32
+	a.compare = func(h, p []byte) error {
+		n := inFlight.Add(1)
+		for {
+			old := peak.Load()
+			if n <= old || peak.CompareAndSwap(old, n) {
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+		inFlight.Add(-1)
+		return bcrypt.ErrMismatchedHashAndPassword
+	}
+	var wg sync.WaitGroup
+	var wrong atomic.Int32
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := a.Login("10.0.0.5", "guess"); errors.Is(err, ErrWrongLogin) {
+				wrong.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if wrong.Load() != 1 {
+		t.Fatalf("%d guesses from one address reached the password check", wrong.Load())
+	}
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) { defer wg.Done(); a.Login(ipN(i), "guess") }(i)
+	}
+	wg.Wait()
+	if peak.Load() > maxConcurrentHash {
+		t.Fatalf("%d concurrent password checks", peak.Load())
 	}
 }
 
@@ -335,7 +427,7 @@ func TestSetupAndLoginOverHTTP(t *testing.T) {
 	if w := post(s, "/api/setup", `{"code":"x","password":"y","extra":1}`, host, nil); w.Code != http.StatusBadRequest {
 		t.Fatalf("unknown field %d", w.Code)
 	}
-	body, _ := json.Marshal(map[string]string{"code": s.cfg.Auth.SetupCode(), "password": "correct horse battery"})
+	body, _ := json.Marshal(map[string]string{"code": s.cfg.Auth.currentCode(), "password": "correct horse battery"})
 	w := post(s, "/api/setup", string(body), host, nil)
 	if w.Code != 200 || len(w.Result().Cookies()) != 1 || w.Result().Cookies()[0].Name != SessionCookie {
 		t.Fatalf("setup %d %v", w.Code, w.Result().Cookies())

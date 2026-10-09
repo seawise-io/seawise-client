@@ -130,9 +130,9 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *age
 		return nil, err
 	}
 	log.Info("admin UI listening", "address", ln.Addr().String(), "https", true, "cert_sha256", cert.Fingerprint, "cert_new", cert.Regenerated)
-	if code := auth.SetupCode(); code != "" {
-		log.Warn("first run: open the admin UI over HTTPS and enter the setup code",
-			"setup_code", code, "file", auth.CodePath(), "port", port, "cert_sha256", cert.Fingerprint)
+	if auth.SetupRequired() {
+		log.Warn("first run: open the admin UI over HTTPS and enter the setup code from the setup-code file",
+			"file", auth.CodePath(), "port", port, "cert_sha256", cert.Fingerprint)
 	}
 	done := make(chan struct{})
 	go func() {

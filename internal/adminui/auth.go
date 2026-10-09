@@ -23,19 +23,22 @@ import (
 )
 
 const (
-	SetupCodeFile     = "setup-code"
-	MinPasswordLen    = 10
-	MaxPasswordLen    = 72
-	maxPasswordFile   = 1 << 10
-	setupWindow       = 10 * time.Minute
-	setupMaxFails     = 10
-	setupRotateAfter  = 100
-	loginWindow       = 15 * time.Minute
-	loginBaseDelay    = time.Second
-	loginMaxDelay     = 10 * time.Second
-	loginGlobalWindow = time.Minute
-	loginGlobalMax    = 30
-	maxTrackedIPs     = 1024
+	SetupCodeFile       = "setup-code"
+	MinPasswordLen      = 10
+	MaxPasswordLen      = 72
+	maxPasswordFile     = 1 << 10
+	setupWindow         = 10 * time.Minute
+	setupMaxFailsPerIP  = 5
+	setupMaxFailsGlobal = 50
+	setupRotateAfter    = 100
+	loginWindow         = 15 * time.Minute
+	loginBaseDelay      = time.Second
+	loginMaxDelay       = 10 * time.Second
+	loginGlobalWindow   = time.Minute
+	loginGlobalMax      = 100
+	maxTrackedIPs       = 1024
+	maxConcurrentHash   = 2
+	hashWait            = 5 * time.Second
 )
 
 var (
@@ -66,10 +69,13 @@ type Auth struct {
 	mu         sync.Mutex
 	code       string
 	setupFails []time.Time
+	setupByIP  map[string][]time.Time
 	setupTotal int
 	loginIP    map[string]*ipFails
 	loginAll   []time.Time
 	dummy      []byte
+	hashSlots  chan struct{}
+	compare    func(hash, password []byte) error
 }
 
 type ipFails struct {
@@ -96,7 +102,9 @@ func NewAuth(cfg AuthConfig) (*Auth, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &Auth{cfg: cfg, log: cfg.Logger.With("component", "auth"), path: filepath.Join(cfg.Store.Dir(), SetupCodeFile), loginIP: map[string]*ipFails{}, dummy: dummy}
+	a := &Auth{cfg: cfg, log: cfg.Logger.With("component", "auth"), path: filepath.Join(cfg.Store.Dir(), SetupCodeFile),
+		loginIP: map[string]*ipFails{}, setupByIP: map[string][]time.Time{}, dummy: dummy,
+		hashSlots: make(chan struct{}, maxConcurrentHash), compare: bcrypt.CompareHashAndPassword}
 
 	if cfg.PasswordFile != "" {
 		pw, err := readPasswordFile(cfg.PasswordFile)
@@ -175,6 +183,7 @@ func (a *Auth) newCode() error {
 	}
 	a.code = code
 	a.setupFails, a.setupTotal = nil, 0
+	a.setupByIP = map[string][]time.Time{}
 	return nil
 }
 
@@ -197,8 +206,9 @@ func normalizeCode(s string) string {
 	return strings.NewReplacer("-", "", " ", "").Replace(strings.ToUpper(strings.TrimSpace(s)))
 }
 
-// SetupCode returns the code to show in the logs, or "" once configured.
-func (a *Auth) SetupCode() string {
+// currentCode returns the code in display form, or "" once configured. The
+// code is only ever shown through the 0600 file, never logged.
+func (a *Auth) currentCode() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.code == "" {
@@ -216,9 +226,15 @@ func (a *Auth) SetupRequired() bool {
 // CodePath is where the setup code is written.
 func (a *Auth) CodePath() string { return a.path }
 
-// Setup sets the first password. The limiter is global because the caller
-// can pick any source address.
-func (a *Auth) Setup(code, password string) error {
+func isLoopbackIP(ip string) bool {
+	a, err := netip.ParseAddr(ip)
+	return err == nil && a.Unmap().IsLoopback()
+}
+
+// Setup sets the first password. Failures are limited per address and by a
+// larger global budget that does not apply to loopback, so a LAN peer
+// cannot lock the owner out of setting up on the machine itself.
+func (a *Auth) Setup(ip, code, password string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.code == "" {
@@ -226,17 +242,26 @@ func (a *Auth) Setup(code, password string) error {
 	}
 	now := a.cfg.Now()
 	a.setupFails = recent(a.setupFails, now, setupWindow)
-	if len(a.setupFails) >= setupMaxFails {
+	mine := recent(a.setupByIP[ip], now, setupWindow)
+	if len(mine) == 0 {
+		delete(a.setupByIP, ip)
+	} else {
+		a.setupByIP[ip] = mine
+	}
+	if len(mine) >= setupMaxFailsPerIP || (!isLoopbackIP(ip) && len(a.setupFails) >= setupMaxFailsGlobal) {
 		return ErrRateLimited
 	}
 	if !equalSecret(normalizeCode(code), a.code) {
 		a.setupFails = append(a.setupFails, now)
+		if len(a.setupByIP) < maxTrackedIPs || a.setupByIP[ip] != nil {
+			a.setupByIP[ip] = append(mine, now)
+		}
 		a.setupTotal++
 		if a.setupTotal >= setupRotateAfter {
 			if err := a.newCode(); err != nil {
 				return err
 			}
-			a.log.Warn("too many wrong setup codes; new setup code issued", "setup_code", displayCode(a.code), "file", a.path)
+			a.log.Warn("too many wrong setup codes; a new setup code was written", "file", a.path)
 		}
 		return ErrSetupCode
 	}
@@ -254,7 +279,10 @@ func (a *Auth) Setup(code, password string) error {
 	return nil
 }
 
-// Login checks the password with per-address backoff and a global cap.
+// Login checks the password. The attempt is counted before the password
+// check runs, so parallel guesses from one address cannot all reach it;
+// password checks run at most maxConcurrentHash at a time. The global
+// budget does not apply to loopback.
 func (a *Auth) Login(ip, password string) (time.Duration, error) {
 	now := a.cfg.Now()
 	a.mu.Lock()
@@ -263,36 +291,21 @@ func (a *Auth) Login(ip, password string) (time.Duration, error) {
 		return 0, ErrSetupPending
 	}
 	a.loginAll = recent(a.loginAll, now, loginGlobalWindow)
-	if len(a.loginAll) >= loginGlobalMax {
+	if !isLoopbackIP(ip) && len(a.loginAll) >= loginGlobalMax {
 		a.mu.Unlock()
 		return loginGlobalWindow, ErrRateLimited
 	}
-	if f := a.loginIP[ip]; f != nil {
-		if now.Sub(f.last) >= loginWindow {
-			delete(a.loginIP, ip)
-		} else if wait := f.last.Add(loginDelay(f.count)).Sub(now); wait > 0 {
+	f := a.loginIP[ip]
+	if f != nil && now.Sub(f.last) >= loginWindow {
+		delete(a.loginIP, ip)
+		f = nil
+	}
+	if f != nil {
+		if wait := f.last.Add(loginDelay(f.count)).Sub(now); wait > 0 {
 			a.mu.Unlock()
 			return wait, ErrRateLimited
 		}
 	}
-	a.mu.Unlock()
-
-	hash := a.cfg.Store.Secrets().AdminPasswordHash
-	ok := false
-	if hash == "" {
-		_ = bcrypt.CompareHashAndPassword(a.dummy, []byte(password))
-	} else {
-		ok = bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
-	}
-
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if ok {
-		delete(a.loginIP, ip)
-		return 0, nil
-	}
-	a.loginAll = append(a.loginAll, now)
-	f := a.loginIP[ip]
 	if f == nil {
 		if len(a.loginIP) >= maxTrackedIPs {
 			for k, v := range a.loginIP {
@@ -302,13 +315,54 @@ func (a *Auth) Login(ip, password string) (time.Duration, error) {
 			}
 		}
 		if len(a.loginIP) >= maxTrackedIPs {
-			return loginBaseDelay, ErrWrongLogin
+			a.mu.Unlock()
+			return loginBaseDelay, ErrRateLimited
 		}
 		f = &ipFails{}
 		a.loginIP[ip] = f
 	}
+	prev := *f
 	f.count++
 	f.last = now
+	a.loginAll = append(a.loginAll, now)
+	a.mu.Unlock()
+
+	// unreserve gives the attempt back; success also clears the address.
+	unreserve := func(success bool) {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if cur := a.loginIP[ip]; cur != nil {
+			if success || prev.count == 0 {
+				delete(a.loginIP, ip)
+			} else {
+				*cur = prev
+			}
+		}
+		for i := len(a.loginAll) - 1; i >= 0; i-- {
+			if a.loginAll[i].Equal(now) {
+				a.loginAll = append(a.loginAll[:i], a.loginAll[i+1:]...)
+				break
+			}
+		}
+	}
+	select {
+	case a.hashSlots <- struct{}{}:
+	case <-time.After(hashWait):
+		unreserve(false)
+		return loginBaseDelay, ErrRateLimited
+	}
+	hash := a.cfg.Store.Secrets().AdminPasswordHash
+	ok := false
+	if hash == "" {
+		_ = a.compare(a.dummy, []byte(password))
+	} else {
+		ok = a.compare([]byte(hash), []byte(password)) == nil
+	}
+	<-a.hashSlots
+	if ok {
+		unreserve(true)
+		return 0, nil
+	}
 	return loginDelay(f.count), ErrWrongLogin
 }
 
@@ -350,7 +404,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
 		return
 	}
-	switch err := s.cfg.Auth.Setup(body.Code, body.Password); {
+	switch err := s.cfg.Auth.Setup(peerIP(r.RemoteAddr), body.Code, body.Password); {
 	case err == nil:
 	case errors.Is(err, ErrSetupDone):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "already set up"})
