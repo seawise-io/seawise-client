@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/seawise/client/internal/agent"
+	"github.com/seawise/client/internal/constants"
+	"github.com/seawise/client/internal/controlplane"
 	"github.com/seawise/client/internal/paths"
 	"github.com/seawise/client/internal/store"
 )
@@ -52,10 +54,35 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	cp, err := controlplane.New(controlplane.Config{
+		BaseURL: apiURL(st),
+		Token:   func() string { return st.Secrets().FRPToken },
+		Version: constants.Version,
+	})
+	if err != nil {
+		log.Error("control plane", "error", err)
+		os.Exit(1)
+	}
+	syncer, err := controlplane.NewSyncer(controlplane.SyncerConfig{Client: cp, Store: st, Agent: a, Version: constants.Version, Logger: log})
+	if err != nil {
+		log.Error("control plane", "error", err)
+		os.Exit(1)
+	}
+	go func() { _ = syncer.Run(ctx) }()
+
 	if err := a.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("agent stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+// apiURL keeps the v1 precedence: the origin stored at pairing wins.
+func apiURL(st *store.Store) string {
+	if a := st.State().Account; a != nil && a.APIURL != "" {
+		return a.APIURL
+	}
+	return envOr("SEAWISE_API_URL", constants.DefaultAPIURL)
 }
 
 func envOr(key, def string) string {
