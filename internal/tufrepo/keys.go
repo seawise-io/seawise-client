@@ -95,27 +95,39 @@ func Keygen(path string) (string, error) {
 	return KeyID(k.Public().(ed25519.PublicKey))
 }
 
+// writeKey creates path (0600) and path+".pub"; neither may exist.
 func writeKey(path string, k ed25519.PrivateKey) error {
 	priv, err := MarshalPrivateKey(k)
 	if err != nil {
 		return err
 	}
-	pub, err := MarshalPublicKey(k.Public().(ed25519.PublicKey))
+	pubPEM, err := MarshalPublicKey(k.Public().(ed25519.PublicKey))
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	// Public keys are meant to be shared, so 0644.
+	if err := createExcl(path+".pub", pubPEM, 0o644); err != nil { // #nosec G306 -- public key
+		return err
+	}
+	if err := createExcl(path, priv, 0o600); err != nil {
+		_ = os.Remove(path + ".pub")
+		return err
+	}
+	return nil
+}
+
+func createExcl(path string, data []byte, perm os.FileMode) error {
+	// #nosec G304 -- operator-chosen output path; O_EXCL never replaces a file
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(priv); err != nil {
+	if _, err := f.Write(data); err != nil {
 		f.Close()
+		_ = os.Remove(path)
 		return err
 	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return os.WriteFile(path+".pub", pub, 0o644)
+	return f.Close()
 }
 
 // LoadPrivateKey reads a key from a file, or from an environment variable
@@ -130,7 +142,7 @@ func LoadPrivateKey(ref string, getenv func(string) string) (ed25519.PrivateKey,
 		b = []byte(v)
 	} else {
 		var err error
-		if b, err = os.ReadFile(ref); err != nil {
+		if b, err = os.ReadFile(ref); err != nil { // #nosec G304 -- operator-chosen key file
 			return nil, err
 		}
 	}
@@ -143,7 +155,7 @@ func LoadPrivateKey(ref string, getenv func(string) string) (ed25519.PrivateKey,
 
 // LoadPublicKey reads a PKIX PEM public key file.
 func LoadPublicKey(path string) (ed25519.PublicKey, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- operator-chosen key file
 	if err != nil {
 		return nil, err
 	}

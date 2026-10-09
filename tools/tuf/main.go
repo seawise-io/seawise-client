@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,13 +26,17 @@ const usage = `usage: tuf <command> [flags]
 
 offline (root and targets keys):
   keygen        -out FILE
-  init          -dir D -root-key P.pub -root-key P.pub -targets-key P.pub -snapshot-key P.pub -timestamp-key P.pub -sign K [-sign K] -targets-sign K
+  init          -production -allow-keys FILE -dir D -root-key P.pub (x3) [-root-threshold 2]
+                -targets-key P.pub -snapshot-key P.pub -timestamp-key P.pub -sign K (x threshold) -targets-sign K
   sign-targets  -dir D -key K [-add NAME=FILE ...] [-remove NAME ...] [-expires 120d]
   rotate-root   -dir D -sign K ... [-role-key ROLE=P.pub ...] [-threshold ROLE=N ...] [-expires 365d]
 
 online (snapshot and timestamp keys):
-  pull          -url URL -dir D
-  refresh       -dir D -snapshot-key K -timestamp-key K [-expires 14d] [-min-remaining 7d]
+  pull          -url URL -dir D -root ROOT.json
+  refresh       -dir D -root ROOT.json -snapshot-key K -timestamp-key K [-expires 14d] [-min-remaining 7d]
+
+pull and refresh verify the repository from ROOT.json (the pinned root)
+before writing or signing anything.
 
 anywhere:
   verify        -dir D -root ROOT.json [-at RFC3339] [-metadata-only]
@@ -92,7 +97,10 @@ func run(args []string, out io.Writer, getenv func(string) string, now func() ti
 
 	case "init":
 		var rootKeys, signers multi
-		fs.Var(&rootKeys, "root-key", "root public key (at least two)")
+		fs.Var(&rootKeys, "root-key", "root public key (threshold + 1 or more)")
+		rootThreshold := fs.Int("root-threshold", 2, "root signatures needed")
+		production := fs.Bool("production", false, "confirm this is the production repository")
+		allowKeys := fs.String("allow-keys", "", "file listing the allowed key IDs, one per line")
 		targets := fs.String("targets-key", "", "targets public key")
 		snapshot := fs.String("snapshot-key", "", "snapshot public key")
 		timestamp := fs.String("timestamp-key", "", "timestamp public key")
@@ -106,6 +114,18 @@ func run(args []string, out io.Writer, getenv func(string) string, now func() ti
 		if *dir == "" {
 			return errors.New("-dir is required")
 		}
+		if !*production {
+			return errors.New("init creates a production repository and needs -production (use init-test for tests)")
+		}
+		for _, ref := range append(append([]string{*targets, *snapshot, *timestamp, *targetsSigner}, rootKeys...), signers...) {
+			if tufrepo.IsTestKeyPath(ref) {
+				return fmt.Errorf("%s is a test key", ref)
+			}
+		}
+		allowed, err := readAllowlist(*allowKeys)
+		if err != nil {
+			return err
+		}
 		re, err := tufrepo.ParseDuration(*rootExp)
 		if err != nil {
 			return err
@@ -114,11 +134,11 @@ func run(args []string, out io.Writer, getenv func(string) string, now func() ti
 		if err != nil {
 			return err
 		}
-		opts := tufrepo.InitOptions{Now: now(), RootExpires: re, TargetsExpires: te}
+		opts := tufrepo.InitOptions{Now: now(), RootExpires: re, TargetsExpires: te, AllowedKeyIDs: allowed}
 		if opts.Root.Keys, err = loadPublics(rootKeys); err != nil {
 			return err
 		}
-		opts.Root.Threshold = 1
+		opts.Root.Threshold = *rootThreshold
 		for _, r := range []struct {
 			path string
 			dst  *tufrepo.RoleKeys
@@ -239,6 +259,7 @@ func run(args []string, out io.Writer, getenv func(string) string, now func() ti
 		return nil
 
 	case "refresh":
+		rootPath := fs.String("root", "", "pinned root to verify the repository from")
 		snapKey := fs.String("snapshot-key", "", "snapshot private key")
 		tsKey := fs.String("timestamp-key", "", "timestamp private key")
 		exp := fs.String("expires", "14d", "snapshot and timestamp lifetime")
@@ -254,6 +275,10 @@ func run(args []string, out io.Writer, getenv func(string) string, now func() ti
 		if err != nil {
 			return err
 		}
+		root, err := readRoot(*rootPath)
+		if err != nil {
+			return err
+		}
 		sk, err := tufrepo.LoadPrivateKey(*snapKey, getenv)
 		if err != nil {
 			return err
@@ -262,7 +287,7 @@ func run(args []string, out io.Writer, getenv func(string) string, now func() ti
 		if err != nil {
 			return err
 		}
-		res, err := tufrepo.Refresh(*dir, sk, tk, now(), d, m)
+		res, err := tufrepo.Refresh(*dir, root, sk, tk, now(), d, m)
 		if err != nil {
 			return err
 		}
@@ -274,13 +299,18 @@ func run(args []string, out io.Writer, getenv func(string) string, now func() ti
 
 	case "pull":
 		u := fs.String("url", "", "https base URL of the published repository")
+		rootPath := fs.String("root", "", "pinned root to verify the published metadata from")
 		if err := fs.Parse(args); err != nil {
+			return err
+		}
+		root, err := readRoot(*rootPath)
+		if err != nil {
 			return err
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 		hc := &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-		return tufrepo.Pull(ctx, hc, *u, *dir)
+		return tufrepo.Pull(ctx, hc, *u, *dir, root, now())
 
 	case "verify":
 		rootPath := fs.String("root", "", "trusted root metadata to start from")
@@ -289,12 +319,9 @@ func run(args []string, out io.Writer, getenv func(string) string, now func() ti
 		if err := fs.Parse(args); err != nil {
 			return err
 		}
-		root, err := readCapped(*rootPath, 1<<20)
+		root, err := readRoot(*rootPath)
 		if err != nil {
 			return err
-		}
-		if len(root) == 0 {
-			return errors.New("trusted root is empty")
 		}
 		t := now()
 		if *at != "" {
@@ -352,8 +379,47 @@ func loadPrivates(refs []string, getenv func(string) string) ([]ed25519.PrivateK
 	return ks, nil
 }
 
+func readRoot(path string) ([]byte, error) {
+	if path == "" {
+		return nil, errors.New("-root is required")
+	}
+	b, err := readCapped(path, 1<<20)
+	if err != nil {
+		return nil, err
+	}
+	if len(strings.TrimSpace(string(b))) == 0 {
+		return nil, fmt.Errorf("%s is empty: no root has been pinned yet", path)
+	}
+	return b, nil
+}
+
+// readAllowlist reads key IDs, one per line; blank lines and # comments
+// are ignored.
+func readAllowlist(path string) ([]string, error) {
+	if path == "" {
+		return nil, errors.New("-allow-keys is required")
+	}
+	b, err := readCapped(path, 64<<10)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		ids = append(ids, line)
+	}
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("%s lists no keys", path)
+	}
+	return ids, nil
+}
+
+// readCapped reads an operator-named file (a key, root or target) up to max bytes.
 func readCapped(path string, max int64) ([]byte, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(filepath.Clean(path)) // #nosec G304 G703 -- operator-chosen path on the operator's own machine
 	if err != nil {
 		return nil, err
 	}

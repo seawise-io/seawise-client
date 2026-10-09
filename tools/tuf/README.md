@@ -30,14 +30,16 @@ as `release/stable.json` described in `release/README.md`).
 
 | Role | Keys | Kept | Default expiry |
 |---|---|---|---|
-| root | two (primary and backup), threshold 1 | offline, apart | 365 days |
+| root | three, threshold 2 (at least threshold + 1) | offline, apart | 365 days |
 | targets | one | offline | 120 days |
 | snapshot | one | CI environment `tuf-online` | 14 days |
 | timestamp | one | CI environment `tuf-online` | 14 days |
 
-Either root key can sign a new root, so losing one root key does not need
-a client release. A new root must be signed by a threshold of the current
-root keys and of its own root keys.
+Two of the three root keys sign every new root, so a single stolen root key
+cannot, and losing one root key does not need a client release. The tool
+and the agent refuse a root threshold below 2 and a root role without at
+least one key more than its threshold. A new root must be signed by a
+threshold of the current root keys and of its own root keys.
 
 Expired metadata only stops update notices and actions the agent cannot
 verify freshly. It never stops running tunnels.
@@ -47,24 +49,32 @@ verify freshly. It never stops running tunnels.
 Offline machine (root and targets keys):
 
 ```
-tuf keygen -out root-primary.pem              # also writes root-primary.pem.pub
-tuf init -dir repo \
-  -root-key root-primary.pem.pub -root-key root-backup.pem.pub \
+tuf keygen -out root-1.pem                    # also writes root-1.pem.pub; never overwrites
+tuf init -production -allow-keys allowed-keys -dir repo \
+  -root-key root-1.pem.pub -root-key root-2.pem.pub -root-key root-3.pem.pub \
   -targets-key targets.pem.pub -snapshot-key snapshot.pem.pub -timestamp-key timestamp.pem.pub \
-  -sign root-primary.pem -targets-sign targets.pem
+  -sign root-1.pem -sign root-2.pem -targets-sign targets.pem
 tuf sign-targets -dir repo -key targets.pem -add keyset.json=keyset.json -add release/stable.json=stable.json
-tuf rotate-root -dir repo -sign root-backup.pem -role-key timestamp=timestamp2.pem.pub
+tuf rotate-root -dir repo -sign root-2.pem -sign root-3.pem -role-key timestamp=timestamp2.pem.pub
 ```
 
 Online (scheduled workflow, or by hand):
 
 ```
-tuf pull -url https://<host> -dir repo
-tuf refresh -dir repo -snapshot-key env:TUF_SNAPSHOT_KEY -timestamp-key env:TUF_TIMESTAMP_KEY
+tuf pull -url https://<host> -dir repo -root internal/updatecheck/root/production.json
+tuf refresh -dir repo -root internal/updatecheck/root/production.json \
+  -snapshot-key env:TUF_SNAPSHOT_KEY -timestamp-key env:TUF_TIMESTAMP_KEY
 tuf verify -metadata-only -dir repo -root internal/updatecheck/root/production.json
 ```
 
-`refresh` always signs a new timestamp and signs a new snapshot when
+`init` needs `-production` and an allowlist file of the key IDs printed by
+`keygen` (one per line), and refuses keys from a test key folder.
+
+`pull` and `refresh` verify the repository from the pinned root (`-root`)
+before writing or signing: the root chain, signatures, thresholds,
+versions, lengths and hashes. Expired snapshot or timestamp metadata is
+accepted there, since a refresh is what renews it; new versions always
+follow the verified ones. `refresh` always signs a new timestamp and signs a new snapshot when
 targets changed or the snapshot has less than 7 days left, so a weekly run
 keeps a 14-day expiry valid. Keys are files (`0600`) or `env:NAME` with the
 PEM in an environment variable. Private keys are never printed.
@@ -75,7 +85,7 @@ role's version and expiry.
 ## Test repositories
 
 `tuf init-test -dir D` creates a throwaway repository with keys in
-`D/keys`. Its root carries `"x-seawise-test-only": true` inside the signed
+`D/keys`, marked with a `TEST-KEYS-DO-NOT-USE` file. Its root carries `"x-seawise-test-only": true` inside the signed
 part; the agent refuses such a root outside its tests. Never publish a test
 repository or pin its root.
 
@@ -91,7 +101,9 @@ offline machine.
 ## Scheduled refresh
 
 `.github/workflows/tuf-refresh.yml` runs weekly and on dispatch, only when
-the repository variable `TUF_REFRESH_ENABLED` is `true`. It needs the
-environment `tuf-online` with secrets `TUF_SNAPSHOT_KEY` and
-`TUF_TIMESTAMP_KEY` and the variable `TUF_REPO_URL`. The publish step
+the repository variable `TUF_REFRESH_ENABLED` is `true`, and refuses to
+run outside `main`. It needs the environment `tuf-online` with secrets
+`TUF_SNAPSHOT_KEY` and `TUF_TIMESTAMP_KEY` and the variable
+`TUF_REPO_URL`. Before adding any secret, limit `tuf-online` to the `main`
+branch and require a reviewer (see `release/README.md`). The publish step
 fails until a host is chosen.

@@ -60,13 +60,44 @@ type InitOptions struct {
 	TargetsSigner                      ed25519.PrivateKey
 	Now                                time.Time
 	RootExpires, TargetsExpires        time.Duration
-	TestOnly                           bool
+	// TestOnly marks the root as a test root. Otherwise every key must be
+	// listed in AllowedKeyIDs.
+	TestOnly      bool
+	AllowedKeyIDs []string
+}
+
+// MinRootThreshold is the smallest root threshold accepted; the root role
+// must also hold at least one key more than its threshold, so losing one
+// root key does not need a client release.
+const MinRootThreshold = 2
+
+func checkRootRole(rk RoleKeys) error {
+	if rk.Threshold < MinRootThreshold || len(rk.Keys) < rk.Threshold+1 {
+		return fmt.Errorf("the root role needs a threshold of at least %d and one key more than the threshold (default 2 of 3)", MinRootThreshold)
+	}
+	return nil
 }
 
 // Init writes 1.root.json and 1.targets.json into a new repository.
 func Init(dir string, o InitOptions) error {
-	if len(o.Root.Keys) < 2 {
-		return errors.New("the root role needs at least two root keys (primary and backup)")
+	if err := checkRootRole(o.Root); err != nil {
+		return err
+	}
+	if !o.TestOnly {
+		if len(o.AllowedKeyIDs) == 0 {
+			return errors.New("a production repository needs a key allowlist")
+		}
+		for _, rk := range []RoleKeys{o.Root, o.Targets, o.Snapshot, o.Timestamp} {
+			for _, k := range rk.Keys {
+				id, err := KeyID(k)
+				if err != nil {
+					return err
+				}
+				if !slices.Contains(o.AllowedKeyIDs, id) {
+					return fmt.Errorf("key %s is not in the allowlist", id)
+				}
+			}
+		}
 	}
 	if entries, err := os.ReadDir(filepath.Join(dir, "metadata")); err == nil && len(entries) > 0 {
 		return fmt.Errorf("%s already holds a repository", dir)
@@ -99,10 +130,10 @@ func Init(dir string, o InitOptions) error {
 	if err := root.VerifyDelegate(metadata.TARGETS, targets); err != nil {
 		return fmt.Errorf("targets signature: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Join(dir, "metadata"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "metadata"), 0o750); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Join(dir, "targets"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "targets"), 0o750); err != nil {
 		return err
 	}
 	if err := writeMeta(dir, "1.root.json", root); err != nil {
@@ -113,7 +144,21 @@ func Init(dir string, o InitOptions) error {
 
 // TestKeys are the keys of a test repository.
 type TestKeys struct {
-	RootPrimary, RootBackup, Targets, Snapshot, Timestamp ed25519.PrivateKey
+	Root                         []ed25519.PrivateKey // three keys, threshold 2
+	Targets, Snapshot, Timestamp ed25519.PrivateKey
+}
+
+// TestKeysMarker is created in every test key folder; production commands
+// refuse keys from a folder that holds it.
+const TestKeysMarker = "TEST-KEYS-DO-NOT-USE"
+
+// IsTestKeyPath reports whether a key file lies in a test key folder.
+func IsTestKeyPath(ref string) bool {
+	if strings.HasPrefix(ref, "env:") {
+		return false
+	}
+	_, err := os.Lstat(filepath.Join(filepath.Dir(ref), TestKeysMarker))
+	return err == nil
 }
 
 // InitTest creates a repository with fresh keys under dir/keys and a root
@@ -126,29 +171,40 @@ func InitTest(dir string, now time.Time) (*TestKeys, error) {
 	if err := os.MkdirAll(keyDir, 0o700); err != nil {
 		return nil, err
 	}
-	var tk TestKeys
-	for _, k := range []struct {
-		name string
-		dst  *ed25519.PrivateKey
-	}{{"root-primary", &tk.RootPrimary}, {"root-backup", &tk.RootBackup}, {"targets", &tk.Targets}, {"snapshot", &tk.Snapshot}, {"timestamp", &tk.Timestamp}} {
+	if err := os.WriteFile(filepath.Join(keyDir, TestKeysMarker), []byte("Keys in this folder are for tests only.\n"), 0o600); err != nil {
+		return nil, err
+	}
+	tk := TestKeys{Root: make([]ed25519.PrivateKey, 3)}
+	gen := func(name string, dst *ed25519.PrivateKey) error {
 		key, err := GenerateKey()
 		if err != nil {
+			return err
+		}
+		if err := writeKey(filepath.Join(keyDir, name+".pem"), key); err != nil {
+			return err
+		}
+		*dst = key
+		return nil
+	}
+	for i := range tk.Root {
+		if err := gen(fmt.Sprintf("root-%d", i+1), &tk.Root[i]); err != nil {
 			return nil, err
 		}
-		if err := writeKey(filepath.Join(keyDir, k.name+".pem"), key); err != nil {
+	}
+	for name, dst := range map[string]*ed25519.PrivateKey{"targets": &tk.Targets, "snapshot": &tk.Snapshot, "timestamp": &tk.Timestamp} {
+		if err := gen(name, dst); err != nil {
 			return nil, err
 		}
-		*k.dst = key
 	}
 	one := func(k ed25519.PrivateKey) RoleKeys {
 		return RoleKeys{Keys: []ed25519.PublicKey{pub(k)}, Threshold: 1}
 	}
 	err := Init(dir, InitOptions{
-		Root:          RoleKeys{Keys: []ed25519.PublicKey{pub(tk.RootPrimary), pub(tk.RootBackup)}, Threshold: 1},
+		Root:          RoleKeys{Keys: []ed25519.PublicKey{pub(tk.Root[0]), pub(tk.Root[1]), pub(tk.Root[2])}, Threshold: 2},
 		Targets:       one(tk.Targets),
 		Snapshot:      one(tk.Snapshot),
 		Timestamp:     one(tk.Timestamp),
-		RootSigners:   []ed25519.PrivateKey{tk.RootPrimary},
+		RootSigners:   tk.Root[:2],
 		TargetsSigner: tk.Targets,
 		Now:           now,
 		TestOnly:      true,
@@ -237,7 +293,7 @@ func writeTarget(dir, name string, data []byte) error {
 	sum := sha256.Sum256(data)
 	sub, base := path.Split(name)
 	d := filepath.Join(dir, "targets", filepath.FromSlash(sub))
-	if err := os.MkdirAll(d, 0o755); err != nil {
+	if err := os.MkdirAll(d, 0o750); err != nil {
 		return err
 	}
 	return writeFile(filepath.Join(d, hex.EncodeToString(sum[:])+"."+base), data)
@@ -251,21 +307,21 @@ type RefreshResult struct {
 }
 
 // Refresh writes a new timestamp and, when targets changed or the current
-// snapshot has less than minRemaining left, a new snapshot.
-func Refresh(dir string, snapshotKey, timestampKey ed25519.PrivateKey, now time.Time, expires, minRemaining time.Duration) (RefreshResult, error) {
+// snapshot has less than minRemaining left, a new snapshot. It first
+// verifies the repository from trustedRoot (the pinned root) and builds
+// only on the verified root, snapshot and timestamp versions, so forged
+// files on the host cannot steer what the online keys sign.
+func Refresh(dir string, trustedRoot []byte, snapshotKey, timestampKey ed25519.PrivateKey, now time.Time, expires, minRemaining time.Duration) (RefreshResult, error) {
 	var res RefreshResult
-	root, _, err := LatestRoot(dir)
+	v, err := verifyState(dir, trustedRoot, now)
 	if err != nil {
 		return res, err
 	}
-	targets, targetsRaw, err := latest[metadata.TargetsType](dir, metadata.TARGETS)
+	targets, targetsRaw, err := v.nextTargets(dir, now)
 	if err != nil {
 		return res, err
 	}
-	snap, snapRaw, err := latest[metadata.SnapshotType](dir, metadata.SNAPSHOT)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return res, err
-	}
+	snap, snapRaw := v.snap, v.snapRaw
 	if snap == nil || snap.Signed.Meta["targets.json"] == nil ||
 		snap.Signed.Meta["targets.json"].Version != targets.Signed.Version ||
 		snap.Signed.Expires.Sub(now) < minRemaining {
@@ -277,7 +333,7 @@ func Refresh(dir string, snapshotKey, timestampKey ed25519.PrivateKey, now time.
 		if err := sign(next, snapshotKey); err != nil {
 			return res, err
 		}
-		if err := root.VerifyDelegate(metadata.SNAPSHOT, next); err != nil {
+		if err := v.root.VerifyDelegate(metadata.SNAPSHOT, next); err != nil {
 			return res, fmt.Errorf("key is not a snapshot key of the current root: %w", err)
 		}
 		raw, err := encode(next)
@@ -292,16 +348,14 @@ func Refresh(dir string, snapshotKey, timestampKey ed25519.PrivateKey, now time.
 	res.SnapshotVersion = snap.Signed.Version
 
 	ts := metadata.Timestamp(expiry(now, expires))
-	if prev, err := readMeta[metadata.TimestampType](filepath.Join(dir, "metadata", "timestamp.json")); err == nil {
-		ts.Signed.Version = prev.Signed.Version + 1
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return res, err
+	if v.ts != nil {
+		ts.Signed.Version = v.ts.Signed.Version + 1
 	}
 	ts.Signed.Meta["snapshot.json"] = metaFile(snap.Signed.Version, snapRaw)
 	if err := sign(ts, timestampKey); err != nil {
 		return res, err
 	}
-	if err := root.VerifyDelegate(metadata.TIMESTAMP, ts); err != nil {
+	if err := v.root.VerifyDelegate(metadata.TIMESTAMP, ts); err != nil {
 		return res, fmt.Errorf("key is not a timestamp key of the current root: %w", err)
 	}
 	res.TimestampVersion = ts.Signed.Version
@@ -344,8 +398,8 @@ func RotateRoot(dir string, ch RootChange) (int64, error) {
 			return 0, err
 		}
 	}
-	if len(next.Signed.Roles[metadata.ROOT].KeyIDs) < 2 {
-		return 0, errors.New("the root role needs at least two root keys (primary and backup)")
+	if r := next.Signed.Roles[metadata.ROOT]; r.Threshold < MinRootThreshold || len(r.KeyIDs) < r.Threshold+1 {
+		return 0, checkRootRole(RoleKeys{Threshold: r.Threshold})
 	}
 	if err := sign(next, ch.Signers...); err != nil {
 		return 0, err
@@ -468,7 +522,7 @@ func writeFile(path string, data []byte) error {
 }
 
 func readMeta[T metadata.Roles](path string) (*metadata.Metadata[T], error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- fixed metadata name under the operator's repository folder
 	if err != nil {
 		return nil, err
 	}
@@ -486,6 +540,7 @@ func latest[T metadata.Roles](dir, role string) (*metadata.Metadata[T], []byte, 
 	if err != nil {
 		return nil, nil, err
 	}
+	// #nosec G304 -- versioned metadata name under the operator's repository folder
 	raw, err := os.ReadFile(filepath.Join(dir, "metadata", fmt.Sprintf("%d.%s.json", v, role)))
 	if err != nil {
 		return nil, nil, err

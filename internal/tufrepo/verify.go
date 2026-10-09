@@ -112,16 +112,25 @@ const (
 	pullMaxRoots     = 1024
 )
 
-// Pull copies the published root chain and the current timestamp, snapshot
-// and targets metadata from a static host into dir/metadata, without
-// verifying them; run Verify afterwards. Target files are not copied.
-func Pull(ctx context.Context, hc *http.Client, base, dir string) error {
+// Pull downloads the root chain after trustedRoot and the current
+// timestamp, snapshot and targets metadata from a static host, verifies
+// them from trustedRoot (see Refresh for the expiry rule) and only then
+// writes them to dir/metadata. Target files are not copied.
+func Pull(ctx context.Context, hc *http.Client, base, dir string, trustedRoot []byte, now time.Time) error {
 	u, err := url.Parse(base)
 	if err != nil || u.Scheme != "https" {
 		return errors.New("repository URL must be https")
 	}
-	metaDir := filepath.Join(dir, "metadata")
-	if err := os.MkdirAll(metaDir, 0o755); err != nil {
+	pinned, err := metadata.Root().FromBytes(trustedRoot)
+	if err != nil {
+		return fmt.Errorf("trusted root: %w", err)
+	}
+	staging, err := os.MkdirTemp("", "tuf-pull-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staging)
+	if err := os.Mkdir(filepath.Join(staging, "metadata"), 0o700); err != nil {
 		return err
 	}
 	get := func(name string, max int64) ([]byte, error) {
@@ -145,15 +154,15 @@ func Pull(ctx context.Context, hc *http.Client, base, dir string) error {
 		if err != nil {
 			return nil, err
 		}
-		return data, writeFile(filepath.Join(metaDir, name), data)
+		return data, writeFile(filepath.Join(staging, "metadata", name), data)
 	}
-	for v := 1; ; v++ {
-		if v > pullMaxRoots {
+	for v := pinned.Signed.Version + 1; ; v++ {
+		if v > pinned.Signed.Version+pullMaxRoots {
 			return errors.New("too many root versions")
 		}
-		_, err := get(strconv.Itoa(v)+".root.json", pullRootMax)
+		_, err := get(strconv.FormatInt(v, 10)+".root.json", pullRootMax)
 		var he *metadata.ErrDownloadHTTP
-		if errors.As(err, &he) && he.StatusCode == http.StatusNotFound && v > 1 {
+		if errors.As(err, &he) && he.StatusCode == http.StatusNotFound {
 			break
 		}
 		if err != nil {
@@ -183,6 +192,20 @@ func Pull(ctx context.Context, hc *http.Client, base, dir string) error {
 	if tm == nil {
 		return errors.New("snapshot has no targets entry")
 	}
-	_, err = get(fmt.Sprintf("%d.targets.json", tm.Version), pullTargetsMax)
-	return err
+	if _, err := get(fmt.Sprintf("%d.targets.json", tm.Version), pullTargetsMax); err != nil {
+		return err
+	}
+	v, err := verifyState(staging, trustedRoot, now)
+	if err != nil {
+		return fmt.Errorf("published metadata does not verify from the trusted root: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "metadata"), 0o750); err != nil {
+		return err
+	}
+	for name, b := range v.files {
+		if err := writeFile(filepath.Join(dir, "metadata", name), b); err != nil {
+			return err
+		}
+	}
+	return nil
 }
