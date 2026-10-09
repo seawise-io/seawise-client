@@ -84,7 +84,7 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 }
 
 func syncDir(dir string) error {
-	d, err := os.Open(dir)
+	d, err := os.Open(dir) // #nosec G304 -- parent of the file just written, opened read-only to fsync
 	if err != nil {
 		return err
 	}

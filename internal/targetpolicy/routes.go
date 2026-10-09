@@ -2,32 +2,38 @@ package targetpolicy
 
 import (
 	"encoding/hex"
+	"io"
 	"net/netip"
 	"os"
 	"strings"
 )
 
-const maxRouteFile = 1 << 20
+const (
+	maxRouteFile = 1 << 20
+	procRouteV4  = "/proc/net/route"
+	procRouteV6  = "/proc/net/ipv6_route"
+)
 
 // Gateways returns the default-route gateways of this host. On systems
 // without /proc it returns nothing, and gateways are not treated specially.
 func Gateways() []netip.Addr {
 	var out []netip.Addr
-	if b, err := readSmall("/proc/net/route"); err == nil {
-		out = append(out, parseIPv4Routes(b)...)
+	if f, err := os.Open(procRouteV4); err == nil {
+		if b, err := readCapped(f); err == nil {
+			out = append(out, parseIPv4Routes(b)...)
+		}
 	}
-	if b, err := readSmall("/proc/net/ipv6_route"); err == nil {
-		out = append(out, parseIPv6Routes(b)...)
+	if f, err := os.Open(procRouteV6); err == nil {
+		if b, err := readCapped(f); err == nil {
+			out = append(out, parseIPv6Routes(b)...)
+		}
 	}
 	return out
 }
 
-func readSmall(path string) ([]byte, error) {
-	b, err := os.ReadFile(path)
-	if len(b) > maxRouteFile {
-		b = b[:maxRouteFile]
-	}
-	return b, err
+func readCapped(f *os.File) ([]byte, error) {
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, maxRouteFile))
 }
 
 // parseIPv4Routes reads /proc/net/route: little-endian hex destination and
