@@ -70,7 +70,7 @@ func TestCheckClasses(t *testing.T) {
 		{"docker api", Rule{Host: "nas.lan"}, ap("192.168.1.20", 2375), false},
 		{"docker api granted", Rule{Host: "nas.lan", Grants: []string{GrantSensitive}}, ap("192.168.1.20", 2375), true},
 		{"router", Rule{Host: "192.168.1.1"}, ap("192.168.1.1", 80), false},
-		{"router granted", Rule{Host: "192.168.1.1", Grants: []string{GrantSensitive}}, ap("192.168.1.1", 80), true},
+		{"router granted", Rule{Host: "192.168.1.1", Grants: []string{GrantGateway}}, ap("192.168.1.1", 80), true},
 		{"intended loopback needs grant", Rule{Host: "localhost"}, ap("127.0.0.1", 3000), false},
 		{"intended loopback granted", Rule{Host: "localhost", Grants: []string{GrantLoopback}}, ap("127.0.0.1", 3000), true},
 		{"literal loopback granted", Rule{Host: "127.0.0.1", Grants: []string{GrantLoopback}}, ap("127.0.0.1", 3000), true},
@@ -259,5 +259,43 @@ func TestParseRoutes(t *testing.T) {
 		"fd000000000000000000000000000000 40 00000000000000000000000000000000 00 00000000000000000000000000000000 00000100 00000001 00000000 00000001 eth0\n"
 	if got := parseIPv6Routes([]byte(v6)); len(got) != 1 || got[0] != netip.MustParseAddr("fe80::1") {
 		t.Fatalf("v6 %v", got)
+	}
+}
+
+func TestClassifyTranslationForms(t *testing.T) {
+	cases := map[string]Class{
+		"::ffff:0:a9fe:a9fe":         Forbidden, // SIIT metadata
+		"::ffff:0:7f00:1":            Forbidden, // SIIT loopback
+		"::ffff:0:c0a8:101":          Forbidden, // SIIT private
+		"::ffff:0:808:808":           Public,
+		"2001:0:4136:e378:8000:63bf:5601:5601": Forbidden, // Teredo, client 169.254.169.254 (xor ff)
+		"2001:0:4136:e378:8000:63bf:f5ff:fefe": Forbidden, // Teredo, client 10.0.1.1
+		"2001:0:4136:e378:8000:63bf:f7f7:f7f7": Public,    // Teredo, client 8.8.8.8
+		"fd00::5efe:a9fe:a9fe":       Forbidden, // ISATAP metadata
+		"2001:db9::200:5efe:7f00:1":  Forbidden, // ISATAP loopback
+		"2606:4700::5efe:808:808":    Public,
+	}
+	for s, want := range cases {
+		if got, _ := Classify(netip.MustParseAddr(s)); got != want {
+			t.Errorf("%s: %s want %s", s, got, want)
+		}
+	}
+}
+
+func TestGrandfatheredNoImplicitSensitivePort(t *testing.T) {
+	gw := []netip.Addr{netip.MustParseAddr("192.168.1.1")}
+	gf := Rule{Host: "nas.lan", Grandfathered: true}
+	if err := Check(gf, ap("192.168.1.20", 2375), gw); err == nil {
+		t.Fatal("grandfathered Docker API port allowed without review")
+	}
+	if err := Check(gf, ap("192.168.1.1", 80), gw); err != nil {
+		t.Fatalf("grandfathered router refused: %v", err)
+	}
+	if err := Check(gf, ap("93.184.216.34", 443), gw); err != nil {
+		t.Fatalf("grandfathered public refused: %v", err)
+	}
+	as := Assess("192.168.1.1", 80, []netip.Addr{netip.MustParseAddr("192.168.1.1")}, gw, Options{})
+	if !reflect.DeepEqual(as.Required, []string{GrantGateway}) {
+		t.Fatalf("gateway grant: %+v", as)
 	}
 }

@@ -63,7 +63,7 @@ func BuildReview(ctx context.Context, targets []store.Target, resolve Resolver, 
 		}
 		granted := append([]string{}, t.Allowed...)
 		if t.Grandfathered {
-			granted = append([]string{}, allGrants...)
+			granted = append(granted, grandfatheredGrants...)
 		}
 		out = append(out, ReviewItem{
 			LocalID: t.LocalID, Name: t.Name, Host: t.Host, Port: t.Port, Disabled: t.Disabled,

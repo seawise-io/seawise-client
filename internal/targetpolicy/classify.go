@@ -1,6 +1,7 @@
-// Package targetpolicy decides which addresses an app may reach. The check
-// runs on the address actually dialled, after DNS resolution, so a name that
-// later resolves somewhere else is checked again on every connection.
+// Package targetpolicy decides which addresses an app may reach. The agent
+// applies it twice: when it renders frpc's config (literal addresses and
+// unconfirmed apps) and in the forwarding proxy's dialer, on the address
+// actually connected to, for every connection.
 package targetpolicy
 
 import (
@@ -63,6 +64,8 @@ var (
 	nat64     = netip.MustParsePrefix("64:ff9b::/96")
 	nat64Site = netip.MustParsePrefix("64:ff9b:1::/48")
 	sixToFour = netip.MustParsePrefix("2002::/16")
+	siit      = netip.MustParsePrefix("::ffff:0:0:0/96")
+	teredo    = netip.MustParsePrefix("2001::/32")
 )
 
 // Classify returns the class of a and, for forbidden addresses, why.
@@ -105,7 +108,8 @@ func Classify(a netip.Addr) (Class, string) {
 	return Public, ""
 }
 
-// embeddedIPv4 extracts the IPv4 address from NAT64 and 6to4 forms.
+// embeddedIPv4 extracts the IPv4 address from NAT64, SIIT, 6to4, Teredo
+// (the obfuscated client address) and ISATAP forms.
 func embeddedIPv4(a netip.Addr) (netip.Addr, bool) {
 	if !a.Is6() {
 		return netip.Addr{}, false
@@ -117,8 +121,14 @@ func embeddedIPv4(a netip.Addr) (netip.Addr, bool) {
 	case nat64Site.Contains(a):
 		// RFC 6052 /48: the IPv4 bits sit in bytes 6, 7, 9 and 10.
 		return netip.AddrFrom4([4]byte{b[6], b[7], b[9], b[10]}), true
+	case siit.Contains(a):
+		return netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]}), true
 	case sixToFour.Contains(a):
 		return netip.AddrFrom4([4]byte{b[2], b[3], b[4], b[5]}), true
+	case teredo.Contains(a):
+		return netip.AddrFrom4([4]byte{^b[12], ^b[13], ^b[14], ^b[15]}), true
+	case (b[8]|0x02) == 0x02 && b[9] == 0 && b[10] == 0x5e && b[11] == 0xfe:
+		return netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]}), true
 	}
 	return netip.Addr{}, false
 }

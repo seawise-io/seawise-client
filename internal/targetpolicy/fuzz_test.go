@@ -6,7 +6,8 @@ import (
 )
 
 func FuzzClassify(f *testing.F) {
-	for _, s := range []string{"169.254.169.254", "::ffff:a9fe:a9fe", "64:ff9b::a9fe:a9fe", "2002:a9fe:a9fe::", "::1", "10.0.0.1", "fe80::1%eth0"} {
+	for _, s := range []string{"169.254.169.254", "::ffff:a9fe:a9fe", "64:ff9b::a9fe:a9fe", "2002:a9fe:a9fe::", "::1", "10.0.0.1", "fe80::1%eth0",
+		"::ffff:0:a9fe:a9fe", "2001:0:4136:e378:8000:63bf:5601:5601", "fd00::5efe:a9fe:a9fe"} {
 		a := netip.MustParseAddr(s)
 		b := a.As16()
 		f.Add(b[:])

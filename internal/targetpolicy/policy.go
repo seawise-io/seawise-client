@@ -19,9 +19,14 @@ const (
 	GrantLoopback  = "loopback"
 	GrantSensitive = "sensitive"
 	GrantSMTP      = "smtp"
+	GrantGateway   = "gateway"
 )
 
-var allGrants = []string{GrantLoopback, GrantPublic, GrantSensitive, GrantSMTP}
+var allGrants = []string{GrantGateway, GrantLoopback, GrantPublic, GrantSensitive, GrantSMTP}
+
+// grandfatheredGrants keep existing apps working after an upgrade.
+// Management API ports are not among them: those need an explicit review.
+var grandfatheredGrants = []string{GrantGateway, GrantLoopback, GrantPublic, GrantSMTP}
 
 // SensitivePorts are management APIs that must not be shared by accident.
 var SensitivePorts = map[int]string{
@@ -42,13 +47,14 @@ type Rule struct {
 }
 
 // RuleFor builds the rule for a stored target. A grandfathered target that
-// has not been reviewed keeps working as before: every grantable class.
+// has not been reviewed keeps the grants it needs to work as before, except
+// for management API ports.
 func RuleFor(t store.Target) Rule {
 	return Rule{Host: t.Host, Grants: t.Allowed, Grandfathered: t.Grandfathered}
 }
 
 func (r Rule) has(g string) bool {
-	return r.Grandfathered || slices.Contains(r.Grants, g)
+	return slices.Contains(r.Grants, g) || (r.Grandfathered && slices.Contains(grandfatheredGrants, g))
 }
 
 // IntendedLoopback reports whether host itself names this machine.
@@ -99,7 +105,7 @@ func Evaluate(host string, ap netip.AddrPort, gateways []netip.Addr) Requirement
 		req.Required = append(req.Required, GrantSensitive)
 		req.Reasons = append(req.Reasons, name)
 	} else if slices.Contains(gateways, addr) {
-		req.Required = append(req.Required, GrantSensitive)
+		req.Required = append(req.Required, GrantGateway)
 		req.Reasons = append(req.Reasons, "network gateway")
 	}
 	return req

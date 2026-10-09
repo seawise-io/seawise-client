@@ -71,7 +71,7 @@ type Target struct {
 }
 
 // Grants a target can hold; see internal/targetpolicy.
-var KnownGrants = map[string]bool{"public": true, "loopback": true, "sensitive": true, "smtp": true}
+var KnownGrants = map[string]bool{"public": true, "loopback": true, "sensitive": true, "smtp": true, "gateway": true}
 
 type ImportedFile struct {
 	Name   string `json:"name"`
