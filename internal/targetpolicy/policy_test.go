@@ -328,3 +328,47 @@ func TestPublicSensitivePortNeedsBothGrants(t *testing.T) {
 		t.Fatalf("assessment does not name the port risk: %+v", as)
 	}
 }
+
+func TestMoreMetadataAddresses(t *testing.T) {
+	for _, s := range []string{"168.63.129.16", "fd20:ce::254", "fd00:ec2::254", "::ffff:168.63.129.16"} {
+		if c, reason := Classify(netip.MustParseAddr(s)); c != Forbidden || reason != "cloud metadata address" {
+			t.Errorf("%s: %s %q", s, c, reason)
+		}
+	}
+}
+
+// embed builds an RFC 6052 address for v4 under prefix p.
+func embed(p netip.Prefix, v4 netip.Addr) netip.Addr {
+	b := p.Addr().As16()
+	v := v4.As4()
+	pos := map[int][]int{32: {4, 5, 6, 7}, 40: {5, 6, 7, 9}, 48: {6, 7, 9, 10}, 56: {7, 9, 10, 11}, 64: {9, 10, 11, 12}, 96: {12, 13, 14, 15}}[p.Bits()]
+	for i, j := range pos {
+		b[j] = v[i]
+	}
+	return netip.AddrFrom16(b)
+}
+
+func TestNAT64AllPrefixLengths(t *testing.T) {
+	defer SetNAT64Prefixes(nil)
+	var prefixes []netip.Prefix
+	for _, s := range []string{"2001:db9::/32", "2001:db9:100::/40", "2001:db9:200::/48", "2001:db9:300::/56", "2001:db9:400::/64", "2001:db9:500::/96"} {
+		prefixes = append(prefixes, netip.MustParsePrefix(s))
+	}
+	if err := SetNAT64Prefixes(prefixes); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range prefixes {
+		for v4, want := range map[string]Class{"169.254.169.254": Forbidden, "10.0.0.1": Forbidden, "127.0.0.1": Forbidden, "8.8.8.8": Public} {
+			a := embed(p, netip.MustParseAddr(v4))
+			if got, _ := Classify(a); got != want {
+				t.Errorf("%s (%s in %s): %s want %s", a, v4, p, got, want)
+			}
+		}
+	}
+	if err := SetNAT64Prefixes([]netip.Prefix{netip.MustParsePrefix("2001:db9::/44")}); err == nil {
+		t.Fatal("invalid prefix length accepted")
+	}
+	if err := SetNAT64Prefixes([]netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}); err == nil {
+		t.Fatal("IPv4 prefix accepted")
+	}
+}

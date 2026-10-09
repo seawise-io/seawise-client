@@ -5,7 +5,9 @@
 package targetpolicy
 
 import (
+	"fmt"
 	"net/netip"
+	"sync/atomic"
 )
 
 type Class string
@@ -21,7 +23,9 @@ var metadataAddrs = []netip.Addr{
 	netip.MustParseAddr("169.254.169.254"),
 	netip.MustParseAddr("100.100.100.200"),
 	netip.MustParseAddr("192.0.0.192"),
-	netip.MustParseAddr("fd00:ec2::254"),
+	netip.MustParseAddr("fd00:ec2::254"), // AWS IPv6
+	netip.MustParseAddr("168.63.129.16"), // Azure WireServer
+	netip.MustParseAddr("fd20:ce::254"),  // GCP IPv6
 }
 
 type prefixReason struct {
@@ -61,8 +65,6 @@ var privatePrefixes = []netip.Prefix{
 }
 
 var (
-	nat64     = netip.MustParsePrefix("64:ff9b::/96")
-	nat64Site = netip.MustParsePrefix("64:ff9b:1::/48")
 	sixToFour = netip.MustParsePrefix("2002::/16")
 	siit      = netip.MustParsePrefix("::ffff:0:0:0/96")
 	teredo    = netip.MustParsePrefix("2001::/32")
@@ -110,6 +112,35 @@ func Classify(a netip.Addr) (Class, string) {
 	return Public, ""
 }
 
+// defaultNAT64 are the well-known (RFC 6052) and local-use (RFC 8215)
+// prefixes; a network-specific prefix can be added with SetNAT64Prefixes.
+var defaultNAT64 = []netip.Prefix{netip.MustParsePrefix("64:ff9b::/96"), netip.MustParsePrefix("64:ff9b:1::/48")}
+
+var nat64Prefixes atomic.Pointer[[]netip.Prefix]
+
+func init() { _ = SetNAT64Prefixes(nil) }
+
+// rfc6052Bytes lists, per prefix length, the address bytes that hold the
+// embedded IPv4 address (byte 8 is reserved and skipped).
+var rfc6052Bytes = map[int][4]int{
+	32: {4, 5, 6, 7}, 40: {5, 6, 7, 9}, 48: {6, 7, 9, 10},
+	56: {7, 9, 10, 11}, 64: {9, 10, 11, 12}, 96: {12, 13, 14, 15},
+}
+
+// SetNAT64Prefixes adds network-specific NAT64 prefixes to the well-known
+// ones. Lengths must be 32, 40, 48, 56, 64 or 96.
+func SetNAT64Prefixes(extra []netip.Prefix) error {
+	all := append([]netip.Prefix(nil), defaultNAT64...)
+	for _, p := range extra {
+		if _, ok := rfc6052Bytes[p.Bits()]; !ok || !p.Addr().Is6() || p.Addr().Is4In6() {
+			return fmt.Errorf("NAT64 prefix %s: need an IPv6 prefix of length 32, 40, 48, 56, 64 or 96", p)
+		}
+		all = append(all, p.Masked())
+	}
+	nat64Prefixes.Store(&all)
+	return nil
+}
+
 // embeddedIPv4 extracts the IPv4 address from NAT64, SIIT, 6to4, Teredo
 // (the obfuscated client address) and ISATAP forms.
 func embeddedIPv4(a netip.Addr) (netip.Addr, bool) {
@@ -117,12 +148,17 @@ func embeddedIPv4(a netip.Addr) (netip.Addr, bool) {
 		return netip.Addr{}, false
 	}
 	b := a.As16()
+	best := -1
+	for _, p := range *nat64Prefixes.Load() {
+		if p.Contains(a) && p.Bits() > best {
+			best = p.Bits()
+		}
+	}
+	if best >= 0 {
+		pos := rfc6052Bytes[best]
+		return netip.AddrFrom4([4]byte{b[pos[0]], b[pos[1]], b[pos[2]], b[pos[3]]}), true
+	}
 	switch {
-	case nat64.Contains(a):
-		return netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]}), true
-	case nat64Site.Contains(a):
-		// RFC 6052 /48: the IPv4 bits sit in bytes 6, 7, 9 and 10.
-		return netip.AddrFrom4([4]byte{b[6], b[7], b[9], b[10]}), true
 	case siit.Contains(a):
 		return netip.AddrFrom4([4]byte{b[12], b[13], b[14], b[15]}), true
 	case sixToFour.Contains(a):

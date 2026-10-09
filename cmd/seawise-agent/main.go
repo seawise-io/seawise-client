@@ -7,9 +7,11 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"net/netip"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -32,6 +34,22 @@ func main() {
 		os.Exit(1)
 	}
 	defer st.Close()
+
+	if v := os.Getenv("SEAWISE_NAT64_PREFIXES"); v != "" {
+		var prefixes []netip.Prefix
+		for _, f := range strings.Split(v, ",") {
+			p, err := netip.ParsePrefix(strings.TrimSpace(f))
+			if err != nil {
+				log.Error("invalid SEAWISE_NAT64_PREFIXES", "value", f)
+				os.Exit(1)
+			}
+			prefixes = append(prefixes, p)
+		}
+		if err := targetpolicy.SetNAT64Prefixes(prefixes); err != nil {
+			log.Error("invalid SEAWISE_NAT64_PREFIXES", "error", err)
+			os.Exit(1)
+		}
+	}
 
 	cfg := agent.Config{
 		Store:         st,
