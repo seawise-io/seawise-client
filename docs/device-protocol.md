@@ -90,10 +90,10 @@ The agent mints its own login token for the tunnel server. It is placed in the f
 
 **Claims** (all required, no others): `server_id`, `key_id` (equal to the header `kid`), `iat`, `run_id` (random per agent start).
 
-**Verification.** The verifier looks up `server_id` in its registry (public key, status, `valid_from`) and:
-1. rejects the token if the login names a different server (`wrong_server`);
-2. rejects it if the registry has no key for the server or the key ID differs (`unknown_key`), or the key is not `active` (`key_revoked`);
-3. verifies the signature;
+**Verification.** The verifier looks up the header `kid` in its device registry (public key, server, status, `valid_from`) and:
+1. rejects the token if the registry has no such key (`unknown_key`) or the key is not `active` (`key_revoked`);
+2. verifies the signature;
+3. rejects it if `key_id` differs from `kid` (`malformed`), or `server_id` is not the key's server or not the server named in the login (`wrong_server`);
 4. rejects `iat` more than 300 seconds in the future (`not_yet_valid`), older than 30 days (`expired`), or more than 300 seconds before the key's `valid_from` (`before_key_valid`).
 
 The agent re-mints the token when it passes half its life. Revoking a device is a registry change; tokens do not need to expire for it to take effect.
@@ -110,7 +110,7 @@ The agent may replace its device key at any time. A rotation is a JSON object wi
 
 **Claims** (all required, no others): `server_id`, `old_kid`, `new_jwk`, `iat`.
 
-**Verification:** the payload segments are byte-identical; `old_kid` equals the statement `kid` and the server's registered key, which is `active`; the statement verifies with the old key; `new_jwk` is a valid key different from the old one; the `pop` `kid` is its key ID and the `pop` verifies with it. The request carrying the rotation is itself a request proof made with the old key. On success the old key is retired and the statement is kept as the rotation record.
+**Verification:** the payload segments are byte-identical; the statement `kid` is the server's registered key (`unknown_key`), which is `active` (`key_revoked`); the statement verifies with the old key; `old_kid` equals the statement `kid`; `server_id` is the requesting server and the key's server (`wrong_server`); `new_jwk` is a valid key different from the old one; the `pop` `kid` is its key ID and the `pop` verifies with it. The request carrying the rotation is itself a request proof made with the old key. On success the old key is retired and the statement is kept as the rotation record.
 
 The agent keeps the new key as pending until the server confirms, and uses the pending key's creation time as `iat`, so a retry produces the identical rotation.
 
