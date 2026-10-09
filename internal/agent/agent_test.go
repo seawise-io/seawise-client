@@ -402,6 +402,33 @@ func TestPauseResume(t *testing.T) {
 	}
 }
 
+func TestHoldsAreIndependent(t *testing.T) {
+	h := newHarness(t, pairedStore(t, t.TempDir()), "run", nil)
+	eventually(t, "frpc ready", func() bool { return len(h.status().Proxies) == 1 })
+	ctx := context.Background()
+	if err := h.agent.Hold(ctx, HoldRemoval); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.agent.Pause(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.agent.Release(ctx, HoldRemoval); err != nil {
+		t.Fatal(err)
+	}
+	if s := h.status(); s.Running || !s.Paused || len(s.Holds) != 1 || s.Holds[0] != HoldUser {
+		t.Fatalf("user hold released by another reason: %+v", s)
+	}
+	if err := h.agent.Resume(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if s := h.status(); !s.Running || s.Paused {
+		t.Fatalf("resume: %+v", s)
+	}
+	if err := h.agent.Hold(ctx, ""); err == nil {
+		t.Fatal("empty hold reason accepted")
+	}
+}
+
 func TestUnpairedDoesNotStart(t *testing.T) {
 	st, err := store.Open(t.TempDir(), time.Now)
 	if err != nil {

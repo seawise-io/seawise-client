@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -56,6 +57,7 @@ type Status struct {
 	Running      bool
 	PID          int
 	Paused       bool
+	Holds        []string
 	Restarts     int
 	NextRestart  time.Duration
 	LastExit     string
@@ -69,14 +71,21 @@ type intentKind int
 
 const (
 	intentReconcile intentKind = iota
-	intentPause
-	intentResume
+	intentHold
+	intentRelease
 	intentStatus
 )
 
+// Hold reasons. Tunnels run only while no hold is set.
+const (
+	HoldUser    = "user"
+	HoldRemoval = "removal"
+)
+
 type intent struct {
-	kind  intentKind
-	reply chan reply
+	kind   intentKind
+	reason string
+	reply  chan reply
 }
 
 type reply struct {
@@ -114,7 +123,7 @@ type Agent struct {
 
 	// Owned by the loop goroutine.
 	proc          *process
-	paused        bool
+	holds         map[string]bool
 	crashes       int
 	restartAt     <-chan time.Time
 	writtenCommon string
@@ -188,6 +197,7 @@ func New(cfg Config) (*Agent, error) {
 		adminUser:    user,
 		adminPass:    pass,
 		connectionID: connID,
+		holds:        map[string]bool{},
 	}, nil
 }
 
@@ -209,7 +219,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			a.stopProcess()
 			return ctx.Err()
 		case in := <-a.intents:
-			in.reply <- a.handle(in.kind)
+			in.reply <- a.handle(in)
 		case ev := <-a.exits:
 			a.onExit(ev)
 		case <-a.restartAt:
@@ -231,29 +241,40 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 }
 
+// ConnectionID identifies this agent run to the control plane.
+func (a *Agent) ConnectionID() string { return a.connectionID }
+
 func (a *Agent) Reconcile(ctx context.Context) error {
-	_, err := a.send(ctx, intentReconcile)
+	_, err := a.send(ctx, intentReconcile, "")
 	return err
 }
 
-func (a *Agent) Pause(ctx context.Context) error {
-	_, err := a.send(ctx, intentPause)
+func (a *Agent) Pause(ctx context.Context) error { return a.Hold(ctx, HoldUser) }
+
+func (a *Agent) Resume(ctx context.Context) error { return a.Release(ctx, HoldUser) }
+
+// Hold stops tunnels until every hold is released.
+func (a *Agent) Hold(ctx context.Context, reason string) error {
+	_, err := a.send(ctx, intentHold, reason)
 	return err
 }
 
-func (a *Agent) Resume(ctx context.Context) error {
-	_, err := a.send(ctx, intentResume)
+func (a *Agent) Release(ctx context.Context, reason string) error {
+	_, err := a.send(ctx, intentRelease, reason)
 	return err
 }
 
 func (a *Agent) Status(ctx context.Context) (Status, error) {
-	return a.send(ctx, intentStatus)
+	return a.send(ctx, intentStatus, "")
 }
 
-func (a *Agent) send(ctx context.Context, kind intentKind) (Status, error) {
+func (a *Agent) send(ctx context.Context, kind intentKind, reason string) (Status, error) {
+	if (kind == intentHold || kind == intentRelease) && reason == "" {
+		return Status{}, errors.New("hold reason required")
+	}
 	r := make(chan reply, 1)
 	select {
-	case a.intents <- intent{kind: kind, reply: r}:
+	case a.intents <- intent{kind: kind, reason: reason, reply: r}:
 	case <-ctx.Done():
 		return Status{}, ctx.Err()
 	case <-a.done:
@@ -267,16 +288,16 @@ func (a *Agent) send(ctx context.Context, kind intentKind) (Status, error) {
 	}
 }
 
-func (a *Agent) handle(kind intentKind) reply {
+func (a *Agent) handle(in intent) reply {
 	var err error
-	switch kind {
+	switch in.kind {
 	case intentReconcile:
 		err = a.reconcile()
-	case intentPause:
-		a.paused = true
+	case intentHold:
+		a.holds[in.reason] = true
 		err = a.reconcile()
-	case intentResume:
-		a.paused = false
+	case intentRelease:
+		delete(a.holds, in.reason)
 		err = a.reconcile()
 	}
 	return reply{status: a.snapshot(), err: err}
@@ -284,7 +305,12 @@ func (a *Agent) handle(kind intentKind) reply {
 
 func (a *Agent) snapshot() Status {
 	s := a.status
-	s.Paused = a.paused
+	s.Paused = len(a.holds) > 0
+	s.Holds = make([]string, 0, len(a.holds))
+	for h := range a.holds {
+		s.Holds = append(s.Holds, h)
+	}
+	sort.Strings(s.Holds)
 	s.Proxies = append([]ProxyStatus(nil), a.status.Proxies...)
 	if a.proc != nil {
 		s.Running, s.PID = true, a.proc.pid
@@ -293,7 +319,7 @@ func (a *Agent) snapshot() Status {
 }
 
 func (a *Agent) desired() (*desired, error) {
-	if a.paused {
+	if len(a.holds) > 0 {
 		return nil, nil
 	}
 	st := a.cfg.Store.State()
