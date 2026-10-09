@@ -55,6 +55,8 @@ type Config struct {
 	MinBytes    int64
 	CheckEvery  time.Duration
 	Logger      *slog.Logger
+	// OnListen, if set, is called with each new listener's port.
+	OnListen func(port int)
 }
 
 type Forwarder struct {
@@ -162,6 +164,9 @@ func (f *Forwarder) start(a App) (*listener, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	l := &listener{f: f, app: a, ln: ln, port: ln.Addr().(*net.TCPAddr).Port, sem: make(chan struct{}, f.cfg.MaxConns),
 		ctx: ctx, stop: cancel, conns: map[net.Conn]struct{}{}}
+	if f.cfg.OnListen != nil {
+		f.cfg.OnListen(l.port)
+	}
 	go l.serve()
 	return l, nil
 }

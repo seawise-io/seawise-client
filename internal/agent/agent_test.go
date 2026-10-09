@@ -918,3 +918,45 @@ func TestStaleRecordForOtherProcessIsIgnored(t *testing.T) {
 		t.Fatal("current frpc pid not recorded")
 	}
 }
+
+// TestStaleFRPCStoppedBeforeListenersBind: a surviving frpc could still be
+// pointing at forwarder ports reused by the new agent, so it must be gone
+// before any app listener is bound.
+func TestStaleFRPCStoppedBeforeListenersBind(t *testing.T) {
+	st := pairedStore(t, t.TempDir())
+	exe, _ := os.Executable()
+	prev, err := New(Config{Store: st, FRPCPath: exe, TrustedCAFile: caFile(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(prev.ConfigPath(), []byte(fmt.Sprintf("webServer.port = %d\n", freePort(t))), 0o600)
+	stale, staleLog := startLooseFRPC(t, prev.ConfigPath())
+	if err := prev.recordPID(stale.Process.Pid); err != nil {
+		t.Fatal(err)
+	}
+	reaped := make(chan struct{})
+	go func() { _ = stale.Wait(); close(reaped) }()
+	var mu sync.Mutex
+	var binds, staleAliveAtBind int
+	h := newHarness(t, st, "run", func(c *Config) {
+		c.Forward.OnListen = func(int) {
+			mu.Lock()
+			defer mu.Unlock()
+			binds++
+			if len(pidsFromLog(staleLog, "exit")) == 0 {
+				staleAliveAtBind++
+			}
+		}
+	})
+	eventually(t, "new frpc ready", func() bool { s := h.status(); return s.Running && len(s.Proxies) > 0 })
+	select {
+	case <-reaped:
+	case <-time.After(10 * time.Second):
+		t.Fatal("stale frpc not stopped")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if binds == 0 || staleAliveAtBind != 0 {
+		t.Fatalf("binds %d, while stale frpc alive %d", binds, staleAliveAtBind)
+	}
+}
