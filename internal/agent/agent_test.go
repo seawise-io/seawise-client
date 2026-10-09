@@ -102,6 +102,8 @@ func freePort(t *testing.T) int {
 	return ln.Addr().(*net.TCPAddr).Port
 }
 
+var confirmed = time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+
 func pairedStore(t *testing.T, dir string) *store.Store {
 	t.Helper()
 	st, err := store.Open(dir, time.Now)
@@ -114,7 +116,7 @@ func pairedStore(t *testing.T, dir string) *store.Store {
 	err = st.Update(func(s *store.State) error {
 		s.Account = &store.Account{ServerID: "sid", FRPServerAddr: "frp-1.seawise.dev", FRPServerPort: 7000, APIURL: "https://api.example.invalid"}
 		s.Targets = []store.Target{
-			{LocalID: "a", Name: "jellyfin", Host: "192.168.1.20", Port: 8096, Subdomain: "jf", Source: store.SourceLocal},
+			{LocalID: "a", Name: "jellyfin", Host: "192.168.1.20", Port: 8096, Subdomain: "jf", Source: store.SourceLocal, ConfirmedAt: &confirmed},
 			{LocalID: "b", Name: "off", Host: "192.168.1.21", Port: 80, Subdomain: "off", Disabled: true, Source: store.SourceLocal},
 			{LocalID: "c", Name: "unregistered", Host: "192.168.1.22", Port: 81, Source: store.SourceLocal},
 		}
@@ -268,6 +270,44 @@ func TestStartsFRPCWithAtomicConfig(t *testing.T) {
 	})
 }
 
+func TestPolicyAppliedToTunnels(t *testing.T) {
+	st := pairedStore(t, t.TempDir())
+	err := st.Update(func(s *store.State) error {
+		s.Targets = append(s.Targets,
+			store.Target{LocalID: "m", Name: "metaapp", Host: "169.254.169.254", Port: 80, Subdomain: "m1", Source: store.SourceV1Machine, Grandfathered: true, ConfirmedAt: &confirmed},
+			store.Target{LocalID: "p", Name: "publicnogrant", Host: "93.184.216.34", Port: 443, Subdomain: "p1", Source: store.SourceLocal, ConfirmedAt: &confirmed},
+			store.Target{LocalID: "u", Name: "unconfirmed", Host: "192.168.1.30", Port: 80, Subdomain: "u1", Source: store.SourceLocal},
+			store.Target{LocalID: "d", Name: "dockerapi", Host: "192.168.1.31", Port: 2375, Subdomain: "d1", Source: store.SourceV1Machine, Grandfathered: true, ConfirmedAt: &confirmed},
+			store.Target{LocalID: "g", Name: "granted", Host: "93.184.216.35", Port: 443, Subdomain: "g1", Source: store.SourceLocal, ConfirmedAt: &confirmed, Allowed: []string{"public"}},
+		)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t, st, "run", nil)
+	eventually(t, "frpc ready", func() bool { s := h.status(); return s.Running && len(s.Proxies) > 0 })
+	b, _ := os.ReadFile(h.agent.ConfigPath())
+	conf := string(b)
+	for _, bad := range []string{"metaapp", "169.254", "publicnogrant", "93.184.216.34", "unconfirmed", "dockerapi", "192.168.1.20", "8096"} {
+		if strings.Contains(conf, bad) {
+			t.Errorf("config contains %q:\n%s", bad, conf)
+		}
+	}
+	if !strings.Contains(conf, `name = "sid-jellyfin"`) || !strings.Contains(conf, `name = "sid-granted"`) {
+		t.Fatalf("allowed apps missing:\n%s", conf)
+	}
+	if strings.Count(conf, `localIP = "127.0.0.1"`) != 2 {
+		t.Fatalf("apps not routed through loopback forwarder:\n%s", conf)
+	}
+	port := confValue(t, h.agent.ConfigPath(), "localPort")
+	c, err := net.DialTimeout("tcp", "127.0.0.1:"+port, time.Second)
+	if err != nil {
+		t.Fatalf("forwarder not listening on %s: %v", port, err)
+	}
+	c.Close()
+}
+
 func TestNoChangeNoRewriteNoRestart(t *testing.T) {
 	h := newHarness(t, pairedStore(t, t.TempDir()), "run", nil)
 	eventually(t, "frpc ready", func() bool { s := h.status(); return s.Running && len(s.Proxies) > 0 })
@@ -289,7 +329,7 @@ func TestTargetChangeReloadsInPlace(t *testing.T) {
 	eventually(t, "frpc ready", func() bool { s := h.status(); return s.Running && len(s.Proxies) > 0 })
 	pid := h.status().PID
 	err := h.st.Update(func(s *store.State) error {
-		s.Targets = append(s.Targets, store.Target{LocalID: "d", Name: "kuma", Host: "kuma", Port: 3001, Subdomain: "k", Source: store.SourceLocal})
+		s.Targets = append(s.Targets, store.Target{LocalID: "d", Name: "kuma", Host: "kuma", Port: 3001, Subdomain: "k", Source: store.SourceLocal, ConfirmedAt: &confirmed})
 		return nil
 	})
 	if err != nil {

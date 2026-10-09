@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,7 +22,9 @@ import (
 	"time"
 
 	"github.com/seawise/client/internal/constants"
+	"github.com/seawise/client/internal/forwarder"
 	"github.com/seawise/client/internal/store"
+	"github.com/seawise/client/internal/targetpolicy"
 )
 
 const (
@@ -55,6 +58,16 @@ type Config struct {
 	// Env is the frpc environment; nil passes only the proxy variables of
 	// the current process.
 	Env []string
+	// Gateways are this host's default gateways, for the target policy.
+	Gateways []netip.Addr
+	// Forward configures the loopback forwarder frpc connects through.
+	Forward forwarder.Config
+}
+
+// RefusedApp is an app the agent does not tunnel, with the reason.
+type RefusedApp struct {
+	LocalID string `json:"local_id"`
+	Reason  string `json:"reason"`
 }
 
 type Status struct {
@@ -69,6 +82,7 @@ type Status struct {
 	ConfigSHA256 string
 	Proxies      []ProxyStatus
 	PollError    string
+	Refused      []RefusedApp
 }
 
 type intentKind int
@@ -129,6 +143,7 @@ type Agent struct {
 	admin         *adminClient
 	adminPort     int
 	holds         map[string]bool
+	fwd           *forwarder.Forwarder
 	crashes       int
 	restartAt     <-chan time.Time
 	writtenCommon string
@@ -184,6 +199,11 @@ func New(cfg Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	fwdCfg := cfg.Forward
+	fwdCfg.Gateways = cfg.Gateways
+	if fwdCfg.Logger == nil {
+		fwdCfg.Logger = cfg.Logger
+	}
 	return &Agent{
 		cfg:          cfg,
 		log:          cfg.Logger.With("component", "agent"),
@@ -195,6 +215,7 @@ func New(cfg Config) (*Agent, error) {
 		adminPass:    pass,
 		connectionID: connID,
 		holds:        map[string]bool{},
+		fwd:          forwarder.New(fwdCfg),
 	}, nil
 }
 
@@ -219,6 +240,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			a.stopProcess()
+			a.fwd.Close()
 			return ctx.Err()
 		case in := <-a.intents:
 			in.reply <- a.handle(in)
@@ -314,6 +336,7 @@ func (a *Agent) snapshot() Status {
 	}
 	sort.Strings(s.Holds)
 	s.Proxies = append([]ProxyStatus(nil), a.status.Proxies...)
+	s.Refused = append([]RefusedApp(nil), a.status.Refused...)
 	if a.proc != nil {
 		s.Running, s.PID = true, a.proc.pid
 	}
@@ -348,8 +371,27 @@ func (a *Agent) desired() (*desired, error) {
 		serverAddr: acc.FRPServerAddr, serverPort: acc.FRPServerPort,
 		token: sec.FRPToken, serverID: acc.ServerID, connectionID: a.connectionID,
 		adminHost: "127.0.0.1", adminPort: a.adminPort, adminUser: a.adminUser, adminPass: a.adminPass,
-		trustedCA: a.cfg.TrustedCAFile, targets: tunnelled(st.Targets),
+		trustedCA: a.cfg.TrustedCAFile, proxies: a.proxies(st.Targets),
 	}, nil
+}
+
+// proxies admits targets through the policy and routes each one through its
+// loopback forwarder listener.
+func (a *Agent) proxies(targets []store.Target) []proxyEntry {
+	ok, refused := admit(targets, a.cfg.Gateways)
+	a.status.Refused = refused
+	apps := make([]forwarder.App, 0, len(ok))
+	for _, t := range ok {
+		apps = append(apps, forwarder.App{ID: t.LocalID, Host: t.Host, Port: t.Port, Rule: targetpolicy.RuleFor(t)})
+	}
+	ports := a.fwd.Sync(apps)
+	out := make([]proxyEntry, 0, len(ok))
+	for _, t := range ok {
+		if p, found := ports[t.LocalID]; found {
+			out = append(out, proxyEntry{name: t.Name, subdomain: t.Subdomain, port: p})
+		}
+	}
+	return out
 }
 
 func (a *Agent) reconcile() error {
@@ -357,10 +399,12 @@ func (a *Agent) reconcile() error {
 	if err != nil {
 		a.status.LastError = err.Error()
 		a.stopProcess()
+		a.fwd.Sync(nil)
 		return err
 	}
 	if d == nil {
 		a.stopProcess()
+		a.fwd.Sync(nil)
 		return nil
 	}
 	if a.proc == nil {

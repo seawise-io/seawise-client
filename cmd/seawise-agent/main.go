@@ -19,6 +19,7 @@ import (
 	"github.com/seawise/client/internal/controlplane"
 	"github.com/seawise/client/internal/paths"
 	"github.com/seawise/client/internal/store"
+	"github.com/seawise/client/internal/targetpolicy"
 )
 
 func main() {
@@ -37,6 +38,7 @@ func main() {
 		FRPCPath:      envOr("SEAWISE_FRPC_PATH", "/app/frpc"),
 		TrustedCAFile: envOr("SEAWISE_TRUSTED_CA_FILE", agent.DefaultTrustedCA),
 		Logger:        log,
+		Gateways:      targetpolicy.Gateways(),
 	}
 	if v := os.Getenv("SEAWISE_FRPC_ADMIN_PORT"); v != "" {
 		p, err := strconv.Atoi(v)
