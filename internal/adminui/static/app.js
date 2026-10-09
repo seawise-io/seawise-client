@@ -61,6 +61,24 @@
     if (s.agent && Array.isArray(s.agent.Holds)) return s.agent.Holds;
     return findHolds(s.status);
   }
+  function findUpdates(s) {
+    if (!s || typeof s !== "object") return null;
+    if (s.updates && typeof s.updates === "object") return s.updates;
+    return findUpdates(s.status);
+  }
+  function renderUpdate(status) {
+    var u = findUpdates(status) || {};
+    var text = "";
+    if (u.available && u.available.version) {
+      text = "Version " + u.available.version + " is available on the " + u.channel + " channel. " +
+        "To update, pull " + u.available.ref + " (the signed image digest) and recreate the container. " +
+        "This client does not update itself.";
+    } else if (u.state === "expired") {
+      text = "Update information could not be verified because it has expired. Tunnels are not affected.";
+    }
+    $("update").textContent = text;
+    $("update").hidden = !text;
+  }
   function renderTunnels(status) {
     killed = findHolds(status).indexOf("kill_switch") >= 0;
     $("tunnels").textContent = killed ?
@@ -105,6 +123,7 @@
       call("GET", "/api/status").then(function (r) {
         $("status").textContent = JSON.stringify(r.body, null, 2);
         renderTunnels(r.body);
+        renderUpdate(r.body);
       });
       call("GET", "/api/targets/review").then(function (r) { renderReview(r.body.items); });
       loadAccess("");
