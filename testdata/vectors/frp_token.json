@@ -7,28 +7,28 @@
       "seed": "9b67f1987274c60bcea26117ecc5662790fe5cc5beb5dfc0a4ca16b6859522e8",
       "x": "qYklkTB9s4gdjWqIu88z5rNohd8lXkHeosIrjz0UeP8",
       "kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
-      "fingerprint": "SW-6636-8967"
+      "fingerprint": "SW-6636-8967-0707-058A"
     },
     {
       "name": "device-b",
       "seed": "5945a2e2824c22c74fea8abcf380f7ee5516e00c2351cba98af1d8dadf7eddc2",
       "x": "GGjbToKsrATfH6iktzQkxuVDw4CsZ6lxPU_0Q-6e0W4",
       "kid": "s6XaxZBr2_jRf5lAfSp2AZGefGjRScK25ZnTrMfJhyE",
-      "fingerprint": "SW-B3A5-DAC5"
+      "fingerprint": "SW-B3A5-DAC5-906B-DBF8"
     },
     {
       "name": "device-c",
       "seed": "7f848897e197873fa8c0b37c8cee7f54e6ecf73bc043d9b9e8b3b096b55693da",
       "x": "hFjLlGzEHSpjOxAeEYGoGMLxxj5WxZtfZFURz0BCStQ",
       "kid": "UdnxjHZEOlOgVnN35a_doDOwVLH-VkHgx9-4EoYHt_k",
-      "fingerprint": "SW-51D9-F18C"
+      "fingerprint": "SW-51D9-F18C-7644-3A53"
     },
     {
       "name": "device-old",
       "seed": "84ee1ec1cf2bf099396ec3e4d7c4930b247d3fbfbe98efa4259164ca37c8c206",
       "x": "WCOFPXlZ0gKLoqJrCMh5IRdRF3wPTDRlyNPUZiRb-6k",
       "kid": "9P4HhrZghO06DZVBjUDR-DsB2YmNRh16oLik6sxNqFQ",
-      "fingerprint": "SW-F4FE-0786"
+      "fingerprint": "SW-F4FE-0786-B660-84ED"
     }
   ],
   "cases": [
@@ -57,7 +57,8 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
       "expect": "ok",
       "result": {
@@ -69,7 +70,7 @@
     },
     {
       "name": "valid-last-second",
-      "input": "eyJ0eXAiOiJzdy1mcnArand0IiwiYWxnIjoiRWREU0EiLCJraWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIn0.eyJzZXJ2ZXJfaWQiOiIzZjJhOWMxZS01YjdkLTRlOGYtOWEwYi0xYzJkM2U0ZjVhNmIiLCJrZXlfaWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIiwiaWF0IjoxNzkwNDA4MDAwLCJydW5faWQiOiJjblZ1TFdsa0xUQXdNREF3TURBd01ERSJ9.o5OJyaznKWCmb04PqI3Ou-IgEb53RvaeQ_GJSrqtia5pIfVPCbENjvkJ1HL6RrSk_lE7ykxOR1L4kvkfggX4Cg",
+      "input": "eyJ0eXAiOiJzdy1mcnArand0IiwiYWxnIjoiRWREU0EiLCJraWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIn0.eyJzZXJ2ZXJfaWQiOiIzZjJhOWMxZS01YjdkLTRlOGYtOWEwYi0xYzJkM2U0ZjVhNmIiLCJrZXlfaWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIiwiaWF0IjoxNzkyNzQwODAwLCJydW5faWQiOiJjblZ1TFdsa0xUQXdNREF3TURBd01ERSJ9.d0EUrEnjCNDNKKLkKPxV3Et_HgOB04MGaCI0_mZ-1U3_ZJzqh-Pt46-9p7ghVhuovsEysfrCQhq5qPxJVKUDDA",
       "context": {
         "now": 1793000000,
         "login_server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
@@ -92,13 +93,14 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
       "expect": "ok",
       "result": {
         "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
         "key_id": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
-        "iat": 1790408000,
+        "iat": 1792740800,
         "run_id": "cnVuLWlkLTAwMDAwMDAwMDE"
       }
     },
@@ -127,7 +129,8 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
       "expect": "ok",
       "result": {
@@ -162,7 +165,8 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
       "expect": "ok",
       "result": {
@@ -174,7 +178,7 @@
     },
     {
       "name": "expired",
-      "input": "eyJ0eXAiOiJzdy1mcnArand0IiwiYWxnIjoiRWREU0EiLCJraWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIn0.eyJzZXJ2ZXJfaWQiOiIzZjJhOWMxZS01YjdkLTRlOGYtOWEwYi0xYzJkM2U0ZjVhNmIiLCJrZXlfaWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIiwiaWF0IjoxNzkwNDA3OTk5LCJydW5faWQiOiJjblZ1TFdsa0xUQXdNREF3TURBd01ERSJ9.9CmXzaZWgrQ2LX-hEZo6few5exkhTCV1h4MqaHazQfUmqlghxlrcKy3x3WH4aEqjZ38dYiF1GRE6k6BGf9_nAQ",
+      "input": "eyJ0eXAiOiJzdy1mcnArand0IiwiYWxnIjoiRWREU0EiLCJraWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIn0.eyJzZXJ2ZXJfaWQiOiIzZjJhOWMxZS01YjdkLTRlOGYtOWEwYi0xYzJkM2U0ZjVhNmIiLCJrZXlfaWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIiwiaWF0IjoxNzkyNzQwNzk5LCJydW5faWQiOiJjblZ1TFdsa0xUQXdNREF3TURBd01ERSJ9.D6nYQpnFwGNBt06dnNIdyp2_ge9JIJeJi6fsUvqvey8hmZKoiud8a9vHxdpZalBeXyn4QeHNp5kzAvBMpQVhBQ",
       "context": {
         "now": 1793000000,
         "login_server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
@@ -197,9 +201,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "expired"
+      "expect": "expired",
+      "wire": "expired"
     },
     {
       "name": "not-yet-valid",
@@ -226,9 +232,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "not_yet_valid"
+      "expect": "not_yet_valid",
+      "wire": "not_yet_valid"
     },
     {
       "name": "before-key-valid",
@@ -255,9 +263,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "before_key_valid"
+      "expect": "before_key_valid",
+      "wire": "before_key_valid"
     },
     {
       "name": "wrong-key",
@@ -284,9 +294,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "bad_signature"
+      "expect": "bad_signature",
+      "wire": "invalid_proof"
     },
     {
       "name": "unknown-key",
@@ -313,9 +325,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "unknown_key"
+      "expect": "unknown_key",
+      "wire": "invalid_proof"
     },
     {
       "name": "revoked-key",
@@ -342,9 +356,160 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
+        ],
+        "live_runs": []
+      },
+      "expect": "key_revoked",
+      "wire": "key_revoked"
+    },
+    {
+      "name": "revoked-key-not-revealed-without-signature",
+      "input": "eyJ0eXAiOiJzdy1mcnArand0IiwiYWxnIjoiRWREU0EiLCJraWQiOiI5UDRIaHJaZ2hPMDZEWlZCalVEUi1Ec0IyWW1OUmgxNm9MaWs2c3hOcUZRIn0.eyJzZXJ2ZXJfaWQiOiIzZjJhOWMxZS01YjdkLTRlOGYtOWEwYi0xYzJkM2U0ZjVhNmIiLCJrZXlfaWQiOiI5UDRIaHJaZ2hPMDZEWlZCalVEUi1Ec0IyWW1OUmgxNm9MaWs2c3hOcUZRIiwiaWF0IjoxNzkyOTk2NDAwLCJydW5faWQiOiJjblZ1TFdsa0xUQXdNREF3TURBd01ERSJ9.yC-xojbTjOJVUGabUa_zfxknjXsaVcQbRJ1pCqnU1hIkgK-Tz5Z3ExpljIRYVkBsZt4y7Ig8qu6Rf4cAhT3RBA",
+      "context": {
+        "now": 1793000000,
+        "login_server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "registry": [
+          {
+            "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+            "x": "qYklkTB9s4gdjWqIu88z5rNohd8lXkHeosIrjz0UeP8",
+            "status": "active",
+            "valid_from": 1790000000
+          },
+          {
+            "server_id": "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7",
+            "x": "GGjbToKsrATfH6iktzQkxuVDw4CsZ6lxPU_0Q-6e0W4",
+            "status": "active",
+            "valid_from": 1790000000
+          },
+          {
+            "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+            "x": "WCOFPXlZ0gKLoqJrCMh5IRdRF3wPTDRlyNPUZiRb-6k",
+            "status": "revoked",
+            "valid_from": 1789913600
+          }
+        ],
+        "live_runs": []
+      },
+      "expect": "bad_signature",
+      "wire": "invalid_proof"
+    },
+    {
+      "name": "valid-reconnect-same-run",
+      "input": "eyJ0eXAiOiJzdy1mcnArand0IiwiYWxnIjoiRWREU0EiLCJraWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIn0.eyJzZXJ2ZXJfaWQiOiIzZjJhOWMxZS01YjdkLTRlOGYtOWEwYi0xYzJkM2U0ZjVhNmIiLCJrZXlfaWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIiwiaWF0IjoxNzkyOTk2NDAwLCJydW5faWQiOiJjblZ1TFdsa0xUQXdNREF3TURBd01ERSJ9.iNgd1H9MFfjUqDseeq9-5CzOYqTmTT8UwEITQSVU-PPHYupEj9jSVEaaGRiWJYLVZsj6mNUxlzLuIJWGo7GQDQ",
+      "context": {
+        "now": 1793000000,
+        "login_server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "registry": [
+          {
+            "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+            "x": "qYklkTB9s4gdjWqIu88z5rNohd8lXkHeosIrjz0UeP8",
+            "status": "active",
+            "valid_from": 1790000000
+          },
+          {
+            "server_id": "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7",
+            "x": "GGjbToKsrATfH6iktzQkxuVDw4CsZ6lxPU_0Q-6e0W4",
+            "status": "active",
+            "valid_from": 1790000000
+          },
+          {
+            "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+            "x": "WCOFPXlZ0gKLoqJrCMh5IRdRF3wPTDRlyNPUZiRb-6k",
+            "status": "revoked",
+            "valid_from": 1789913600
+          }
+        ],
+        "live_runs": [
+          {
+            "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+            "run_id": "cnVuLWlkLTAwMDAwMDAwMDE"
+          }
         ]
       },
-      "expect": "key_revoked"
+      "expect": "ok",
+      "result": {
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "key_id": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
+        "iat": 1792996400,
+        "run_id": "cnVuLWlkLTAwMDAwMDAwMDE"
+      }
+    },
+    {
+      "name": "valid-other-server-live",
+      "input": "eyJ0eXAiOiJzdy1mcnArand0IiwiYWxnIjoiRWREU0EiLCJraWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIn0.eyJzZXJ2ZXJfaWQiOiIzZjJhOWMxZS01YjdkLTRlOGYtOWEwYi0xYzJkM2U0ZjVhNmIiLCJrZXlfaWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIiwiaWF0IjoxNzkyOTk2NDAwLCJydW5faWQiOiJjblZ1TFdsa0xUQXdNREF3TURBd01ERSJ9.iNgd1H9MFfjUqDseeq9-5CzOYqTmTT8UwEITQSVU-PPHYupEj9jSVEaaGRiWJYLVZsj6mNUxlzLuIJWGo7GQDQ",
+      "context": {
+        "now": 1793000000,
+        "login_server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "registry": [
+          {
+            "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+            "x": "qYklkTB9s4gdjWqIu88z5rNohd8lXkHeosIrjz0UeP8",
+            "status": "active",
+            "valid_from": 1790000000
+          },
+          {
+            "server_id": "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7",
+            "x": "GGjbToKsrATfH6iktzQkxuVDw4CsZ6lxPU_0Q-6e0W4",
+            "status": "active",
+            "valid_from": 1790000000
+          },
+          {
+            "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+            "x": "WCOFPXlZ0gKLoqJrCMh5IRdRF3wPTDRlyNPUZiRb-6k",
+            "status": "revoked",
+            "valid_from": 1789913600
+          }
+        ],
+        "live_runs": [
+          {
+            "server_id": "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7",
+            "run_id": "b3RoZXItcnVuLTAwMDAwMDAy"
+          }
+        ]
+      },
+      "expect": "ok",
+      "result": {
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "key_id": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
+        "iat": 1792996400,
+        "run_id": "cnVuLWlkLTAwMDAwMDAwMDE"
+      }
+    },
+    {
+      "name": "run-conflict",
+      "input": "eyJ0eXAiOiJzdy1mcnArand0IiwiYWxnIjoiRWREU0EiLCJraWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIn0.eyJzZXJ2ZXJfaWQiOiIzZjJhOWMxZS01YjdkLTRlOGYtOWEwYi0xYzJkM2U0ZjVhNmIiLCJrZXlfaWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIiwiaWF0IjoxNzkyOTk2NDAwLCJydW5faWQiOiJjblZ1TFdsa0xUQXdNREF3TURBd01ERSJ9.iNgd1H9MFfjUqDseeq9-5CzOYqTmTT8UwEITQSVU-PPHYupEj9jSVEaaGRiWJYLVZsj6mNUxlzLuIJWGo7GQDQ",
+      "context": {
+        "now": 1793000000,
+        "login_server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "registry": [
+          {
+            "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+            "x": "qYklkTB9s4gdjWqIu88z5rNohd8lXkHeosIrjz0UeP8",
+            "status": "active",
+            "valid_from": 1790000000
+          },
+          {
+            "server_id": "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7",
+            "x": "GGjbToKsrATfH6iktzQkxuVDw4CsZ6lxPU_0Q-6e0W4",
+            "status": "active",
+            "valid_from": 1790000000
+          },
+          {
+            "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+            "x": "WCOFPXlZ0gKLoqJrCMh5IRdRF3wPTDRlyNPUZiRb-6k",
+            "status": "revoked",
+            "valid_from": 1789913600
+          }
+        ],
+        "live_runs": [
+          {
+            "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+            "run_id": "b3RoZXItcnVuLTAwMDAwMDAy"
+          }
+        ]
+      },
+      "expect": "run_conflict",
+      "wire": "run_conflict"
     },
     {
       "name": "wrong-server-login",
@@ -371,9 +536,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "wrong_server"
+      "expect": "wrong_server",
+      "wire": "wrong_server"
     },
     {
       "name": "wrong-server-claim",
@@ -400,9 +567,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "wrong_server"
+      "expect": "wrong_server",
+      "wire": "wrong_server"
     },
     {
       "name": "key-id-differs-from-kid",
@@ -429,9 +598,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "server-id-not-canonical",
@@ -458,9 +629,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "run-id-invalid",
@@ -487,9 +660,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "claim-duplicate",
@@ -516,9 +691,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "claim-unknown-exp",
@@ -545,9 +722,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "alg-none",
@@ -574,9 +753,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "bad_alg"
+      "expect": "bad_alg",
+      "wire": "bad_alg"
     },
     {
       "name": "alg-hs256-public-key-as-secret",
@@ -603,9 +784,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "bad_alg"
+      "expect": "bad_alg",
+      "wire": "bad_alg"
     },
     {
       "name": "typ-dpop",
@@ -632,9 +815,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "bad_typ"
+      "expect": "bad_typ",
+      "wire": "bad_typ"
     },
     {
       "name": "typ-missing",
@@ -661,9 +846,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "bad_typ"
+      "expect": "bad_typ",
+      "wire": "bad_typ"
     },
     {
       "name": "header-jwk-not-kid",
@@ -690,9 +877,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "base64-padding",
@@ -719,9 +908,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "base64-standard-alphabet",
@@ -748,9 +939,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "base64-nonzero-trailing-bits",
@@ -777,9 +970,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "base64-line-break",
@@ -806,9 +1001,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "two-segments",
@@ -835,9 +1032,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "four-segments",
@@ -864,9 +1063,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "signature-s-not-reduced",
@@ -893,9 +1094,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "bad_signature"
+      "expect": "bad_signature",
+      "wire": "invalid_proof"
     },
     {
       "name": "too-large",
@@ -922,9 +1125,11 @@
             "status": "revoked",
             "valid_from": 1789913600
           }
-        ]
+        ],
+        "live_runs": []
       },
-      "expect": "too_large"
+      "expect": "too_large",
+      "wire": "too_large"
     }
   ]
 }

@@ -66,7 +66,7 @@ func VerifyKeySet(token string, roots []ed25519.PublicKey, lastVersion int64, la
 	}
 	var root ed25519.PublicKey
 	for _, r := range roots {
-		if KeyID(r) == t.kid {
+		if CheckPublicKey(r) == nil && KeyID(r) == t.kid {
 			root = r
 			break
 		}

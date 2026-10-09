@@ -15,7 +15,10 @@ import (
 func TestCanonicalHTU(t *testing.T) {
 	for _, tc := range []struct{ in, want string }{
 		{"https://api.seawise.io/device/v2/heartbeat", "https://api.seawise.io/device/v2/heartbeat"},
-		{"HTTPS://API.SeaWise.IO:443/x?y=1#z", "https://api.seawise.io/x"},
+		{"HTTPS://API.SeaWise.IO:443/x?y=1#z", "https://api.seawise.io/x?y=1"},
+		{"https://api.seawise.io/x?b=2&a=%41", "https://api.seawise.io/x?b=2&a=%41"},
+		{"https://api.seawise.io/x?", "https://api.seawise.io/x?"},
+		{"https://api.seawise.io/x#a?b", "https://api.seawise.io/x"},
 		{"https://api.seawise.io", "https://api.seawise.io/"},
 		{"https://api.seawise.io:8443/a/b", "https://api.seawise.io:8443/a/b"},
 		{"http://localhost:80/a", "http://localhost/a"},
@@ -61,7 +64,7 @@ func TestDPoPRoundTrip(t *testing.T) {
 		return true
 	}
 	ok := func(n string) bool { return n == "nonce-1" }
-	req := DPoPRequest{Method: "POST", URL: "https://api.seawise.io/x", Body: []byte("body")}
+	req := DPoPRequest{Method: "POST", URL: "https://api.seawise.io/x?q=1", Body: []byte("body")}
 	r, err := VerifyDPoP(tok, req, ok, claim)
 	if err != nil {
 		t.Fatal(err)
@@ -131,7 +134,7 @@ func TestRotationRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := VerifyRotation(parsed, vecServer1, lookup)
+	res, err := VerifyRotation(parsed, RotationCheck{ServerID: vecServer1, Lookup: lookup})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +160,7 @@ func TestErrorIs(t *testing.T) {
 	}
 }
 
-var fprRe = regexp.MustCompile(`^SW-[0-9A-F]{4}-[0-9A-F]{4}$`)
+var fprRe = regexp.MustCompile(`^SW-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}$`)
 
 // Property: every generated key passes the public key checks, has a
 // 43-character key ID and a fingerprint in the display format that is the
@@ -177,14 +180,14 @@ func TestKeyProperties(t *testing.T) {
 			t.Fatalf("fingerprint %q", fp)
 		}
 		d, _ := b64Decode(kid)
-		if want := strings.ToUpper(hex.EncodeToString(d[:4])); fp != "SW-"+want[:4]+"-"+want[4:] {
+		if want := strings.ToUpper(hex.EncodeToString(d[:8])); fp != "SW-"+want[:4]+"-"+want[4:8]+"-"+want[8:12]+"-"+want[12:] {
 			t.Fatalf("fingerprint %s is not the digest prefix of %s", fp, kid)
 		}
 	}
 }
 
 // Property: fingerprints of distinct deterministic keys are spread evenly
-// over the hex digits and collide only at the birthday rate of 32 bits.
+// over the hex digits and do not collide (64 bits).
 func TestFingerprintDistribution(t *testing.T) {
 	const n = 20000
 	seen := make(map[string]bool, n)
@@ -202,11 +205,10 @@ func TestFingerprintDistribution(t *testing.T) {
 			digits[strings.IndexRune("0123456789ABCDEF", c)]++
 		}
 	}
-	// Expected collisions: n^2 / 2^33, about 0.05.
-	if collisions > 2 {
+	if collisions > 0 {
 		t.Fatalf("%d fingerprint collisions among %d keys", collisions, n)
 	}
-	expected := float64(n*8) / 16
+	expected := float64(n*16) / 16
 	for d, c := range digits {
 		if diff := float64(c) - expected; diff > expected*0.05 || diff < -expected*0.05 {
 			t.Errorf("hex digit %x appears %d times, expected about %.0f", d, c, expected)

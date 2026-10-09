@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -179,7 +180,15 @@ func TestVectorsVerify(t *testing.T) {
 	t.Run("frp_token", func(t *testing.T) {
 		for _, c := range loadVectors(t, "frp_token.json").Cases {
 			ctx := ctxOf[frpContext](t, c)
-			r, err := VerifyFRPToken(c.Input, ctx.LoginServerID, registryLookup(t, ctx.Registry), ctx.Now)
+			conflict := func(server, run string) bool {
+				for _, l := range ctx.LiveRuns {
+					if l.ServerID == server && l.RunID != run {
+						return true
+					}
+				}
+				return false
+			}
+			r, err := VerifyFRPToken(c.Input, ctx.LoginServerID, registryLookup(t, ctx.Registry), ctx.Now, conflict)
 			checkCase(t, c, r, err)
 		}
 	})
@@ -190,9 +199,14 @@ func TestVectorsVerify(t *testing.T) {
 			var res any
 			if err == nil {
 				var r *RotationResult
-				r, err = VerifyRotation(rot, ctx.ServerID, registryLookup(t, ctx.Registry))
+				r, err = VerifyRotation(rot, RotationCheck{
+					ServerID:       ctx.ServerID,
+					Lookup:         registryLookup(t, ctx.Registry),
+					PreviousKeyIDs: ctx.PreviousKIDs,
+					Applied:        func(kid string) (Rotation, bool) { r, ok := ctx.Applied[kid]; return r, ok },
+				})
 				if err == nil {
-					res = rotationResult{OldKID: r.OldKeyID, NewKID: r.NewKeyID}
+					res = rotationResult{OldKID: r.OldKeyID, NewKID: r.NewKeyID, AlreadyApplied: r.AlreadyApplied}
 				}
 			}
 			checkCase(t, c, res, err)
@@ -250,9 +264,43 @@ func TestVectorsCoverEveryCode(t *testing.T) {
 	}
 	for _, code := range []Code{CodeTooLarge, CodeMalformed, CodeBadAlg, CodeBadTyp, CodeBadKey, CodeBadSignature, CodeUnknownKey,
 		CodeKeyRevoked, CodeWrongKeyRole, CodeWrongServer, CodeExpired, CodeNotYetValid, CodeBeforeKeyValid, CodeReplayed,
-		CodeWrongHTM, CodeWrongHTU, CodeBodyMismatch, CodeBadNonce, CodeNonceMismatch, CodeRollback} {
+		CodeWrongHTM, CodeWrongHTU, CodeBodyMismatch, CodeBadNonce, CodeNonceMismatch, CodeRollback, CodeRunConflict} {
 		if !seen[string(code)] {
 			t.Errorf("no vector expects %s", code)
+		}
+	}
+}
+
+func TestVectorWireCodes(t *testing.T) {
+	for name, f := range generateVectors() {
+		for _, c := range f.Cases {
+			switch {
+			case c.Expect == "ok" && c.Wire != "":
+				t.Errorf("%s/%s: wire code on a valid case", name, c.Name)
+			case (c.Expect == "unknown_key" || c.Expect == "bad_signature") && c.Wire != "invalid_proof":
+				t.Errorf("%s/%s: wire %q", name, c.Name, c.Wire)
+			}
+		}
+	}
+}
+
+// TestVectorKeyIDsListed keeps the exported deny list equal to the keys
+// the vectors publish.
+func TestVectorKeyIDsListed(t *testing.T) {
+	var want []string
+	for _, n := range vecKeyNames {
+		want = append(want, vecKID(n))
+	}
+	slices.Sort(want)
+	got := slices.Sorted(slices.Values(TestVectorKeyIDs))
+	if !slices.Equal(got, want) {
+		t.Fatalf("TestVectorKeyIDs is out of date; want:\n%s", strings.Join(want, "\n"))
+	}
+	for name, f := range generateVectors() {
+		for _, k := range f.Keys {
+			if !IsTestVectorKey(k.KID) {
+				t.Errorf("%s: key %s not in TestVectorKeyIDs", name, k.Name)
+			}
 		}
 	}
 }

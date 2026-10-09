@@ -7,105 +7,105 @@
       "seed": "9b67f1987274c60bcea26117ecc5662790fe5cc5beb5dfc0a4ca16b6859522e8",
       "x": "qYklkTB9s4gdjWqIu88z5rNohd8lXkHeosIrjz0UeP8",
       "kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
-      "fingerprint": "SW-6636-8967"
+      "fingerprint": "SW-6636-8967-0707-058A"
     },
     {
       "name": "device-b",
       "seed": "5945a2e2824c22c74fea8abcf380f7ee5516e00c2351cba98af1d8dadf7eddc2",
       "x": "GGjbToKsrATfH6iktzQkxuVDw4CsZ6lxPU_0Q-6e0W4",
       "kid": "s6XaxZBr2_jRf5lAfSp2AZGefGjRScK25ZnTrMfJhyE",
-      "fingerprint": "SW-B3A5-DAC5"
+      "fingerprint": "SW-B3A5-DAC5-906B-DBF8"
     },
     {
       "name": "device-c",
       "seed": "7f848897e197873fa8c0b37c8cee7f54e6ecf73bc043d9b9e8b3b096b55693da",
       "x": "hFjLlGzEHSpjOxAeEYGoGMLxxj5WxZtfZFURz0BCStQ",
       "kid": "UdnxjHZEOlOgVnN35a_doDOwVLH-VkHgx9-4EoYHt_k",
-      "fingerprint": "SW-51D9-F18C"
+      "fingerprint": "SW-51D9-F18C-7644-3A53"
     },
     {
       "name": "device-new",
       "seed": "f2f2366b1263067ae0a9631b3828bce39f3ee3694cc11a1afd0a5b37b42aa446",
       "x": "KQ4AJJJZNft19ScEpj22XSLOIvv__vZNXt7Ull4-jxU",
       "kid": "kuBFTnLvMBhibU5Y94o0K7z9ZkNPeyhf_d551BGsXZM",
-      "fingerprint": "SW-92E0-454E"
+      "fingerprint": "SW-92E0-454E-72EF-3018"
     },
     {
       "name": "device-old",
       "seed": "84ee1ec1cf2bf099396ec3e4d7c4930b247d3fbfbe98efa4259164ca37c8c206",
       "x": "WCOFPXlZ0gKLoqJrCMh5IRdRF3wPTDRlyNPUZiRb-6k",
       "kid": "9P4HhrZghO06DZVBjUDR-DsB2YmNRh16oLik6sxNqFQ",
-      "fingerprint": "SW-F4FE-0786"
+      "fingerprint": "SW-F4FE-0786-B660-84ED"
     },
     {
       "name": "root-primary",
       "seed": "81e86565353343238528e2a811083b9eae0e214827aaebaadf42371315bddb1b",
       "x": "CYWnmZi2eWis-zhCFko0gGak6MNBi7t154txTVEJziE",
       "kid": "iH26UuvyaS6bfEgWBn1CQoDaNlhnBXDPVTvnsz_qg2g",
-      "fingerprint": "SW-887D-BA52"
+      "fingerprint": "SW-887D-BA52-EBF2-692E"
     },
     {
       "name": "root-backup",
       "seed": "7c24c3ba2455def74b38354568e75845be5de43a503d114d6a1af60467a472ef",
       "x": "kVgacsZ3xaywt6zazocOpnHMOKbUtb9i-LlYiU18I6Q",
       "kid": "r0u3q9YF3CPCBg4A5KlgY6nTPiD27I2r1gU6DIuYVWw",
-      "fingerprint": "SW-AF4B-B7AB"
+      "fingerprint": "SW-AF4B-B7AB-D605-DC23"
     },
     {
       "name": "root-rogue",
       "seed": "bcb2110cf5650a5a1a22d12e3ed32df1194dd36d34431b995fe0eac8091ae98f",
       "x": "wY2AEcjTCSPO7gCoVHfWRhScxsSYT7W0IHpGKGoeb2g",
       "kid": "wl1K9dFf_OlEkxUs6UO2KJ_i8MmhO9gXSz_q9rqA04E",
-      "fingerprint": "SW-C25D-4AF5"
+      "fingerprint": "SW-C25D-4AF5-D15F-FCE9"
     },
     {
       "name": "control-1",
       "seed": "b3c5daaf4a26c90be52abd26008b8a11986e4adf33ee98b2a1ff38b98b3469ed",
       "x": "zgTux0baVX--WNoXJHfYzlmi2RphbCDlZBgyrP_NyqU",
       "kid": "rHx4_qo4C5VMhPcxeR61besR2g88ynYAZRtU4ETELQ0",
-      "fingerprint": "SW-AC7C-78FE"
+      "fingerprint": "SW-AC7C-78FE-AA38-0B95"
     },
     {
       "name": "control-2",
       "seed": "714dc69f3f6c556ac65d558d4ef11ab7611e363267a59d6d21b97b5e157d031d",
       "x": "8wcKhAbL27wuFSCWJEhkcyervIzrXUQtzmRoN72imXk",
       "kid": "N-GeDx0GLx5zeOS6LwjiKr-xaGvH-MRf4Q2lmQ8VyzM",
-      "fingerprint": "SW-37E1-9E0F"
+      "fingerprint": "SW-37E1-9E0F-1D06-2F1E"
     },
     {
       "name": "control-old",
       "seed": "2f4c98e18980abd2841f7b3ea2a1d1ce7ccd9823f5707d275ba719536ae95ef1",
       "x": "8wZvCHShrBPIhmABk1Ef2TvjeY6V-Xi-2svUJvyVFBA",
       "kid": "_TtkVZP1U3y1gGI0sGoAspbzi_nY5diBoOhz1BgMsv8",
-      "fingerprint": "SW-FD3B-6455"
+      "fingerprint": "SW-FD3B-6455-93F5-537C"
     },
     {
       "name": "control-rogue",
       "seed": "b539ad897f6d66a35d5573b320b34cae106abcdd796289bb95e2455657daa94c",
       "x": "cuG7-acAUsU1pKmROPOAPms44RxzaTPXFI9Dvg6pdvo",
       "kid": "HRa_ACQ2QGeEbNwJwkJ_TFPzihYPKMjdNTSEVqDdhxY",
-      "fingerprint": "SW-1D16-BF00"
+      "fingerprint": "SW-1D16-BF00-2436-4067"
     },
     {
       "name": "visitor-1",
       "seed": "e057a40e58e31b20f4a19e189d9a884df59d88386a6aea344685fb18775cb463",
       "x": "BuS16HLdJbY6kOSMLVghFyTIXJHApbBe1g5KmYB0Qfc",
       "kid": "mxs4IdKuzGDnvt-UtyEenGBbbKEKqZol-3ImhEZxzxQ",
-      "fingerprint": "SW-9B1B-3821"
+      "fingerprint": "SW-9B1B-3821-D2AE-CC60"
     },
     {
       "name": "edge-1",
       "seed": "acd916c99d7df72307d3eea139ac7aa6cdd94c2072fa988cc3c4e6955f26f426",
       "x": "hk9jDG6QhoGeTKXGDZU9E9_d6ejuUWZVzaCw-du-w9Q",
       "kid": "9JvEpdDSJQjZHGypEiPTFy1NCiNGHMTB7icqfxSiADI",
-      "fingerprint": "SW-F49B-C4A5"
+      "fingerprint": "SW-F49B-C4A5-D0D2-2508"
     },
     {
       "name": "release-1",
       "seed": "7177fb767efdefc7800368ad0eda6c679a7ff40d269638d5e166de448a42109d",
       "x": "tree6ZcdhbGkVxRNuTVpcT_Ox_Z2FE4dZniWRoL4Ud0",
       "kid": "Jk_11RdGyHmmwBtWX3qV3UOXqKGAzf8t7gGrVTJ0Tms",
-      "fingerprint": "SW-264F-F5D5"
+      "fingerprint": "SW-264F-F5D5-1746-C879"
     }
   ],
   "cases": [
@@ -115,7 +115,7 @@
       "expect": "ok",
       "result": {
         "kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
-        "fingerprint": "SW-6636-8967"
+        "fingerprint": "SW-6636-8967-0707-058A"
       }
     },
     {
@@ -124,7 +124,7 @@
       "expect": "ok",
       "result": {
         "kid": "s6XaxZBr2_jRf5lAfSp2AZGefGjRScK25ZnTrMfJhyE",
-        "fingerprint": "SW-B3A5-DAC5"
+        "fingerprint": "SW-B3A5-DAC5-906B-DBF8"
       }
     },
     {
@@ -133,7 +133,7 @@
       "expect": "ok",
       "result": {
         "kid": "UdnxjHZEOlOgVnN35a_doDOwVLH-VkHgx9-4EoYHt_k",
-        "fingerprint": "SW-51D9-F18C"
+        "fingerprint": "SW-51D9-F18C-7644-3A53"
       }
     },
     {
@@ -142,7 +142,7 @@
       "expect": "ok",
       "result": {
         "kid": "kuBFTnLvMBhibU5Y94o0K7z9ZkNPeyhf_d551BGsXZM",
-        "fingerprint": "SW-92E0-454E"
+        "fingerprint": "SW-92E0-454E-72EF-3018"
       }
     },
     {
@@ -151,7 +151,7 @@
       "expect": "ok",
       "result": {
         "kid": "9P4HhrZghO06DZVBjUDR-DsB2YmNRh16oLik6sxNqFQ",
-        "fingerprint": "SW-F4FE-0786"
+        "fingerprint": "SW-F4FE-0786-B660-84ED"
       }
     },
     {
@@ -160,7 +160,7 @@
       "expect": "ok",
       "result": {
         "kid": "iH26UuvyaS6bfEgWBn1CQoDaNlhnBXDPVTvnsz_qg2g",
-        "fingerprint": "SW-887D-BA52"
+        "fingerprint": "SW-887D-BA52-EBF2-692E"
       }
     },
     {
@@ -169,7 +169,7 @@
       "expect": "ok",
       "result": {
         "kid": "r0u3q9YF3CPCBg4A5KlgY6nTPiD27I2r1gU6DIuYVWw",
-        "fingerprint": "SW-AF4B-B7AB"
+        "fingerprint": "SW-AF4B-B7AB-D605-DC23"
       }
     },
     {
@@ -178,7 +178,7 @@
       "expect": "ok",
       "result": {
         "kid": "wl1K9dFf_OlEkxUs6UO2KJ_i8MmhO9gXSz_q9rqA04E",
-        "fingerprint": "SW-C25D-4AF5"
+        "fingerprint": "SW-C25D-4AF5-D15F-FCE9"
       }
     },
     {
@@ -187,7 +187,7 @@
       "expect": "ok",
       "result": {
         "kid": "rHx4_qo4C5VMhPcxeR61besR2g88ynYAZRtU4ETELQ0",
-        "fingerprint": "SW-AC7C-78FE"
+        "fingerprint": "SW-AC7C-78FE-AA38-0B95"
       }
     },
     {
@@ -196,7 +196,7 @@
       "expect": "ok",
       "result": {
         "kid": "N-GeDx0GLx5zeOS6LwjiKr-xaGvH-MRf4Q2lmQ8VyzM",
-        "fingerprint": "SW-37E1-9E0F"
+        "fingerprint": "SW-37E1-9E0F-1D06-2F1E"
       }
     },
     {
@@ -205,7 +205,7 @@
       "expect": "ok",
       "result": {
         "kid": "_TtkVZP1U3y1gGI0sGoAspbzi_nY5diBoOhz1BgMsv8",
-        "fingerprint": "SW-FD3B-6455"
+        "fingerprint": "SW-FD3B-6455-93F5-537C"
       }
     },
     {
@@ -214,7 +214,7 @@
       "expect": "ok",
       "result": {
         "kid": "HRa_ACQ2QGeEbNwJwkJ_TFPzihYPKMjdNTSEVqDdhxY",
-        "fingerprint": "SW-1D16-BF00"
+        "fingerprint": "SW-1D16-BF00-2436-4067"
       }
     },
     {
@@ -223,7 +223,7 @@
       "expect": "ok",
       "result": {
         "kid": "mxs4IdKuzGDnvt-UtyEenGBbbKEKqZol-3ImhEZxzxQ",
-        "fingerprint": "SW-9B1B-3821"
+        "fingerprint": "SW-9B1B-3821-D2AE-CC60"
       }
     },
     {
@@ -232,7 +232,7 @@
       "expect": "ok",
       "result": {
         "kid": "9JvEpdDSJQjZHGypEiPTFy1NCiNGHMTB7icqfxSiADI",
-        "fingerprint": "SW-F49B-C4A5"
+        "fingerprint": "SW-F49B-C4A5-D0D2-2508"
       }
     },
     {
@@ -241,88 +241,104 @@
       "expect": "ok",
       "result": {
         "kid": "Jk_11RdGyHmmwBtWX3qV3UOXqKGAzf8t7gGrVTJ0Tms",
-        "fingerprint": "SW-264F-F5D5"
+        "fingerprint": "SW-264F-F5D5-1746-C879"
       }
     },
     {
       "name": "small-order-0",
       "input": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "small-order-1",
       "input": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA",
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "small-order-2",
       "input": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "small-order-3",
       "input": "JuiVj8KyJ7BFw_SJ8u-Y8NXfrAXTxjM5sTgCiG1T_AU",
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "small-order-4",
       "input": "JuiVj8KyJ7BFw_SJ8u-Y8NXfrAXTxjM5sTgCiG1T_IU",
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "small-order-5",
       "input": "xxdqcD1N2E-6PAt2DRBnDyogU_osOczGTsf9d5KsA3o",
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "small-order-6",
       "input": "xxdqcD1N2E-6PAt2DRBnDyogU_osOczGTsf9d5KsA_o",
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "small-order-7",
       "input": "7P_______________________________________38",
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "non-canonical-y-equals-p",
       "input": "7f_______________________________________38",
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "non-canonical-y-equals-p-plus-1",
       "input": "7v_______________________________________38",
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "non-canonical-large-order-point",
       "input": "8P_______________________________________38",
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "negative-zero-x",
       "input": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA",
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "not-on-curve",
       "input": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "short",
       "input": "qYklkTB9s4gdjWqIu88z5rNohd8lXkHeosIrjz0UeA",
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "long",
       "input": "qYklkTB9s4gdjWqIu88z5rNohd8lXkHeosIrjz0UeP8A",
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "padded-base64",
       "input": "qYklkTB9s4gdjWqIu88z5rNohd8lXkHeosIrjz0UeP8=",
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     }
   ]
 }

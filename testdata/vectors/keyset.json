@@ -7,63 +7,63 @@
       "seed": "81e86565353343238528e2a811083b9eae0e214827aaebaadf42371315bddb1b",
       "x": "CYWnmZi2eWis-zhCFko0gGak6MNBi7t154txTVEJziE",
       "kid": "iH26UuvyaS6bfEgWBn1CQoDaNlhnBXDPVTvnsz_qg2g",
-      "fingerprint": "SW-887D-BA52"
+      "fingerprint": "SW-887D-BA52-EBF2-692E"
     },
     {
       "name": "root-backup",
       "seed": "7c24c3ba2455def74b38354568e75845be5de43a503d114d6a1af60467a472ef",
       "x": "kVgacsZ3xaywt6zazocOpnHMOKbUtb9i-LlYiU18I6Q",
       "kid": "r0u3q9YF3CPCBg4A5KlgY6nTPiD27I2r1gU6DIuYVWw",
-      "fingerprint": "SW-AF4B-B7AB"
+      "fingerprint": "SW-AF4B-B7AB-D605-DC23"
     },
     {
       "name": "root-rogue",
       "seed": "bcb2110cf5650a5a1a22d12e3ed32df1194dd36d34431b995fe0eac8091ae98f",
       "x": "wY2AEcjTCSPO7gCoVHfWRhScxsSYT7W0IHpGKGoeb2g",
       "kid": "wl1K9dFf_OlEkxUs6UO2KJ_i8MmhO9gXSz_q9rqA04E",
-      "fingerprint": "SW-C25D-4AF5"
+      "fingerprint": "SW-C25D-4AF5-D15F-FCE9"
     },
     {
       "name": "control-1",
       "seed": "b3c5daaf4a26c90be52abd26008b8a11986e4adf33ee98b2a1ff38b98b3469ed",
       "x": "zgTux0baVX--WNoXJHfYzlmi2RphbCDlZBgyrP_NyqU",
       "kid": "rHx4_qo4C5VMhPcxeR61besR2g88ynYAZRtU4ETELQ0",
-      "fingerprint": "SW-AC7C-78FE"
+      "fingerprint": "SW-AC7C-78FE-AA38-0B95"
     },
     {
       "name": "control-2",
       "seed": "714dc69f3f6c556ac65d558d4ef11ab7611e363267a59d6d21b97b5e157d031d",
       "x": "8wcKhAbL27wuFSCWJEhkcyervIzrXUQtzmRoN72imXk",
       "kid": "N-GeDx0GLx5zeOS6LwjiKr-xaGvH-MRf4Q2lmQ8VyzM",
-      "fingerprint": "SW-37E1-9E0F"
+      "fingerprint": "SW-37E1-9E0F-1D06-2F1E"
     },
     {
       "name": "control-old",
       "seed": "2f4c98e18980abd2841f7b3ea2a1d1ce7ccd9823f5707d275ba719536ae95ef1",
       "x": "8wZvCHShrBPIhmABk1Ef2TvjeY6V-Xi-2svUJvyVFBA",
       "kid": "_TtkVZP1U3y1gGI0sGoAspbzi_nY5diBoOhz1BgMsv8",
-      "fingerprint": "SW-FD3B-6455"
+      "fingerprint": "SW-FD3B-6455-93F5-537C"
     },
     {
       "name": "visitor-1",
       "seed": "e057a40e58e31b20f4a19e189d9a884df59d88386a6aea344685fb18775cb463",
       "x": "BuS16HLdJbY6kOSMLVghFyTIXJHApbBe1g5KmYB0Qfc",
       "kid": "mxs4IdKuzGDnvt-UtyEenGBbbKEKqZol-3ImhEZxzxQ",
-      "fingerprint": "SW-9B1B-3821"
+      "fingerprint": "SW-9B1B-3821-D2AE-CC60"
     },
     {
       "name": "edge-1",
       "seed": "acd916c99d7df72307d3eea139ac7aa6cdd94c2072fa988cc3c4e6955f26f426",
       "x": "hk9jDG6QhoGeTKXGDZU9E9_d6ejuUWZVzaCw-du-w9Q",
       "kid": "9JvEpdDSJQjZHGypEiPTFy1NCiNGHMTB7icqfxSiADI",
-      "fingerprint": "SW-F49B-C4A5"
+      "fingerprint": "SW-F49B-C4A5-D0D2-2508"
     },
     {
       "name": "release-1",
       "seed": "7177fb767efdefc7800368ad0eda6c679a7ff40d269638d5e166de448a42109d",
       "x": "tree6ZcdhbGkVxRNuTVpcT_Ox_Z2FE4dZniWRoL4Ud0",
       "kid": "Jk_11RdGyHmmwBtWX3qV3UOXqKGAzf8t7gGrVTJ0Tms",
-      "fingerprint": "SW-264F-F5D5"
+      "fingerprint": "SW-264F-F5D5-1746-C879"
     }
   ],
   "cases": [
@@ -174,7 +174,8 @@
         ],
         "last_version": 6
       },
-      "expect": "rollback"
+      "expect": "rollback",
+      "wire": "rollback"
     },
     {
       "name": "rollback-same-version-other-payload",
@@ -187,7 +188,8 @@
         "last_version": 5,
         "last_digest": "MSahtaCy2noEbvLWULkJ-gS9hQjzHk5q6GeK4Z0Kn_k"
       },
-      "expect": "rollback"
+      "expect": "rollback",
+      "wire": "rollback"
     },
     {
       "name": "unknown-root",
@@ -199,7 +201,8 @@
         ],
         "last_version": 4
       },
-      "expect": "unknown_key"
+      "expect": "unknown_key",
+      "wire": "invalid_proof"
     },
     {
       "name": "wrong-key",
@@ -211,7 +214,8 @@
         ],
         "last_version": 4
       },
-      "expect": "bad_signature"
+      "expect": "bad_signature",
+      "wire": "invalid_proof"
     },
     {
       "name": "alg-none",
@@ -223,7 +227,8 @@
         ],
         "last_version": 4
       },
-      "expect": "bad_alg"
+      "expect": "bad_alg",
+      "wire": "bad_alg"
     },
     {
       "name": "alg-hs256-public-key-as-secret",
@@ -235,7 +240,8 @@
         ],
         "last_version": 4
       },
-      "expect": "bad_alg"
+      "expect": "bad_alg",
+      "wire": "bad_alg"
     },
     {
       "name": "typ-instruction",
@@ -247,7 +253,8 @@
         ],
         "last_version": 4
       },
-      "expect": "bad_typ"
+      "expect": "bad_typ",
+      "wire": "bad_typ"
     },
     {
       "name": "entry-kid-mismatch",
@@ -259,7 +266,8 @@
         ],
         "last_version": 4
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "entry-duplicate-kid",
@@ -271,7 +279,8 @@
         ],
         "last_version": 4
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "entry-unknown-role",
@@ -283,7 +292,8 @@
         ],
         "last_version": 4
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "entry-unknown-status",
@@ -295,7 +305,8 @@
         ],
         "last_version": 4
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "entry-edge-without-name",
@@ -307,7 +318,8 @@
         ],
         "last_version": 4
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "entry-name-on-control",
@@ -319,7 +331,8 @@
         ],
         "last_version": 4
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "entry-edge-name-syntax",
@@ -331,7 +344,8 @@
         ],
         "last_version": 4
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "entry-small-order-key",
@@ -343,7 +357,8 @@
         ],
         "last_version": 4
       },
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "entry-unknown-member",
@@ -355,7 +370,8 @@
         ],
         "last_version": 4
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "no-keys",
@@ -367,7 +383,8 @@
         ],
         "last_version": 4
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "version-zero",
@@ -379,7 +396,8 @@
         ],
         "last_version": 0
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "too-large",
@@ -391,7 +409,8 @@
         ],
         "last_version": 4
       },
-      "expect": "too_large"
+      "expect": "too_large",
+      "wire": "too_large"
     },
     {
       "name": "base64-padding",
@@ -403,7 +422,8 @@
         ],
         "last_version": 4
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "base64-standard-alphabet",
@@ -415,7 +435,8 @@
         ],
         "last_version": 4
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "base64-nonzero-trailing-bits",
@@ -427,7 +448,8 @@
         ],
         "last_version": 4
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "base64-line-break",
@@ -439,7 +461,8 @@
         ],
         "last_version": 4
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "two-segments",
@@ -451,7 +474,8 @@
         ],
         "last_version": 4
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "four-segments",
@@ -463,7 +487,8 @@
         ],
         "last_version": 4
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "signature-s-not-reduced",
@@ -475,7 +500,8 @@
         ],
         "last_version": 4
       },
-      "expect": "bad_signature"
+      "expect": "bad_signature",
+      "wire": "invalid_proof"
     }
   ]
 }

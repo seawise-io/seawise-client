@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"crypto/ed25519"
 	"encoding/json"
+	"slices"
 )
 
 // Registry key status values.
@@ -14,7 +15,10 @@ const (
 )
 
 // FRPTokenLifetime is how long an frp login token is accepted after iat.
-const FRPTokenLifetime = 30 * 24 * 3600
+// The agent mints tokens itself and re-mints at half life, so the lifetime
+// only bounds the use of a stolen token; 72 hours still tolerates a weekend
+// without signed time on a device with a drifting clock.
+const FRPTokenLifetime = 72 * 3600
 
 // RegistryEntry is what a verifier knows about a device key.
 type RegistryEntry struct {
@@ -60,18 +64,20 @@ func NewFRPToken(s crypto.Signer, serverID, runID string, iat int64) (string, er
 }
 
 // VerifyFRPToken checks a login token presented by loginServerID. lookup
-// returns the registry entry for a key ID.
-func VerifyFRPToken(token, loginServerID string, lookup func(kid string) (RegistryEntry, bool), now int64) (*FRPClaims, error) {
+// returns the registry entry for a key ID. runConflict reports whether the
+// server has a live session under a different run_id; it may be nil only
+// where sessions are not tracked (tests).
+func VerifyFRPToken(token, loginServerID string, lookup func(kid string) (RegistryEntry, bool), now int64, runConflict func(serverID, runID string) bool) (*FRPClaims, error) {
 	t, err := parseJWS(token, TypFRP, "kid", maxTokenSize)
 	if err != nil {
 		return nil, err
 	}
-	e, err := registryKey(t.kid, lookup)
+	e, err := registryKey(t, lookup)
 	if err != nil {
 		return nil, err
 	}
-	if err := t.verify(e.PublicKey); err != nil {
-		return nil, err
+	if e.Status != StatusActive {
+		return nil, fail(CodeKeyRevoked, "key is not active")
 	}
 	var c FRPClaims
 	if err := decodeObject(t.payload, &c, frpMembers); err != nil {
@@ -94,16 +100,25 @@ func VerifyFRPToken(token, loginServerID string, lookup func(kid string) (Regist
 	case c.IAT < e.ValidFrom-leewaySec:
 		return nil, fail(CodeBeforeKeyValid, "token issued before the key was registered")
 	}
+	if runConflict != nil && runConflict(c.ServerID, c.RunID) {
+		return nil, fail(CodeRunConflict, "server has a live session from another run")
+	}
 	return &c, nil
 }
 
-func registryKey(kid string, lookup func(string) (RegistryEntry, bool)) (RegistryEntry, error) {
-	e, ok := lookup(kid)
-	if !ok || KeyID(e.PublicKey) != kid {
+// registryKey finds the signing key of t and verifies the signature. Status
+// is left to the caller, so only the key holder learns that a key was
+// revoked.
+func registryKey(t *jws, lookup func(string) (RegistryEntry, bool)) (RegistryEntry, error) {
+	e, ok := lookup(t.kid)
+	if !ok || KeyID(e.PublicKey) != t.kid {
 		return RegistryEntry{}, fail(CodeUnknownKey, "key is not registered")
 	}
-	if e.Status != StatusActive {
-		return RegistryEntry{}, fail(CodeKeyRevoked, "key is not active")
+	if err := CheckPublicKey(e.PublicKey); err != nil {
+		return RegistryEntry{}, fail(CodeUnknownKey, "registry key is invalid")
+	}
+	if err := t.verify(e.PublicKey); err != nil {
+		return RegistryEntry{}, err
 	}
 	return e, nil
 }
@@ -132,6 +147,20 @@ type RotationResult struct {
 	NewKeyID  string
 	NewPublic ed25519.PublicKey
 	IAT       int64
+	// AlreadyApplied is set when r is byte-identical to the rotation the
+	// server already accepted from this key: a retry, answered as success.
+	AlreadyApplied bool
+}
+
+// RotationCheck is what the verifier knows about the requesting server.
+type RotationCheck struct {
+	ServerID string
+	Lookup   func(kid string) (RegistryEntry, bool)
+	// PreviousKeyIDs are every key ID ever registered for the server; a
+	// rotation back to one of them is refused.
+	PreviousKeyIDs []string
+	// Applied returns the rotation already accepted from oldKID, if any.
+	Applied func(oldKID string) (Rotation, bool)
 }
 
 // NewRotation signs a rotation from oldKey to newKey.
@@ -177,9 +206,8 @@ func ParseRotation(b []byte) (Rotation, error) {
 	return r, nil
 }
 
-// VerifyRotation checks a rotation sent by serverID, whose current key is
-// found through lookup.
-func VerifyRotation(r Rotation, serverID string, lookup func(kid string) (RegistryEntry, bool)) (*RotationResult, error) {
+// VerifyRotation checks a rotation sent by the server in c.
+func VerifyRotation(r Rotation, c RotationCheck) (*RotationResult, error) {
 	st, err := parseJWS(r.Statement, TypRotate, "kid", maxTokenSize)
 	if err != nil {
 		return nil, err
@@ -191,30 +219,35 @@ func VerifyRotation(r Rotation, serverID string, lookup func(kid string) (Regist
 	if st.payloadB64 != pop.payloadB64 {
 		return nil, fail(CodeMalformed, "statement and pop payloads differ")
 	}
-	old, err := registryKey(st.kid, lookup)
+	old, err := registryKey(st, c.Lookup)
 	if err != nil {
 		return nil, err
 	}
-	if err := st.verify(old.PublicKey); err != nil {
+	applied := false
+	if c.Applied != nil {
+		prev, ok := c.Applied(st.kid)
+		applied = ok && prev == r
+	}
+	if !applied && old.Status != StatusActive {
+		return nil, fail(CodeKeyRevoked, "key is not active")
+	}
+	var cl RotationClaims
+	if err := decodeObject(st.payload, &cl, rotationMembers); err != nil {
 		return nil, err
 	}
-	var c RotationClaims
-	if err := decodeObject(st.payload, &c, rotationMembers); err != nil {
+	if err := checkServerID(cl.ServerID); err != nil {
 		return nil, err
 	}
-	if err := checkServerID(c.ServerID); err != nil {
+	if err := checkTime("iat", cl.IAT); err != nil {
 		return nil, err
 	}
-	if err := checkTime("iat", c.IAT); err != nil {
-		return nil, err
-	}
-	if c.OldKID != st.kid {
+	if cl.OldKID != st.kid {
 		return nil, fail(CodeMalformed, "old_kid differs from kid")
 	}
-	if c.ServerID != serverID || old.ServerID != serverID {
+	if cl.ServerID != c.ServerID || old.ServerID != c.ServerID {
 		return nil, fail(CodeWrongServer, "rotation is for another server")
 	}
-	newPub, err := parseJWK(c.NewJWK)
+	newPub, err := parseJWK(cl.NewJWK)
 	if err != nil {
 		return nil, err
 	}
@@ -222,11 +255,14 @@ func VerifyRotation(r Rotation, serverID string, lookup func(kid string) (Regist
 		return nil, fail(CodeBadKey, "new key equals old key")
 	}
 	newKID := KeyID(newPub)
+	if !applied && slices.Contains(c.PreviousKeyIDs, newKID) {
+		return nil, fail(CodeBadKey, "new key was registered before")
+	}
 	if pop.kid != newKID {
 		return nil, fail(CodeMalformed, "pop kid is not the new key")
 	}
 	if err := pop.verify(newPub); err != nil {
 		return nil, err
 	}
-	return &RotationResult{ServerID: c.ServerID, OldKeyID: st.kid, NewKeyID: newKID, NewPublic: newPub, IAT: c.IAT}, nil
+	return &RotationResult{ServerID: cl.ServerID, OldKeyID: st.kid, NewKeyID: newKID, NewPublic: newPub, IAT: cl.IAT, AlreadyApplied: applied}, nil
 }

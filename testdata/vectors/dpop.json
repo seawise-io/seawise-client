@@ -7,14 +7,14 @@
       "seed": "9b67f1987274c60bcea26117ecc5662790fe5cc5beb5dfc0a4ca16b6859522e8",
       "x": "qYklkTB9s4gdjWqIu88z5rNohd8lXkHeosIrjz0UeP8",
       "kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
-      "fingerprint": "SW-6636-8967"
+      "fingerprint": "SW-6636-8967-0707-058A"
     },
     {
       "name": "device-b",
       "seed": "5945a2e2824c22c74fea8abcf380f7ee5516e00c2351cba98af1d8dadf7eddc2",
       "x": "GGjbToKsrATfH6iktzQkxuVDw4CsZ6lxPU_0Q-6e0W4",
       "kid": "s6XaxZBr2_jRf5lAfSp2AZGefGjRScK25ZnTrMfJhyE",
-      "fingerprint": "SW-B3A5-DAC5"
+      "fingerprint": "SW-B3A5-DAC5-906B-DBF8"
     }
   ],
   "cases": [
@@ -59,7 +59,7 @@
       "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA",
       "context": {
         "method": "POST",
-        "url": "HTTPS://API.SeaWise.io:443/device/v2/heartbeat?since=5#frag",
+        "url": "HTTPS://API.SeaWise.io:443/device/v2/heartbeat#frag",
         "body": "{\"client_version\":\"2.0.0\"}",
         "valid_nonces": [
           "n1.AAAAAQ.c2VydmVyLW5vbmNl"
@@ -71,6 +71,69 @@
         "kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
         "jti": "dGVzdC1qdGktMDAwMDAwMDE"
       }
+    },
+    {
+      "name": "valid-query-bound",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQ_c2luY2U9NVx1MDAyNmxpbWl0PTEwIiwiaWF0IjoxNzkzMDAwMDAwLCJub25jZSI6Im4xLkFBQUFBUS5jMlZ5ZG1WeUxXNXZibU5sIiwiYm9keV9zaGEyNTYiOiJRTmlFQzdzUjNMRGk2eEZrcjcxSjlSNnEtYzkwd1JNVjVNN3Nud2lIVEdJIn0.gMqLOdc-fTcq-eeq-pCU4Xh7v2OMFh7PoglZGznwDepKPkFMhj44kVCbvzVD12nXcd1bGuYI-LN1UvtfinURDA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat?since=5\u0026limit=10",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "ok",
+      "result": {
+        "kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
+        "jti": "dGVzdC1qdGktMDAwMDAwMDE"
+      }
+    },
+    {
+      "name": "query-changed",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQ_c2luY2U9NVx1MDAyNmxpbWl0PTEwIiwiaWF0IjoxNzkzMDAwMDAwLCJub25jZSI6Im4xLkFBQUFBUS5jMlZ5ZG1WeUxXNXZibU5sIiwiYm9keV9zaGEyNTYiOiJRTmlFQzdzUjNMRGk2eEZrcjcxSjlSNnEtYzkwd1JNVjVNN3Nud2lIVEdJIn0.gMqLOdc-fTcq-eeq-pCU4Xh7v2OMFh7PoglZGznwDepKPkFMhj44kVCbvzVD12nXcd1bGuYI-LN1UvtfinURDA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat?since=0\u0026limit=10",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "wrong_htu",
+      "wire": "wrong_htu"
+    },
+    {
+      "name": "query-reordered",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQ_c2luY2U9NVx1MDAyNmxpbWl0PTEwIiwiaWF0IjoxNzkzMDAwMDAwLCJub25jZSI6Im4xLkFBQUFBUS5jMlZ5ZG1WeUxXNXZibU5sIiwiYm9keV9zaGEyNTYiOiJRTmlFQzdzUjNMRGk2eEZrcjcxSjlSNnEtYzkwd1JNVjVNN3Nud2lIVEdJIn0.gMqLOdc-fTcq-eeq-pCU4Xh7v2OMFh7PoglZGznwDepKPkFMhj44kVCbvzVD12nXcd1bGuYI-LN1UvtfinURDA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat?limit=10\u0026since=5",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "wrong_htu",
+      "wire": "wrong_htu"
+    },
+    {
+      "name": "query-added-to-request",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat?since=5",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "wrong_htu",
+      "wire": "wrong_htu"
     },
     {
       "name": "valid-iat-not-used-for-freshness",
@@ -125,7 +188,8 @@
         ],
         "seen": []
       },
-      "expect": "bad_signature"
+      "expect": "bad_signature",
+      "wire": "invalid_proof"
     },
     {
       "name": "wrong-htm",
@@ -139,7 +203,8 @@
         ],
         "seen": []
       },
-      "expect": "wrong_htm"
+      "expect": "wrong_htm",
+      "wire": "wrong_htm"
     },
     {
       "name": "wrong-htm-case",
@@ -153,7 +218,8 @@
         ],
         "seen": []
       },
-      "expect": "wrong_htm"
+      "expect": "wrong_htm",
+      "wire": "wrong_htm"
     },
     {
       "name": "wrong-htu-path",
@@ -167,7 +233,8 @@
         ],
         "seen": []
       },
-      "expect": "wrong_htu"
+      "expect": "wrong_htu",
+      "wire": "wrong_htu"
     },
     {
       "name": "wrong-htu-host",
@@ -181,7 +248,8 @@
         ],
         "seen": []
       },
-      "expect": "wrong_htu"
+      "expect": "wrong_htu",
+      "wire": "wrong_htu"
     },
     {
       "name": "wrong-htu-scheme",
@@ -195,11 +263,12 @@
         ],
         "seen": []
       },
-      "expect": "wrong_htu"
+      "expect": "wrong_htu",
+      "wire": "wrong_htu"
     },
     {
-      "name": "htu-with-query",
-      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQ_c2luY2U9NSIsImlhdCI6MTc5MzAwMDAwMCwibm9uY2UiOiJuMS5BQUFBQVEuYzJWeWRtVnlMVzV2Ym1ObCIsImJvZHlfc2hhMjU2IjoiUU5pRUM3c1IzTERpNnhGa3I3MUo5UjZxLWM5MHdSTVY1TTdzbndpSFRHSSJ9.AIG0ZkL1RM_oR9p22UxlPwV16wNkrUevCPIz7tbni1BAmpZgIBEHbzq0LECgpdXJtIfuH2KzSU4TScTUYb5sDQ",
+      "name": "query-dropped-from-request",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQ_c2luY2U9NVx1MDAyNmxpbWl0PTEwIiwiaWF0IjoxNzkzMDAwMDAwLCJub25jZSI6Im4xLkFBQUFBUS5jMlZ5ZG1WeUxXNXZibU5sIiwiYm9keV9zaGEyNTYiOiJRTmlFQzdzUjNMRGk2eEZrcjcxSjlSNnEtYzkwd1JNVjVNN3Nud2lIVEdJIn0.gMqLOdc-fTcq-eeq-pCU4Xh7v2OMFh7PoglZGznwDepKPkFMhj44kVCbvzVD12nXcd1bGuYI-LN1UvtfinURDA",
       "context": {
         "method": "POST",
         "url": "https://api.seawise.io/device/v2/heartbeat",
@@ -209,7 +278,8 @@
         ],
         "seen": []
       },
-      "expect": "wrong_htu"
+      "expect": "wrong_htu",
+      "wire": "wrong_htu"
     },
     {
       "name": "body-mismatch",
@@ -223,7 +293,8 @@
         ],
         "seen": []
       },
-      "expect": "body_mismatch"
+      "expect": "body_mismatch",
+      "wire": "body_mismatch"
     },
     {
       "name": "body-digest-of-empty-on-post",
@@ -237,7 +308,8 @@
         ],
         "seen": []
       },
-      "expect": "body_mismatch"
+      "expect": "body_mismatch",
+      "wire": "body_mismatch"
     },
     {
       "name": "bad-nonce-expired",
@@ -251,7 +323,8 @@
         ],
         "seen": []
       },
-      "expect": "bad_nonce"
+      "expect": "bad_nonce",
+      "wire": "bad_nonce"
     },
     {
       "name": "bad-nonce-syntax",
@@ -265,7 +338,8 @@
         ],
         "seen": []
       },
-      "expect": "bad_nonce"
+      "expect": "bad_nonce",
+      "wire": "bad_nonce"
     },
     {
       "name": "replayed-jti",
@@ -284,7 +358,8 @@
           }
         ]
       },
-      "expect": "replayed"
+      "expect": "replayed",
+      "wire": "replayed"
     },
     {
       "name": "alg-none",
@@ -298,7 +373,8 @@
         ],
         "seen": []
       },
-      "expect": "bad_alg"
+      "expect": "bad_alg",
+      "wire": "bad_alg"
     },
     {
       "name": "alg-hs256-public-key-as-secret",
@@ -312,7 +388,8 @@
         ],
         "seen": []
       },
-      "expect": "bad_alg"
+      "expect": "bad_alg",
+      "wire": "bad_alg"
     },
     {
       "name": "alg-ed25519-fully-specified",
@@ -326,7 +403,8 @@
         ],
         "seen": []
       },
-      "expect": "bad_alg"
+      "expect": "bad_alg",
+      "wire": "bad_alg"
     },
     {
       "name": "alg-missing",
@@ -340,7 +418,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "typ-jwt",
@@ -354,7 +433,8 @@
         ],
         "seen": []
       },
-      "expect": "bad_typ"
+      "expect": "bad_typ",
+      "wire": "bad_typ"
     },
     {
       "name": "typ-frp-token",
@@ -368,7 +448,8 @@
         ],
         "seen": []
       },
-      "expect": "bad_typ"
+      "expect": "bad_typ",
+      "wire": "bad_typ"
     },
     {
       "name": "header-kid-not-jwk",
@@ -382,7 +463,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "header-crit",
@@ -396,7 +478,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "header-jku",
@@ -410,7 +493,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "jwk-with-private-d",
@@ -424,7 +508,8 @@
         ],
         "seen": []
       },
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "jwk-wrong-curve",
@@ -438,7 +523,8 @@
         ],
         "seen": []
       },
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "jwk-small-order",
@@ -452,7 +538,8 @@
         ],
         "seen": []
       },
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "jwk-non-canonical",
@@ -466,7 +553,8 @@
         ],
         "seen": []
       },
-      "expect": "bad_key"
+      "expect": "bad_key",
+      "wire": "bad_key"
     },
     {
       "name": "claim-duplicate",
@@ -480,7 +568,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "claim-case-variant",
@@ -494,7 +583,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "claim-unknown",
@@ -508,7 +598,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "claim-missing-body-digest",
@@ -522,7 +613,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "claim-null",
@@ -536,7 +628,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "claim-iat-fraction",
@@ -550,7 +643,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "claim-iat-negative",
@@ -564,7 +658,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "claim-jti-too-short",
@@ -578,7 +673,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "payload-invalid-utf8",
@@ -592,7 +688,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "payload-trailing-data",
@@ -606,7 +703,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "payload-not-object",
@@ -620,7 +718,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "base64-padding",
@@ -634,7 +733,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "base64-standard-alphabet",
@@ -648,7 +748,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "base64-nonzero-trailing-bits",
@@ -662,7 +763,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "base64-line-break",
@@ -676,7 +778,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "two-segments",
@@ -690,7 +793,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "four-segments",
@@ -704,7 +808,8 @@
         ],
         "seen": []
       },
-      "expect": "malformed"
+      "expect": "malformed",
+      "wire": "malformed"
     },
     {
       "name": "signature-s-not-reduced",
@@ -718,7 +823,8 @@
         ],
         "seen": []
       },
-      "expect": "bad_signature"
+      "expect": "bad_signature",
+      "wire": "invalid_proof"
     },
     {
       "name": "too-large",
@@ -732,7 +838,8 @@
         ],
         "seen": []
       },
-      "expect": "too_large"
+      "expect": "too_large",
+      "wire": "too_large"
     }
   ]
 }

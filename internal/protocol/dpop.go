@@ -38,7 +38,8 @@ type DPoPResult struct {
 
 // CanonicalHTU returns the form of a request URL that a proof's htu must
 // equal: lower-case scheme and host, default port dropped, path as sent or
-// "/", no userinfo, query or fragment.
+// "/", the raw query exactly as sent, no userinfo or fragment. Binding the
+// query departs from RFC 9449, which leaves it out.
 func CanonicalHTU(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -65,6 +66,9 @@ func CanonicalHTU(raw string) (string, error) {
 	path := u.EscapedPath()
 	if path == "" {
 		path = "/"
+	}
+	if u.RawQuery != "" || u.ForceQuery {
+		path += "?" + u.RawQuery
 	}
 	return scheme + "://" + host + path, nil
 }

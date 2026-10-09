@@ -61,7 +61,9 @@ type vecCase struct {
 	Input   string          `json:"input"`
 	Context json.RawMessage `json:"context,omitempty"`
 	Expect  string          `json:"expect"`
-	Result  json.RawMessage `json:"result,omitempty"`
+	// Wire is the code a server sends for Expect; see WireCode.
+	Wire   string          `json:"wire,omitempty"`
+	Result json.RawMessage `json:"result,omitempty"`
 }
 
 type vecFile struct {
@@ -346,7 +348,12 @@ func genDPoP() vecFile {
 	}
 	add("valid", valid, ctx(nil), "ok")
 	add("valid-get-empty-body", sign(dpopClaims("GET", vecURL, "")), ctx(func(c *dpopContext) { c.Method = "GET"; c.Body = "" }), "ok")
-	add("valid-request-url-normalised", valid, ctx(func(c *dpopContext) { c.URL = "HTTPS://API.SeaWise.io:443/device/v2/heartbeat?since=5#frag" }), "ok")
+	add("valid-request-url-normalised", valid, ctx(func(c *dpopContext) { c.URL = "HTTPS://API.SeaWise.io:443/device/v2/heartbeat#frag" }), "ok")
+	withQuery := sign(dpopClaims("POST", vecURL+"?since=5&limit=10", vecBody))
+	add("valid-query-bound", withQuery, ctx(func(c *dpopContext) { c.URL = vecURL + "?since=5&limit=10" }), "ok")
+	add("query-changed", withQuery, ctx(func(c *dpopContext) { c.URL = vecURL + "?since=0&limit=10" }), "wrong_htu")
+	add("query-reordered", withQuery, ctx(func(c *dpopContext) { c.URL = vecURL + "?limit=10&since=5" }), "wrong_htu")
+	add("query-added-to-request", valid, ctx(func(c *dpopContext) { c.URL = vecURL + "?since=5" }), "wrong_htu")
 	add("valid-iat-not-used-for-freshness", sign(cl(func(c *DPoPClaims) { c.IAT = 0 })), ctx(nil), "ok")
 	add("valid-same-jti-other-key", valid, ctx(func(c *dpopContext) { c.Seen = []seenJTI{{KID: vecKID("device-b"), JTI: vecJTI}} }), "ok")
 	add("wrong-key", signRaw(b, hdr, payload), ctx(nil), "bad_signature")
@@ -355,7 +362,7 @@ func genDPoP() vecFile {
 	add("wrong-htu-path", valid, ctx(func(c *dpopContext) { c.URL = "https://api.seawise.io/device/v2/apps" }), "wrong_htu")
 	add("wrong-htu-host", valid, ctx(func(c *dpopContext) { c.URL = "https://evil.example/device/v2/heartbeat" }), "wrong_htu")
 	add("wrong-htu-scheme", valid, ctx(func(c *dpopContext) { c.URL = "http://api.seawise.io/device/v2/heartbeat" }), "wrong_htu")
-	add("htu-with-query", sign(cl(func(c *DPoPClaims) { c.HTU = vecURL + "?since=5" })), ctx(nil), "wrong_htu")
+	add("query-dropped-from-request", withQuery, ctx(nil), "wrong_htu")
 	add("body-mismatch", valid, ctx(func(c *dpopContext) { c.Body = `{"client_version":"2.0.1"}` }), "body_mismatch")
 	add("body-digest-of-empty-on-post", sign(cl(func(c *DPoPClaims) { c.BodySHA256 = BodyDigest(nil) })), ctx(nil), "body_mismatch")
 	add("bad-nonce-expired", valid, ctx(func(c *dpopContext) { c.ValidNonces = []string{"n1.AAAAAg.bmV3ZXItbm9uY2U"} }), "bad_nonce")
@@ -400,10 +407,18 @@ type registryJSON struct {
 	ValidFrom int64  `json:"valid_from"`
 }
 
+type liveRun struct {
+	ServerID string `json:"server_id"`
+	RunID    string `json:"run_id"`
+}
+
 type frpContext struct {
 	Now           int64          `json:"now"`
 	LoginServerID string         `json:"login_server_id"`
 	Registry      []registryJSON `json:"registry"`
+	// LiveRuns are sessions the edge holds now; a login for the same server
+	// with another run_id conflicts.
+	LiveRuns []liveRun `json:"live_runs"`
 }
 
 func vecRegistry() []registryJSON {
@@ -417,7 +432,10 @@ func vecRegistry() []registryJSON {
 func genFRP() vecFile {
 	a, b := vecKey("device-a"), vecKey("device-b")
 	ctxFor := func(now int64, login string) json.RawMessage {
-		return raw(frpContext{Now: now, LoginServerID: login, Registry: vecRegistry()})
+		return raw(frpContext{Now: now, LoginServerID: login, Registry: vecRegistry(), LiveRuns: []liveRun{}})
+	}
+	ctxRuns := func(runs ...liveRun) json.RawMessage {
+		return raw(frpContext{Now: vecNow, LoginServerID: vecServer1, Registry: vecRegistry(), LiveRuns: runs})
 	}
 	ctx := ctxFor(vecNow, vecServer1)
 	mint := func(k ed25519.PrivateKey, server string, iat int64) string {
@@ -449,6 +467,10 @@ func genFRP() vecFile {
 		{Name: "wrong-key", Input: signRaw(b, hdr, payload), Context: ctx, Expect: "bad_signature"},
 		{Name: "unknown-key", Input: mint(vecKey("device-c"), vecServer1, vecNow), Context: ctx, Expect: "unknown_key"},
 		{Name: "revoked-key", Input: mint(vecKey("device-old"), vecServer1, vecNow), Context: ctx, Expect: "key_revoked"},
+		{Name: "revoked-key-not-revealed-without-signature", Input: signRaw(a, kidHeader(TypFRP, vecKID("device-old")), strings.Replace(payload, vecKID("device-a"), vecKID("device-old"), 1)), Context: ctx, Expect: "bad_signature"},
+		{Name: "valid-reconnect-same-run", Input: valid, Context: ctxRuns(liveRun{ServerID: vecServer1, RunID: vecRunID}), Expect: "ok", Result: res(vecNow - 3600)},
+		{Name: "valid-other-server-live", Input: valid, Context: ctxRuns(liveRun{ServerID: vecServer2, RunID: "b3RoZXItcnVuLTAwMDAwMDAy"}), Expect: "ok", Result: res(vecNow - 3600)},
+		{Name: "run-conflict", Input: valid, Context: ctxRuns(liveRun{ServerID: vecServer1, RunID: "b3RoZXItcnVuLTAwMDAwMDAy"}), Expect: "run_conflict"},
 		{Name: "wrong-server-login", Input: valid, Context: ctxFor(vecNow, vecServer2), Expect: "wrong_server"},
 		{Name: "wrong-server-claim", Input: mint(a, vecServer2, vecNow), Context: ctxFor(vecNow, vecServer2), Expect: "wrong_server"},
 		{Name: "key-id-differs-from-kid", Input: signRaw(a, hdr, strings.Replace(payload, vecKID("device-a"), vecKID("device-b"), 1)), Context: ctx, Expect: "malformed"},
@@ -469,18 +491,22 @@ func genFRP() vecFile {
 // --- rotation.json ---------------------------------------------------------
 
 type rotationContext struct {
-	ServerID string         `json:"server_id"`
-	Registry []registryJSON `json:"registry"`
+	ServerID     string              `json:"server_id"`
+	Registry     []registryJSON      `json:"registry"`
+	PreviousKIDs []string            `json:"previous_kids"`
+	Applied      map[string]Rotation `json:"applied"`
 }
 
 type rotationResult struct {
-	OldKID string `json:"old_kid"`
-	NewKID string `json:"new_kid"`
+	OldKID         string `json:"old_kid"`
+	NewKID         string `json:"new_kid"`
+	AlreadyApplied bool   `json:"already_applied"`
 }
 
 func genRotation() vecFile {
 	a, nk := vecKey("device-a"), vecKey("device-new")
-	ctx := raw(rotationContext{ServerID: vecServer1, Registry: vecRegistry()})
+	prev := []string{vecKID("device-a"), vecKID("device-b"), vecKID("device-old")}
+	ctx := raw(rotationContext{ServerID: vecServer1, Registry: vecRegistry(), PreviousKIDs: prev, Applied: map[string]Rotation{}})
 	enc := func(r Rotation) string { return string(mustJSON(r)) }
 	rot := func(old, nw ed25519.PrivateKey, server string) Rotation {
 		r, err := NewRotation(old, nw, server, vecNow)
@@ -490,6 +516,15 @@ func genRotation() vecFile {
 		return r
 	}
 	valid := rot(a, nk, vecServer1)
+	// After the server accepted valid: a is revoked, new is active.
+	rotatedReg := []registryJSON{
+		{ServerID: vecServer1, X: vecX("device-a"), Status: StatusRevoked, ValidFrom: vecT0},
+		{ServerID: vecServer1, X: vecX("device-new"), Status: StatusActive, ValidFrom: vecNow},
+		{ServerID: vecServer2, X: vecX("device-b"), Status: StatusActive, ValidFrom: vecT0},
+	}
+	rotatedPrev := append(slices.Clone(prev), vecKID("device-new"))
+	rotated := raw(rotationContext{ServerID: vecServer1, Registry: rotatedReg, PreviousKIDs: rotatedPrev, Applied: map[string]Rotation{vecKID("device-a"): valid}})
+	rot2, _ := NewRotation(a, nk, vecServer1, vecNow+1)
 	claims := RotationClaims{ServerID: vecServer1, OldKID: vecKID("device-a"), NewJWK: mustJSON(PublicJWK(vecPub("device-new"))), IAT: vecNow}
 	payload := string(mustJSON(claims))
 	stHdr := kidHeader(TypRotate, vecKID("device-a"))
@@ -500,6 +535,11 @@ func genRotation() vecFile {
 	f := vecFile{Format: "rotation", Note: vectorNote, Keys: keyInfos("device-a", "device-b", "device-c", "device-new", "device-old")}
 	f.Cases = []vecCase{
 		{Name: "valid", Input: enc(valid), Context: ctx, Expect: "ok", Result: raw(rotationResult{OldKID: vecKID("device-a"), NewKID: vecKID("device-new")})},
+		{Name: "valid-retry-after-accept", Input: enc(valid), Context: rotated, Expect: "ok", Result: raw(rotationResult{OldKID: vecKID("device-a"), NewKID: vecKID("device-new"), AlreadyApplied: true})},
+		{Name: "other-rotation-after-accept", Input: enc(rot(a, vecKey("device-c"), vecServer1)), Context: rotated, Expect: "key_revoked"},
+		{Name: "retry-not-byte-identical", Input: enc(valid), Context: raw(rotationContext{ServerID: vecServer1, Registry: rotatedReg, PreviousKIDs: rotatedPrev, Applied: map[string]Rotation{vecKID("device-a"): rot2}}), Expect: "key_revoked"},
+		{Name: "rotate-back-to-previous-key", Input: enc(rot(nk, a, vecServer1)), Context: rotated, Expect: "bad_key"},
+		{Name: "rotate-to-key-of-other-device", Input: enc(rot(a, vecKey("device-b"), vecServer1)), Context: ctx, Expect: "bad_key"},
 		{Name: "statement-wrong-key", Input: pair(signRaw(vecKey("device-b"), stHdr, payload), valid.PoP), Context: ctx, Expect: "bad_signature"},
 		{Name: "pop-wrong-key", Input: pair(valid.Statement, signRaw(vecKey("device-c"), popHdr, payload)), Context: ctx, Expect: "bad_signature"},
 		{Name: "pop-signed-by-old-key", Input: pair(valid.Statement, signRaw(a, kidHeader(TypRotatePoP, vecKID("device-a")), payload)), Context: ctx, Expect: "malformed"},
@@ -743,7 +783,7 @@ func genSignedTime() vecFile {
 }
 
 func generateVectors() map[string]vecFile {
-	return map[string]vecFile{
+	files := map[string]vecFile{
 		"keys.json":        genKeys(),
 		"dpop.json":        genDPoP(),
 		"frp_token.json":   genFRP(),
@@ -752,4 +792,12 @@ func generateVectors() map[string]vecFile {
 		"instruction.json": genInstruction(),
 		"signed_time.json": genSignedTime(),
 	}
+	for _, f := range files {
+		for i, c := range f.Cases {
+			if c.Expect != "ok" {
+				f.Cases[i].Wire = string(WireCode(Code(c.Expect)))
+			}
+		}
+	}
+	return files
 }

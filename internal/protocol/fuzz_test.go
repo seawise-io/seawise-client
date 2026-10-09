@@ -60,7 +60,7 @@ func FuzzFRPToken(f *testing.F) {
 	seedFromVectors(f, "frp_token.json")
 	f.Fuzz(func(t *testing.T, tok string) {
 		lookup := registryLookup(t, vecRegistry())
-		c, err := VerifyFRPToken(tok, vecServer1, lookup, vecNow)
+		c, err := VerifyFRPToken(tok, vecServer1, lookup, vecNow, nil)
 		mustBeCoded(t, err)
 		if err == nil && (c.ServerID != vecServer1 || c.KeyID != vecKID("device-a")) {
 			t.Fatalf("accepted a token for %s/%s", c.ServerID, c.KeyID)
@@ -131,7 +131,7 @@ func FuzzRotation(f *testing.F) {
 		if err != nil {
 			return
 		}
-		res, err := VerifyRotation(r, vecServer1, registryLookup(t, vecRegistry()))
+		res, err := VerifyRotation(r, RotationCheck{ServerID: vecServer1, Lookup: registryLookup(t, vecRegistry())})
 		mustBeCoded(t, err)
 		if err == nil && (res.OldKeyID != vecKID("device-a") || CheckPublicKey(res.NewPublic) != nil) {
 			t.Fatal("accepted an invalid rotation")

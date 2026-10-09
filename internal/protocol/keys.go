@@ -31,12 +31,13 @@ func KeyID(pub ed25519.PublicKey) string {
 	return b64Encode(d[:])
 }
 
-// Fingerprint returns the display fingerprint of pub, SW-XXXX-XXXX. It has
-// 32 bits and is for people to compare, never to identify a key.
+// Fingerprint returns the display fingerprint of pub,
+// SW-XXXX-XXXX-XXXX-XXXX: 64 bits of the key ID digest. It is for people to
+// compare, never an identifier or an authentication factor.
 func Fingerprint(pub ed25519.PublicKey) string {
 	d := thumbprintDigest(pub)
-	h := strings.ToUpper(hex.EncodeToString(d[:4]))
-	return "SW-" + h[:4] + "-" + h[4:]
+	h := strings.ToUpper(hex.EncodeToString(d[:8]))
+	return "SW-" + h[0:4] + "-" + h[4:8] + "-" + h[8:12] + "-" + h[12:16]
 }
 
 // ParsePublicKey decodes a base64url public key and checks it.

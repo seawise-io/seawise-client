@@ -33,7 +33,22 @@ const (
 	CodeBadNonce       Code = "bad_nonce"
 	CodeNonceMismatch  Code = "nonce_mismatch"
 	CodeRollback       Code = "rollback"
+	CodeRunConflict    Code = "run_conflict"
+
+	// CodeInvalidProof is what a server reports for an unknown key or a bad
+	// signature, so a response does not reveal whether a key is registered.
+	CodeInvalidProof Code = "invalid_proof"
 )
+
+// WireCode returns the code a server sends to the client for code. Unknown
+// keys and bad signatures share one code; the detailed code is for logs.
+func WireCode(code Code) Code {
+	switch code {
+	case CodeUnknownKey, CodeBadSignature:
+		return CodeInvalidProof
+	}
+	return code
+}
 
 // Error is a verification failure. Detail never quotes token content.
 type Error struct {
