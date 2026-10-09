@@ -1,0 +1,17 @@
+# TrueNAS SCALE: Apps > Discover Apps > Custom App > Install via YAML.
+# 568 is the TrueNAS "apps" user and group.
+services:
+  seawise:
+    image: ghcr.io/seawise-io/seawise-client:beta
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID]
+    security_opt: [no-new-privileges:true]
+    environment:
+      PUID: "568"
+      PGID: "568"
+    ports:
+      - "8082:8082"
+    volumes:
+      - /mnt/tank/apps/seawise:/config

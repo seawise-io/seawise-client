@@ -21,6 +21,9 @@ jobs:
       - name: Check action pins and permissions
         run: python3 .github/scripts/check-workflow-pins.py
 
+      - name: Release channel tests
+        run: python3 -m unittest discover -s .github/scripts -p 'test_release_channel.py'
+
       - name: actionlint
         uses: docker://rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9 # 1.7.7
         with:

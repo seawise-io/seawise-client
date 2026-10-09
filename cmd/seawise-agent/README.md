@@ -1,10 +1,10 @@
 # seawise-agent (in development)
 
-`seawise-agent` is the next version of the SeaWise client. It is built from
-this repository but is **not** what the published image runs today: the
-image still runs `seawise serve`, and moves to `seawise-agent` in a later
-release. Everything below applies only to `seawise-agent`; none of it
-changes how `seawise serve` behaves.
+`seawise-agent` is the next version of the SeaWise client. The `:latest`
+and `:1.x` images run `seawise serve`; `seawise-agent` has its own image,
+published only under `:2`, `:2.x.y`, `:beta` and `:stable` (see
+[Container image](#container-image)). Everything below applies only to
+`seawise-agent`; none of it changes how `seawise serve` behaves.
 
 It reads an existing client's data folder without modifying it and keeps
 its own state in `<data folder>/v2`.
@@ -77,6 +77,40 @@ running on the same machine can connect to it, and reaches the app through
 the same target policy, so this exposes nothing beyond what the machine can
 already reach. Each forwarder is limited in concurrent connections,
 connection lifetime and idle time.
+
+## Container image
+
+`Dockerfile.agent` builds the image for this agent (`make image-agent`).
+Images are published only under `:2`, `:2.x.y`, `:beta` and `:stable`
+(pre-releases only under `:2.x.y-pre` and `:beta`); `:latest` and `:1.x`
+stay on the current client.
+
+- **Users.** The agent never runs as root. By default the container
+  starts as root only to switch to `PUID`/`PGID` (default `1000`), so an
+  install moving from the `:latest` image keeps its settings and data
+  folder. It switches by number, so IDs that already exist in the image,
+  such as GID 100, work as they are. Before switching it sets the data
+  folder's owner and hands any root-owned files in it to that user
+  (contents are not changed, symlinks are not followed) and warns if any
+  remain. Started with `--user`, it runs the agent directly.
+- **Recommended: start as the user.** All state is under `/config`, so the
+  root filesystem can be read-only, and with `--user` no capabilities are
+  needed. The data folder must already be owned by that user:
+
+  ```
+  docker run -d --name seawise --restart unless-stopped \
+    --read-only --cap-drop ALL --security-opt no-new-privileges \
+    --user 1000:1000 -v ./seawise:/config -p 8082:8082 \
+    ghcr.io/seawise-io/seawise-client:beta
+  ```
+
+  Without `--user`, the entrypoint needs the `CHOWN`, `SETUID` and `SETGID`
+  capabilities (`--cap-drop ALL --cap-add CHOWN --cap-add SETUID
+  --cap-add SETGID`).
+- **Health check.** `GET http://127.0.0.1:8082/healthz` (plain HTTP,
+  loopback only). If `SEAWISE_BIND_ADDR` is set to an address other than
+  `0.0.0.0` or `127.0.0.1`, the image health check cannot reach it.
+- **Platforms.** `linux/amd64`, `linux/arm64`, `linux/arm/v7`.
 
 ## Settings
 
