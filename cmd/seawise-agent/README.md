@@ -1,10 +1,10 @@
 # seawise-agent (in development)
 
-`seawise-agent` is the next version of the SeaWise client. It is built from
-this repository but is **not** what the published image runs today: the
-image still runs `seawise serve`, and moves to `seawise-agent` in a later
-release. Everything below applies only to `seawise-agent`; none of it
-changes how `seawise serve` behaves.
+`seawise-agent` is the next version of the SeaWise client. The `:latest`
+and `:1.x` images run `seawise serve`; `seawise-agent` has its own image,
+published only under `:2`, `:2.x.y`, `:beta` and `:stable` (see
+[Container image](#container-image)). Everything below applies only to
+`seawise-agent`; none of it changes how `seawise serve` behaves.
 
 It reads an existing client's data folder without modifying it and keeps
 its own state in `<data folder>/v2`.

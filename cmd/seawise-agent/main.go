@@ -28,9 +28,10 @@ import (
 
 const usage = `seawise-agent: next version of the SeaWise client (in development).
 
-The published image still runs "seawise serve". The target policy,
-forwarder, HTTPS admin UI and setup code described in
-cmd/seawise-agent/README.md apply only to seawise-agent.
+The :latest and :1.x images run "seawise serve"; this agent is published
+only as :2, :2.x.y, :beta and :stable. The target policy, forwarder,
+HTTPS admin UI and setup code described in cmd/seawise-agent/README.md
+apply only to seawise-agent.
 
 Configuration is through environment variables; see that README.
 `
