@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -24,6 +25,7 @@ import (
 	"github.com/seawise/client/internal/paths"
 	"github.com/seawise/client/internal/store"
 	"github.com/seawise/client/internal/targetpolicy"
+	"github.com/seawise/client/internal/updatecheck"
 )
 
 const usage = `seawise-agent: next version of the SeaWise client (in development).
@@ -118,9 +120,11 @@ func main() {
 	}
 	go func() { _ = syncer.Run(ctx) }()
 
+	updates := startUpdateCheck(ctx, log, st)
+
 	ui, err := startAdminUI(ctx, log, st, a, accessLog, func(ctx context.Context) any {
 		as, _ := a.Status(ctx)
-		return map[string]any{"agent": as, "control_plane": syncer.Status(), "access_log": accessLog.Status()}
+		return map[string]any{"agent": as, "control_plane": syncer.Status(), "access_log": accessLog.Status(), "updates": updates()}
 	})
 	if err != nil {
 		log.Error("admin UI", "error", err)
@@ -132,6 +136,36 @@ func main() {
 		log.Error("agent stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+// testUpdateConfig lets the memory budget test point update checks at a
+// local test repository; it does nothing in release builds.
+var testUpdateConfig = func(*updatecheck.Config) {}
+
+// startUpdateCheck starts the signed update check and returns its status.
+// Update checks only show notices; they never change the running client.
+func startUpdateCheck(ctx context.Context, log *slog.Logger, st *store.Store) func() updatecheck.Status {
+	fixed := func(s updatecheck.Status) func() updatecheck.Status { return func() updatecheck.Status { return s } }
+	if os.Getenv("SEAWISE_UPDATE_CHECK") == "0" {
+		return fixed(updatecheck.Status{State: updatecheck.StateDisabled})
+	}
+	root, url := updatecheck.Pinned()
+	cfg := updatecheck.Config{
+		Root: root, URL: url, Dir: filepath.Join(st.Dir(), "tuf"),
+		Channel: envOr("SEAWISE_UPDATE_CHANNEL", "stable"), Version: constants.Version, Logger: log,
+	}
+	testUpdateConfig(&cfg)
+	c, err := updatecheck.New(cfg)
+	if errors.Is(err, updatecheck.ErrNotConfigured) {
+		log.Info("update checks are not configured in this build")
+		return fixed(updatecheck.Status{State: updatecheck.StateNotConfigured})
+	}
+	if err != nil {
+		log.Warn("update checks off", "error", err)
+		return fixed(updatecheck.Status{State: updatecheck.StateError, Error: "update checks are off: " + err.Error()})
+	}
+	go c.Run(ctx)
+	return c.Status
 }
 
 // startAdminUI serves HTTPS and plain HTTP on the admin port and returns a

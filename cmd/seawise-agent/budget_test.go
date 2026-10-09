@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"github.com/seawise/client/internal/store"
+	"github.com/seawise/client/internal/tufrepo"
 )
 
 // Memory budgets for the agent process, measured on the release build.
@@ -37,8 +39,9 @@ const (
 const budgetServerID = "11111111-2222-4333-8444-555555555555"
 
 // TestMemoryBudget builds seawise-agent without the race detector, runs it
-// with a stand-in frpc and a fake control plane, and checks resident memory
-// when idle and while forwarding many connections.
+// with a stand-in frpc, a fake control plane and a local signed update
+// repository, and checks resident memory when idle (after a verified update
+// check) and while forwarding many connections.
 func TestMemoryBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("builds and runs the agent")
@@ -54,7 +57,7 @@ func TestMemoryBudget(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	bin := filepath.Join(tmp, "seawise-agent")
-	build := exec.Command(goBin, "build", "-trimpath", "-o", bin, ".")
+	build := exec.Command(goBin, "build", "-trimpath", "-tags", "seawise_tuftest", "-o", bin, ".")
 	build.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
@@ -74,6 +77,7 @@ func TestMemoryBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	pairedDataDir(t, dataDir, api.URL, echoPort)
+	tufDir := updateRepo(t)
 
 	cmd := exec.Command(bin)
 	cmd.Env = []string{
@@ -86,6 +90,7 @@ func TestMemoryBudget(t *testing.T) {
 		// Keep DNS lookups of the tunnel server off the network.
 		"HTTPS_PROXY=http://127.0.0.1:9",
 		"NO_PROXY=127.0.0.1,localhost",
+		"SEAWISE_TEST_TUF_DIR=" + tufDir,
 	}
 	var stderr strings.Builder
 	cmd.Stderr = &lockedWriter{w: &stderr}
@@ -101,6 +106,7 @@ func TestMemoryBudget(t *testing.T) {
 	}()
 
 	ports := waitForwarderPorts(t, filepath.Join(dataDir, store.SubDir, "frpc.toml"), budgetApps)
+	waitFile(t, filepath.Join(dataDir, store.SubDir, "tuf", "state.json"))
 	time.Sleep(settleDuration)
 	idle := maxRSS(t, cmd.Process.Pid, 2*time.Second)
 
@@ -117,6 +123,51 @@ func TestMemoryBudget(t *testing.T) {
 	if moved == 0 {
 		t.Error("no data moved through the forwarder")
 	}
+}
+
+// updateRepo serves a signed test update repository over HTTPS and returns
+// the folder the seawise_tuftest build reads its root, URL and CA from.
+func updateRepo(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	now := time.Now()
+	keys, err := tufrepo.InitTest(repo, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"channel":"stable","image":"ghcr.io/seawise-io/seawise-client","version":"9.0.0","digest":"sha256:` + strings.Repeat("a", 64) + `","expires":"` + now.Add(24*time.Hour).UTC().Format(time.RFC3339) + `"}`
+	if _, err := tufrepo.SignTargets(repo, keys.Targets, map[string][]byte{"release/stable.json": []byte(manifest), "keyset.json": []byte(`{"keys":[]}`)}, nil, now, tufrepo.DefaultTargetsExpiry); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tufrepo.Refresh(repo, keys.Snapshot, keys.Timestamp, now, tufrepo.DefaultOnlineExpiry, tufrepo.DefaultMinRemaining); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewTLSServer(http.FileServer(http.Dir(repo)))
+	t.Cleanup(srv.Close)
+	dir := t.TempDir()
+	root, err := os.ReadFile(filepath.Join(repo, "metadata", "1.root.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
+	for name, b := range map[string][]byte{"root.json": root, "url": []byte(srv.URL), "ca.pem": ca} {
+		if err := os.WriteFile(filepath.Join(dir, name), b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func waitFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("%s not written: no verified update check", path)
 }
 
 type lockedWriter struct {

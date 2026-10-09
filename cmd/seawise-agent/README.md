@@ -70,6 +70,23 @@ newest first.
 - **Memory.** A soft memory limit of 64 MiB applies unless `GOMEMLIMIT` is
   set.
 
+## Update notices
+
+The agent checks once a day whether a newer release is available on its
+channel and shows it in the admin UI. It never updates itself; to update,
+pull the image it names and recreate the container.
+
+Release information and the signing key set are verified with
+[TUF](https://theupdateframework.io) against a root built into the agent
+(a primary and a backup root key), with rollback, freeze and
+mix-and-match protection, HTTPS only, no redirects, size limits and
+timeouts. Verified metadata is kept in `<data folder>/v2/tuf`. If the
+signed metadata expires, update notices stop until it can be refreshed;
+tunnels keep running with the last verified key set. Builds without a
+production root make no update checks (the status shows
+`not_configured`). The repository layout and signing tool are described in
+`tools/tuf/README.md`.
+
 ## Local connections to the forwarder
 
 Each app's forwarder listens on a random port on `127.0.0.1`. Any program
@@ -125,3 +142,5 @@ stay on the current client.
 | `SEAWISE_NAT64_PREFIXES` | Extra NAT64 prefixes used on this network, comma separated |
 | `SEAWISE_CONTAINER` | `1` treats the process as running in a container |
 | `SEAWISE_FRPC_PATH`, `SEAWISE_TRUSTED_CA_FILE` | frpc binary and CA bundle |
+| `SEAWISE_UPDATE_CHANNEL` | `stable` (default) or `beta`: which releases update notices follow |
+| `SEAWISE_UPDATE_CHECK` | `0` turns update checks off |

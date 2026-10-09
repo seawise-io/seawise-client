@@ -160,3 +160,16 @@ func TestUIUsesTextContentOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestUIShowsUpdateNotice(t *testing.T) {
+	html, _ := staticFS.ReadFile("static/index.html")
+	if !strings.Contains(string(html), `id="update"`) {
+		t.Error("index.html has no update notice element")
+	}
+	js, _ := staticFS.ReadFile("static/app.js")
+	for _, want := range []string{"s.updates", "u.available.version", `u.state === "expired"`, "does not update itself"} {
+		if !strings.Contains(string(js), want) {
+			t.Errorf("app.js does not use %s", want)
+		}
+	}
+}
