@@ -81,17 +81,21 @@ connection lifetime and idle time.
 ## Container image
 
 `Dockerfile.agent` builds the image for this agent (`make image-agent`).
-Images are published only under `:2`, `:2.x.y`, `:beta` and `:stable`;
-`:latest` and `:1.x` stay on the current client.
+Images are published only under `:2`, `:2.x.y`, `:beta` and `:stable`
+(pre-releases only under `:2.x.y-pre` and `:beta`); `:latest` and `:1.x`
+stay on the current client.
 
-- **Users.** Started as root, the entrypoint switches to `PUID`/`PGID`
-  (default `1000`) by number, so IDs that already exist in the image, such
-  as GID 100, work as they are. It sets the data folder's owner and hands
-  any root-owned files in it to that user; contents are not changed.
-  Started with `--user`, it runs the agent directly.
-- **Hardened run.** All state is under `/config`, so the root filesystem
-  can be read-only and no capabilities are needed when the data folder is
-  already owned by the chosen user:
+- **Users.** The agent never runs as root. By default the container
+  starts as root only to switch to `PUID`/`PGID` (default `1000`), so an
+  install moving from the `:latest` image keeps its settings and data
+  folder. It switches by number, so IDs that already exist in the image,
+  such as GID 100, work as they are. Before switching it sets the data
+  folder's owner and hands any root-owned files in it to that user
+  (contents are not changed, symlinks are not followed) and warns if any
+  remain. Started with `--user`, it runs the agent directly.
+- **Recommended: start as the user.** All state is under `/config`, so the
+  root filesystem can be read-only, and with `--user` no capabilities are
+  needed. The data folder must already be owned by that user:
 
   ```
   docker run -d --name seawise --restart unless-stopped \
@@ -101,7 +105,8 @@ Images are published only under `:2`, `:2.x.y`, `:beta` and `:stable`;
   ```
 
   Without `--user`, the entrypoint needs the `CHOWN`, `SETUID` and `SETGID`
-  capabilities to switch users.
+  capabilities (`--cap-drop ALL --cap-add CHOWN --cap-add SETUID
+  --cap-add SETGID`).
 - **Health check.** `GET http://127.0.0.1:8082/healthz` (plain HTTP,
   loopback only). If `SEAWISE_BIND_ADDR` is set to an address other than
   `0.0.0.0` or `127.0.0.1`, the image health check cannot reach it.

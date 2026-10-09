@@ -1,10 +1,15 @@
 # Client v2 image: runs seawise-agent. Published only under the :2, :2.x.y,
 # :beta and :stable tags; the v1 image is built from Dockerfile.
 #
-# Runs non-root and works on a read-only root filesystem: all state lives
-# under /config. Hardened run:
+# By default the container starts as root only to switch to PUID/PGID
+# (default 1000:1000), so installs upgraded from the v1 image keep their
+# PUID/PGID settings and data folder ownership. The agent itself never runs
+# as root. All state lives under /config, so the root filesystem can be
+# read-only. Recommended: start it as the user directly, which needs no
+# capabilities at all:
 #   docker run --read-only --cap-drop ALL --security-opt no-new-privileges \
 #     --user 1000:1000 -v ./config:/config -p 8082:8082 <image>
+# Without --user, keep CHOWN, SETUID and SETGID.
 
 ARG BUILDPLATFORM=linux/amd64
 
