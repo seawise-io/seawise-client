@@ -1,0 +1,52 @@
+# Weekly refresh of the online TUF roles (snapshot and timestamp, 14-day
+# expiry). Off until the repository variable TUF_REFRESH_ENABLED is "true".
+# The snapshot and timestamp keys are secrets of the protected "tuf-online"
+# environment; root and targets keys are never in CI. See tools/tuf/README.md.
+
+name: TUF refresh
+
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: tuf-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    if: vars.TUF_REFRESH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: tuf-online
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+
+      - name: Pull published metadata
+        env:
+          TUF_REPO_URL: ${{ vars.TUF_REPO_URL }}
+        run: go run ./tools/tuf pull -url "$TUF_REPO_URL" -dir "$RUNNER_TEMP/tuf"
+
+      - name: Sign new snapshot and timestamp
+        env:
+          TUF_SNAPSHOT_KEY: ${{ secrets.TUF_SNAPSHOT_KEY }}
+          TUF_TIMESTAMP_KEY: ${{ secrets.TUF_TIMESTAMP_KEY }}
+        run: go run ./tools/tuf refresh -dir "$RUNNER_TEMP/tuf" -snapshot-key env:TUF_SNAPSHOT_KEY -timestamp-key env:TUF_TIMESTAMP_KEY
+
+      - name: Verify against the pinned root
+        run: go run ./tools/tuf verify -metadata-only -dir "$RUNNER_TEMP/tuf" -root internal/updatecheck/root/production.json
+
+      - name: Publish
+        run: |
+          echo "::error::No hosting configured for the TUF repository yet. Upload new metadata/*.snapshot.json first, then metadata/timestamp.json."
+          exit 1
