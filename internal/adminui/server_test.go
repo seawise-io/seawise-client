@@ -325,3 +325,23 @@ func TestOnePortServesBoth(t *testing.T) {
 		}
 	}
 }
+
+func TestStaticServesOnlyEmbeddedAssets(t *testing.T) {
+	s := newServer(t, newStore(t, nil), &testClock{now: t0})
+	for name, ct := range map[string]string{"app.js": "text/javascript; charset=utf-8", "app.css": "text/css; charset=utf-8"} {
+		want, err := staticFS.ReadFile("static/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := serve(s.SecureHandler(), req("GET", "/static/"+name, "192.168.1.10:8082"))
+		if w.Code != http.StatusOK || w.Body.String() != string(want) ||
+			w.Header().Get("Content-Type") != ct || w.Header().Get("X-Content-Type-Options") != "nosniff" {
+			t.Errorf("%s: %d %q", name, w.Code, w.Header())
+		}
+	}
+	for _, p := range []string{"/static/index.html", "/static/server.go", "/static/..%2fserver.go", "/static/%3Cscript%3E", "/static/app.js%00"} {
+		if w := serve(s.SecureHandler(), req("GET", p, "192.168.1.10:8082")); w.Code != http.StatusNotFound {
+			t.Errorf("%s: %d", p, w.Code)
+		}
+	}
+}

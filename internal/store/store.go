@@ -225,6 +225,10 @@ func (s *Store) dropImplausibleEdge(now time.Time) {
 // accessible to group or others.
 func CheckDir(path string) error { return checkDir(path) }
 
+// ReadOwned reads a file in the store directory with the same checks as the
+// store's own files.
+func ReadOwned(path string) ([]byte, error) { return readOwned(path) }
+
 func (s *Store) State() State {
 	s.mu.Lock()
 	defer s.mu.Unlock()

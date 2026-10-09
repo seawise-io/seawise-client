@@ -191,10 +191,14 @@ func str(raw string, dst *string) error {
 				return fmt.Errorf("short unicode escape")
 			}
 			v, err := strconv.ParseUint(body[i+1:i+1+n], 16, 32)
-			if err != nil || !utf8.ValidRune(rune(v)) {
+			if err != nil || v > utf8.MaxRune {
 				return fmt.Errorf("bad unicode escape")
 			}
-			b.WriteRune(rune(v))
+			r := rune(v)
+			if !utf8.ValidRune(r) {
+				return fmt.Errorf("bad unicode escape")
+			}
+			b.WriteRune(r)
 			i += n
 		default:
 			return fmt.Errorf("unknown escape at byte %d", i)

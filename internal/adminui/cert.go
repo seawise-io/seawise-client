@@ -11,11 +11,9 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"math/big"
 	"net"
 	"net/netip"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -150,21 +148,14 @@ func EnsureCert(dir string, names []string, ips []net.IP, now time.Time) (*CertI
 	return info, nil
 }
 
+// loadCert reads the pair from the store directory with the store's file
+// checks: no symlinks, regular file, owned by this user, mode 0600.
 func loadCert(certPath, keyPath string) (*CertInfo, error) {
-	for _, p := range []string{certPath, keyPath} {
-		fi, err := os.Lstat(p)
-		if err != nil {
-			return nil, err
-		}
-		if !fi.Mode().IsRegular() {
-			return nil, fmt.Errorf("%s is not a regular file", p)
-		}
-	}
-	certPEM, err := os.ReadFile(certPath)
+	certPEM, err := store.ReadOwned(certPath)
 	if err != nil {
 		return nil, err
 	}
-	keyPEM, err := os.ReadFile(keyPath)
+	keyPEM, err := store.ReadOwned(keyPath)
 	if err != nil {
 		return nil, err
 	}
