@@ -77,6 +77,7 @@ const (
 	NoticeSubdomainDiffer NoticeKind = "subdomain_differs"
 	NoticeDisablePending  NoticeKind = "disable_pending"
 	NoticeDisableCap      NoticeKind = "disable_cap"
+	NoticePublicImported  NoticeKind = "public_imported"
 )
 
 type Notice struct {
@@ -92,11 +93,14 @@ type Plan struct {
 	FillSubdomain  map[string]string
 	RequestDisable []string
 	ClearRequest   []string
-	Notices        []Notice
+	// ServerPublic holds the server's public flag per local ID, for apps
+	// whose list item carried one.
+	ServerPublic map[string]bool
+	Notices      []Notice
 }
 
 func (p Plan) Empty() bool {
-	return len(p.FillSubdomain) == 0 && len(p.RequestDisable) == 0 && len(p.ClearRequest) == 0
+	return len(p.FillSubdomain) == 0 && len(p.RequestDisable) == 0 && len(p.ClearRequest) == 0 && len(p.ServerPublic) == 0
 }
 
 // Apply makes the planned changes on st and reports whether anything
@@ -114,6 +118,25 @@ func (p Plan) Apply(st *store.State, now time.Time, perDay int) (bool, []Notice)
 		if t := byID[id]; t != nil && t.Subdomain == "" && ValidSubdomain(sub) {
 			t.Subdomain = sub
 			changed = true
+		}
+	}
+	// The server's flag is recorded, never applied: an app is public only
+	// with the local toggle. A grandfathered app with no local decision
+	// takes the server's flag once, so nothing goes private on upgrade.
+	for id, pub := range p.ServerPublic {
+		t := byID[id]
+		if t == nil {
+			continue
+		}
+		if t.ServerPublic != pub {
+			t.ServerPublic = pub
+			changed = true
+		}
+		if t.Public == nil && t.Grandfathered {
+			v := pub
+			t.Public = &v
+			changed = true
+			notices = append(notices, Notice{Kind: NoticePublicImported, LocalID: id})
 		}
 	}
 	for _, id := range p.ClearRequest {
@@ -194,7 +217,7 @@ func (d *DisableTracker) confirmed(id string, now time.Time) bool {
 // taken from the server, and a disable is only a request, made after the
 // server has repeated it over time.
 func PlanServices(local []store.Target, remote []Service, dt *DisableTracker, now time.Time) Plan {
-	plan := Plan{FillSubdomain: map[string]string{}}
+	plan := Plan{FillSubdomain: map[string]string{}, ServerPublic: map[string]bool{}}
 	byID := make(map[string]Service, len(remote))
 	for _, s := range remote {
 		byID[s.ID] = s
@@ -214,6 +237,9 @@ func PlanServices(local []store.Target, remote []Service, dt *DisableTracker, no
 			continue
 		}
 		matched[s.ID] = true
+		if s.Public != nil {
+			plan.ServerPublic[t.LocalID] = *s.Public
+		}
 		if s.Host != t.Host || s.Port != t.Port {
 			plan.Notices = append(plan.Notices, Notice{Kind: NoticeServerDiffers, LocalID: t.LocalID})
 		}

@@ -226,7 +226,7 @@ func (s *Syncer) syncList(ctx context.Context, serverID string, now time.Time) {
 	if len(plan.RequestDisable) > 0 {
 		s.log.Warn("server asks to turn off apps; waiting for local confirmation", "local_ids", plan.RequestDisable)
 	}
-	if changed && len(plan.FillSubdomain) > 0 {
+	if changed && (len(plan.FillSubdomain) > 0 || len(plan.ServerPublic) > 0) {
 		_ = s.cfg.Agent.Reconcile(ctx)
 	}
 }
