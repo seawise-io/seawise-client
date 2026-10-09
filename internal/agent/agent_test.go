@@ -4,15 +4,19 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -65,6 +69,29 @@ func (f *fakeTimers) all() []time.Duration {
 	return append([]time.Duration(nil), f.durations...)
 }
 
+func caFile(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(p, []byte("synthetic placeholder\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func confValue(t *testing.T, path, key string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if k, v, ok := strings.Cut(line, " = "); ok && k == key {
+			return v
+		}
+	}
+	return ""
+}
+
 func freePort(t *testing.T) int {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -81,8 +108,11 @@ func pairedStore(t *testing.T, dir string) *store.Store {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := st.UpdateSecrets(func(s *store.Secrets) error { s.FRPToken = "synthetic-token"; return nil }); err != nil {
+		t.Fatal(err)
+	}
 	err = st.Update(func(s *store.State) error {
-		s.Account = &store.Account{ServerID: "sid", FRPServerAddr: "frp-1.seawise.dev", FRPServerPort: 7000, FRPUseTLS: true, APIURL: "https://api.example.invalid"}
+		s.Account = &store.Account{ServerID: "sid", FRPServerAddr: "frp-1.seawise.dev", FRPServerPort: 7000, APIURL: "https://api.example.invalid"}
 		s.Targets = []store.Target{
 			{LocalID: "a", Name: "jellyfin", Host: "192.168.1.20", Port: 8096, Subdomain: "jf", Source: store.SourceLocal},
 			{LocalID: "b", Name: "off", Host: "192.168.1.21", Port: 80, Subdomain: "off", Disabled: true, Source: store.SourceLocal},
@@ -91,9 +121,6 @@ func pairedStore(t *testing.T, dir string) *store.Store {
 		return nil
 	})
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := st.UpdateSecrets(func(s *store.Secrets) error { s.FRPToken = "synthetic-token"; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	return st
@@ -111,14 +138,14 @@ func newHarness(t *testing.T, st *store.Store, mode string, tweak func(*Config))
 	h.ctl = filepath.Join(tmp, "mode")
 	h.setMode(mode)
 	cfg := Config{
-		Store:        st,
-		FRPCPath:     exe,
-		AdminPort:    freePort(t),
-		StopTimeout:  2 * time.Second,
-		PollInterval: 50 * time.Millisecond,
-		After:        h.timers.after,
-		Logger:       nil,
-		Env:          append(os.Environ(), envFake+"=1", envFakeLog+"="+h.log, envFakeCtl+"="+h.ctl),
+		Store:         st,
+		FRPCPath:      exe,
+		TrustedCAFile: caFile(t),
+		StopTimeout:   2 * time.Second,
+		PollInterval:  50 * time.Millisecond,
+		After:         h.timers.after,
+		Logger:        nil,
+		Env:           append(os.Environ(), envFake+"=1", envFakeLog+"="+h.log, envFakeCtl+"="+h.ctl),
 	}
 	if tweak != nil {
 		tweak(&cfg)
@@ -212,6 +239,8 @@ func TestStartsFRPCWithAtomicConfig(t *testing.T) {
 		`transport.tls.serverName = "frp-1.seawise.dev"`,
 		`metadatas.token = "synthetic-token"`,
 		`metadatas.server_id = "sid"`,
+		`transport.tls.enable = true`,
+		`transport.tls.trustedCaFile = "` + h.agent.cfg.TrustedCAFile + `"`,
 		`webServer.addr = "127.0.0.1"`,
 		`name = "sid-jellyfin"`,
 		`subdomain = "jf"`,
@@ -495,8 +524,16 @@ func TestAdminClientDoesNotFollowRedirects(t *testing.T) {
 func TestChildEnvFiltersSecrets(t *testing.T) {
 	t.Setenv("SEAWISE_ADMIN_PASSWORD", "x")
 	t.Setenv("HTTPS_PROXY", "http://proxy.example.invalid:3128")
-	env := strings.Join(childEnv(), "\n")
-	if strings.Contains(env, "SEAWISE_ADMIN_PASSWORD") || !strings.Contains(env, "HTTPS_PROXY=") {
+	t.Setenv("no_proxy", "localhost")
+	t.Setenv("HOME", "/home/someone")
+	t.Setenv("TZ", "UTC")
+	for _, kv := range childEnv() {
+		k, _, _ := strings.Cut(kv, "=")
+		if !strings.HasSuffix(strings.ToUpper(k), "_PROXY") {
+			t.Fatalf("non-proxy variable passed to frpc: %s", k)
+		}
+	}
+	if env := strings.Join(childEnv(), "\n"); !strings.Contains(env, "HTTPS_PROXY=") || !strings.Contains(env, "no_proxy=") {
 		t.Fatalf("env = %s", env)
 	}
 }
@@ -564,5 +601,253 @@ func TestRunOnV1VolumeLeavesV1FilesUnchanged(t *testing.T) {
 		if after[k] != v {
 			t.Fatalf("%s changed", k)
 		}
+	}
+}
+
+func TestGroupAImportUsesVerifiedTLS(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join("..", "legacy", "testdata", "v1", "A")
+	for _, f := range []string{"config.json", "frpc.toml", "password.hash"} {
+		b, err := os.ReadFile(filepath.Join(src, f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.WriteFile(filepath.Join(dir, f), b, 0o600)
+	}
+	st, err := store.Open(dir, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.State().Account.ImportedFRPUseTLS {
+		t.Fatal("fixture should have TLS off in v1")
+	}
+	if err := st.Update(func(s *store.State) error { s.Account.FRPServerAddr = "frp-1.seawise.dev"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t, st, "run", nil)
+	eventually(t, "frpc ready", func() bool { s := h.status(); return s.Running && len(s.Proxies) > 0 })
+	p := h.agent.ConfigPath()
+	if confValue(t, p, "transport.tls.enable") != "true" || confValue(t, p, "transport.tls.trustedCaFile") != `"`+h.agent.cfg.TrustedCAFile+`"` || confValue(t, p, "transport.tls.serverName") != `"frp-1.seawise.dev"` {
+		b, _ := os.ReadFile(p)
+		t.Fatalf("config without verified TLS:\n%s", b)
+	}
+}
+
+func TestMissingCABundleRefusesToStart(t *testing.T) {
+	h := newHarness(t, pairedStore(t, t.TempDir()), "run", func(c *Config) { c.TrustedCAFile = "/nonexistent/ca.pem" })
+	err := h.agent.Reconcile(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "certificate verification") {
+		t.Fatalf("err = %v", err)
+	}
+	if s := h.status(); s.Running || h.count("start") != 0 {
+		t.Fatalf("started without a CA bundle: %+v", s)
+	}
+	if _, err := os.Stat(h.agent.ConfigPath()); err == nil {
+		t.Fatal("config written without a CA bundle")
+	}
+}
+
+func TestAdminPortChangesPerStartAndStaysLoopback(t *testing.T) {
+	st := pairedStore(t, t.TempDir())
+	h := newHarness(t, st, "run", nil)
+	ports := map[string]bool{}
+	for i := 0; i < 3; i++ {
+		eventually(t, "frpc ready", func() bool { s := h.status(); return s.Running && len(s.Proxies) > 0 })
+		if confValue(t, h.agent.ConfigPath(), "webServer.addr") != `"127.0.0.1"` {
+			t.Fatal("admin API not on loopback")
+		}
+		ports[confValue(t, h.agent.ConfigPath(), "webServer.port")] = true
+		tok := fmt.Sprintf("token-%d", i)
+		if err := st.UpdateSecrets(func(s *store.Secrets) error { s.FRPToken = tok; return nil }); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.agent.Reconcile(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(ports) < 2 {
+		t.Fatalf("admin port reused across starts: %v", ports)
+	}
+}
+
+const (
+	envTestAgent    = "SEAWISE_TEST_AGENT"
+	envTestAgentDir = "SEAWISE_TEST_AGENT_DIR"
+	envTestAgentCA  = "SEAWISE_TEST_AGENT_CA"
+)
+
+// runTestAgent is the body of a separate agent process used by the
+// cross-process tests.
+func runTestAgent() {
+	st, err := store.Open(os.Getenv(envTestAgentDir), time.Now)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(3)
+	}
+	exe, _ := os.Executable()
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, envTestAgent) {
+			env = append(env, kv)
+		}
+	}
+	a, err := New(Config{Store: st, FRPCPath: exe, TrustedCAFile: os.Getenv(envTestAgentCA), Env: append(env, envFake+"=1")})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(4)
+	}
+	_ = a.Run(context.Background())
+}
+
+type agentProc struct {
+	cmd    *exec.Cmd
+	stderr *strings.Builder
+}
+
+func startAgentProcess(t *testing.T, dir, log, ctl string) *agentProc {
+	t.Helper()
+	exe, _ := os.Executable()
+	cmd := exec.Command(exe)
+	cmd.Env = append(os.Environ(), envTestAgent+"=1", envTestAgentDir+"="+dir, envTestAgentCA+"="+caFile(t), envFakeLog+"="+log, envFakeCtl+"="+ctl)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	// A leaked frpc would hold the stderr pipe open; do not wait on it.
+	cmd.WaitDelay = 2 * time.Second
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+	return &agentProc{cmd: cmd, stderr: &stderr}
+}
+
+func pidsFromLog(path, event string) []int {
+	b, _ := os.ReadFile(path)
+	var out []int
+	for _, line := range strings.Split(string(b), "\n") {
+		if rest, ok := strings.CutPrefix(line, event+" "); ok {
+			if n, err := strconv.Atoi(rest); err == nil {
+				out = append(out, n)
+			}
+		}
+	}
+	return out
+}
+
+func pairedDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	st := pairedStore(t, dir)
+	st.Close()
+	return dir
+}
+
+func TestSecondAgentOnSameDataDirRefused(t *testing.T) {
+	dir := pairedDir(t)
+	tmp := t.TempDir()
+	log, ctl := filepath.Join(tmp, "events"), filepath.Join(tmp, "mode")
+	os.WriteFile(ctl, []byte("run"), 0o600)
+	startAgentProcess(t, dir, log, ctl)
+	eventually(t, "first agent started frpc", func() bool { return len(pidsFromLog(log, "start")) == 1 })
+
+	if _, err := store.Open(dir, time.Now); !errors.Is(err, store.ErrLocked) {
+		t.Fatalf("in-process open: err = %v", err)
+	}
+	second := startAgentProcess(t, dir, log, ctl)
+	err := second.cmd.Wait()
+	if err == nil || !strings.Contains(second.stderr.String(), "another agent") {
+		t.Fatalf("second agent: err %v stderr %q", err, second.stderr.String())
+	}
+	if n := len(pidsFromLog(log, "start")); n != 1 {
+		t.Fatalf("second agent started frpc: %d starts", n)
+	}
+}
+
+func TestKilledAgentLeavesNoFRPC(t *testing.T) {
+	dir := pairedDir(t)
+	tmp := t.TempDir()
+	log, ctl := filepath.Join(tmp, "events"), filepath.Join(tmp, "mode")
+	os.WriteFile(ctl, []byte("run"), 0o600)
+	ap := startAgentProcess(t, dir, log, ctl)
+	eventually(t, "frpc started", func() bool { return len(pidsFromLog(log, "start")) == 1 })
+	frpcPID := pidsFromLog(log, "start")[0]
+	if !procAlive(frpcPID) {
+		t.Fatal("frpc not alive")
+	}
+	if err := ap.cmd.Process.Signal(syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	_ = ap.cmd.Wait()
+	if !waitGone(frpcPID, 5*time.Second) {
+		t.Fatalf("frpc %d survived the agent", frpcPID)
+	}
+	st, err := store.Open(dir, time.Now)
+	if err != nil {
+		t.Fatalf("lock not released by dead agent: %v", err)
+	}
+	st.Close()
+}
+
+func startLooseFRPC(t *testing.T, configPath string) (*exec.Cmd, string) {
+	t.Helper()
+	exe, _ := os.Executable()
+	tmp := t.TempDir()
+	log := filepath.Join(tmp, "events")
+	cmd := exec.Command(exe, "-c", configPath)
+	cmd.Env = append(os.Environ(), envFake+"=1", envFakeLog+"="+log, envFakeCtl+"="+filepath.Join(tmp, "mode"))
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+	eventually(t, "loose frpc up", func() bool { return len(pidsFromLog(log, "start")) == 1 })
+	return cmd, log
+}
+
+func TestStaleFRPCFromPreviousAgentIsStopped(t *testing.T) {
+	st := pairedStore(t, t.TempDir())
+	exe, _ := os.Executable()
+	prev, err := New(Config{Store: st, FRPCPath: exe, TrustedCAFile: caFile(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(prev.ConfigPath(), []byte(fmt.Sprintf("webServer.port = %d\n", freePort(t))), 0o600)
+	stale, staleLog := startLooseFRPC(t, prev.ConfigPath())
+	if err := prev.recordPID(stale.Process.Pid); err != nil {
+		t.Fatal(err)
+	}
+
+	exited := make(chan struct{})
+	go func() { _ = stale.Wait(); close(exited) }()
+	h := newHarness(t, st, "run", nil)
+	select {
+	case <-exited:
+	case <-time.After(10 * time.Second):
+		t.Fatal("stale frpc not stopped")
+	}
+	if len(pidsFromLog(staleLog, "exit")) != 1 {
+		t.Fatal("stale frpc was not stopped gracefully")
+	}
+	eventually(t, "new frpc ready", func() bool { s := h.status(); return s.Running && len(s.Proxies) > 0 })
+}
+
+func TestStaleRecordForOtherProcessIsIgnored(t *testing.T) {
+	st := pairedStore(t, t.TempDir())
+	exe, _ := os.Executable()
+	prev, err := New(Config{Store: st, FRPCPath: exe, TrustedCAFile: caFile(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(t.TempDir(), "other.toml")
+	os.WriteFile(other, []byte(fmt.Sprintf("webServer.port = %d\n", freePort(t))), 0o600)
+	foreign, _ := startLooseFRPC(t, other)
+	if err := prev.recordPID(foreign.Process.Pid); err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t, st, "run", nil)
+	eventually(t, "frpc ready", func() bool { s := h.status(); return s.Running && len(s.Proxies) > 0 })
+	if !procAlive(foreign.Process.Pid) {
+		t.Fatal("a process with a different command line was killed")
+	}
+	if _, err := os.Stat(filepath.Join(st.Dir(), PIDFile)); err != nil {
+		t.Fatal("current frpc pid not recorded")
 	}
 }

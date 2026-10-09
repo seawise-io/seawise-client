@@ -26,6 +26,7 @@ const (
 	SubDir        = "v2"
 	StateFile     = "state.json"
 	SecretsFile   = "secrets.json"
+	LockFile      = "agent.lock"
 	MaxTargets    = legacy.MaxServices
 
 	SourceV1Machine = "v1-machine"
@@ -37,6 +38,7 @@ var (
 	ErrNewerSchema = errors.New("state was written by a newer client")
 	ErrUnsafePath  = errors.New("unsafe store path")
 	ErrInvalid     = errors.New("invalid state")
+	ErrLocked      = errors.New("another agent is using this data directory")
 )
 
 type Account struct {
@@ -44,10 +46,11 @@ type Account struct {
 	ServerName    string `json:"server_name,omitempty"`
 	FRPServerAddr string `json:"frp_server_addr"`
 	FRPServerPort int    `json:"frp_server_port"`
-	FRPUseTLS     bool   `json:"frp_use_tls"`
-	APIURL        string `json:"api_url"`
-	UserID        string `json:"user_id,omitempty"`
-	UserEmail     string `json:"user_email,omitempty"`
+	// v2 always uses verified TLS; the v1 value is kept for diagnostics.
+	ImportedFRPUseTLS bool   `json:"imported_frp_use_tls"`
+	APIURL            string `json:"api_url"`
+	UserID            string `json:"user_id,omitempty"`
+	UserEmail         string `json:"user_email,omitempty"`
 }
 
 type Target struct {
@@ -95,11 +98,11 @@ type Secrets struct {
 }
 
 type Store struct {
-	dir      string
-	mu       sync.Mutex
-	state    State
-	secrets  Secrets
-	Warnings []string
+	dir     string
+	mu      sync.Mutex
+	state   State
+	secrets Secrets
+	lock    *os.File
 }
 
 // currentSchema is a variable so tests can exercise migrations.
@@ -108,35 +111,50 @@ var currentSchema = SchemaVersion
 // migrations[i] upgrades a raw state document from schema i+1 to i+2.
 var migrations []func(doc map[string]any) error
 
-// Open loads <dataDir>/v2, importing v1 state on first run.
+// Open locks <dataDir>/v2 for this process and loads it, importing v1
+// state on first run. A second Open of the same directory fails with
+// ErrLocked until Close.
 func Open(dataDir string, now func() time.Time) (*Store, error) {
 	dir := filepath.Join(dataDir, SubDir)
-	info, err := os.Lstat(dir)
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
-	case err != nil:
+	if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
 		return nil, err
-	case !info.IsDir():
-		return nil, fmt.Errorf("%w: %s is not a directory", ErrUnsafePath, dir)
 	}
-
-	s := &Store{dir: dir}
-	if err == nil {
-		if err := removeStaleTemps(dir); err != nil {
-			return nil, fmt.Errorf("clean temp files: %w", err)
-		}
-		loaded, err := s.load()
-		if err != nil {
-			return nil, err
-		}
-		if loaded {
-			return s, nil
-		}
+	if err := checkDir(dir); err != nil {
+		return nil, err
 	}
-	if err := s.importV1(dataDir, now().UTC()); err != nil {
+	lock, err := lockDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	s := &Store{dir: dir, lock: lock}
+	if err := s.open(dataDir, now); err != nil {
+		lock.Close()
 		return nil, err
 	}
 	return s, nil
+}
+
+func (s *Store) open(dataDir string, now func() time.Time) error {
+	if err := removeStaleTemps(s.dir); err != nil {
+		return fmt.Errorf("clean temp files: %w", err)
+	}
+	loaded, err := s.load()
+	if err != nil || loaded {
+		return err
+	}
+	return s.importV1(dataDir, now().UTC())
+}
+
+// Close releases the directory lock.
+func (s *Store) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lock == nil {
+		return nil
+	}
+	err := s.lock.Close()
+	s.lock = nil
+	return err
 }
 
 func (s *Store) Dir() string { return s.dir }
@@ -166,6 +184,9 @@ func (s *Store) Update(fn func(*State) error) error {
 	if err := validateState(&next); err != nil {
 		return err
 	}
+	if err := checkAccountToken(&next, &s.secrets); err != nil {
+		return err
+	}
 	err := writeJSON(filepath.Join(s.dir, StateFile), next)
 	if err != nil && !errors.Is(err, ErrNotDurable) {
 		return err
@@ -182,6 +203,9 @@ func (s *Store) UpdateSecrets(fn func(*Secrets) error) error {
 		return err
 	}
 	next.Schema = currentSchema
+	if err := checkAccountToken(&s.state, &next); err != nil {
+		return err
+	}
 	err := writeJSON(filepath.Join(s.dir, SecretsFile), next)
 	if err != nil && !errors.Is(err, ErrNotDurable) {
 		return err
@@ -192,13 +216,10 @@ func (s *Store) UpdateSecrets(fn func(*Secrets) error) error {
 
 func (s *Store) load() (bool, error) {
 	statePath := filepath.Join(s.dir, StateFile)
-	if err := checkRegular(statePath); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return false, nil
-		}
-		return false, err
+	raw, err := readOwned(statePath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
 	}
-	raw, err := os.ReadFile(statePath)
 	if err != nil {
 		return false, err
 	}
@@ -207,34 +228,22 @@ func (s *Store) load() (bool, error) {
 		return false, fmt.Errorf("%s: %w", StateFile, err)
 	}
 
-	secretsPath := filepath.Join(s.dir, SecretsFile)
-	var secrets Secrets
-	switch err := checkRegular(secretsPath); {
+	secrets := Secrets{Schema: currentSchema}
+	b, err := readOwned(filepath.Join(s.dir, SecretsFile))
+	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		secrets.Schema = currentSchema
 	case err != nil:
 		return false, err
 	default:
-		info, err := os.Stat(secretsPath)
-		if err != nil {
-			return false, err
-		}
-		if info.Mode().Perm()&0o077 != 0 {
-			if err := os.Chmod(secretsPath, 0o600); err != nil {
-				return false, err
-			}
-			s.Warnings = append(s.Warnings, fmt.Sprintf("%s permissions tightened from %v", SecretsFile, info.Mode().Perm()))
-		}
-		b, err := os.ReadFile(secretsPath)
-		if err != nil {
-			return false, err
-		}
 		if err := strictUnmarshal(b, &secrets); err != nil {
 			return false, fmt.Errorf("%s: %w", SecretsFile, err)
 		}
 		if secrets.Schema > currentSchema {
 			return false, fmt.Errorf("%s: %w", SecretsFile, ErrNewerSchema)
 		}
+	}
+	if err := checkAccountToken(&state, &secrets); err != nil {
+		return false, err
 	}
 
 	if migrated {
@@ -244,6 +253,15 @@ func (s *Store) load() (bool, error) {
 	}
 	s.state, s.secrets = state, secrets
 	return true, nil
+}
+
+// checkAccountToken rejects a paired account without its FRP token, which
+// would otherwise leave the agent silently idle.
+func checkAccountToken(st *State, sec *Secrets) error {
+	if st.Account != nil && sec.FRPToken == "" {
+		return fmt.Errorf("%w: account %s has no frp token in %s", ErrInvalid, st.Account.ServerID, SecretsFile)
+	}
+	return nil
 }
 
 func decodeState(raw []byte) (State, bool, error) {
@@ -309,7 +327,7 @@ func (s *Store) importV1(dataDir string, now time.Time) error {
 	}
 	sec := Secrets{Schema: currentSchema, AdminPasswordHash: string(snap.PasswordHash)}
 	if a := snap.Account; a != nil {
-		st.Account = &Account{ServerID: a.ServerID, ServerName: a.ServerName, FRPServerAddr: a.FRPServerAddr, FRPServerPort: a.FRPServerPort, FRPUseTLS: a.FRPUseTLS, APIURL: a.APIURL, UserID: a.UserID, UserEmail: a.UserEmail}
+		st.Account = &Account{ServerID: a.ServerID, ServerName: a.ServerName, FRPServerAddr: a.FRPServerAddr, FRPServerPort: a.FRPServerPort, ImportedFRPUseTLS: a.FRPUseTLS, APIURL: a.APIURL, UserID: a.UserID, UserEmail: a.UserEmail}
 		sec.FRPToken = a.FRPToken
 	}
 	if st.Targets, err = grandfatheredTargets(snap, now); err != nil {
@@ -319,12 +337,6 @@ func (s *Store) importV1(dataDir string, now time.Time) error {
 		return fmt.Errorf("imported state: %w", err)
 	}
 
-	if err := os.Mkdir(s.dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
-		return err
-	}
-	if err := checkDir(s.dir); err != nil {
-		return err
-	}
 	// secrets first: state.json marks the import as complete.
 	if err := writeJSON(filepath.Join(s.dir, SecretsFile), sec); err != nil && !errors.Is(err, ErrNotDurable) {
 		return err
@@ -419,34 +431,25 @@ func writeJSON(path string, v any) error {
 func strictUnmarshal(b []byte, v any) error {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	if err := dec.Decode(v); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalid, err)
+		return fmt.Errorf("%w: malformed JSON at offset %d", ErrInvalid, jsonOffset(err, dec))
 	}
 	if _, err := dec.Token(); err != io.EOF {
-		return fmt.Errorf("%w: trailing data", ErrInvalid)
+		return fmt.Errorf("%w: malformed JSON at offset %d: trailing data", ErrInvalid, dec.InputOffset())
 	}
 	return nil
 }
 
-func checkRegular(path string) error {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return err
+// jsonOffset locates a decode error without quoting the input.
+func jsonOffset(err error, dec *json.Decoder) int64 {
+	var syn *json.SyntaxError
+	var typ *json.UnmarshalTypeError
+	switch {
+	case errors.As(err, &syn):
+		return syn.Offset
+	case errors.As(err, &typ):
+		return typ.Offset
 	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("%w: %s is not a regular file", ErrUnsafePath, path)
-	}
-	return nil
-}
-
-func checkDir(path string) error {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return err
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("%w: %s is not a directory", ErrUnsafePath, path)
-	}
-	return nil
+	return dec.InputOffset()
 }
 
 func randomID() (string, error) {

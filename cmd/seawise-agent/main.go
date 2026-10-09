@@ -26,9 +26,7 @@ func main() {
 		log.Error("open state", "error", err)
 		os.Exit(1)
 	}
-	for _, w := range st.Warnings {
-		log.Warn(w)
-	}
+	defer st.Close()
 
 	cfg := agent.Config{
 		Store:         st,

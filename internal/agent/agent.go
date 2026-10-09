@@ -10,9 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -22,7 +24,6 @@ import (
 )
 
 const (
-	DefaultAdminPort    = 7400
 	DefaultBackoffBase  = time.Second
 	DefaultBackoffMax   = 30 * time.Second
 	DefaultStableAfter  = time.Minute
@@ -30,13 +31,16 @@ const (
 	DefaultPollInterval = 10 * time.Second
 	DefaultTrustedCA    = "/etc/ssl/certs/ca-certificates.crt"
 	ConfigFile          = "frpc.toml"
+	PIDFile             = "frpc.pid"
 )
 
 var ErrStopped = errors.New("agent stopped")
 
 type Config struct {
-	Store          *store.Store
-	FRPCPath       string
+	Store    *store.Store
+	FRPCPath string
+	// AdminPort fixes frpc's loopback admin port; 0 picks a free port on
+	// every start.
 	AdminPort      int
 	AllowedDomains []string
 	TrustedCAFile  string
@@ -47,8 +51,8 @@ type Config struct {
 	PollInterval   time.Duration
 	After          func(time.Duration) <-chan time.Time
 	Logger         *slog.Logger
-	// Env is the frpc environment; nil passes only proxy, CA and locale
-	// variables from the current process.
+	// Env is the frpc environment; nil passes only the proxy variables of
+	// the current process.
 	Env []string
 }
 
@@ -106,7 +110,6 @@ type process struct {
 type Agent struct {
 	cfg     Config
 	log     *slog.Logger
-	admin   *adminClient
 	intents chan intent
 	exits   chan exitEvent
 	polls   chan pollEvent
@@ -114,6 +117,8 @@ type Agent struct {
 
 	// Owned by the loop goroutine.
 	proc          *process
+	admin         *adminClient
+	adminPort     int
 	paused        bool
 	crashes       int
 	restartAt     <-chan time.Time
@@ -133,9 +138,6 @@ func New(cfg Config) (*Agent, error) {
 	}
 	if cfg.FRPCPath == "" {
 		return nil, errors.New("frpc path required")
-	}
-	if cfg.AdminPort == 0 {
-		cfg.AdminPort = DefaultAdminPort
 	}
 	if cfg.AllowedDomains == nil {
 		cfg.AllowedDomains = constants.AllowedFRPDomains
@@ -173,14 +175,9 @@ func New(cfg Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
-	admin, err := newAdminClient("127.0.0.1", cfg.AdminPort, user, pass, 2*time.Second)
-	if err != nil {
-		return nil, err
-	}
 	return &Agent{
 		cfg:          cfg,
 		log:          cfg.Logger.With("component", "agent"),
-		admin:        admin,
 		intents:      make(chan intent),
 		exits:        make(chan exitEvent, 4),
 		polls:        make(chan pollEvent, 1),
@@ -198,7 +195,12 @@ func (a *Agent) ConfigPath() string {
 // Run owns frpc until ctx is cancelled, then stops it.
 func (a *Agent) Run(ctx context.Context) error {
 	defer close(a.done)
+	// Children get Pdeathsig tied to the thread that forks them, so every
+	// start must come from this one locked thread.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	a.runCtx = ctx
+	a.killStale()
 	ticker := time.NewTicker(a.cfg.PollInterval)
 	defer ticker.Stop()
 
@@ -298,8 +300,11 @@ func (a *Agent) desired() (*desired, error) {
 	}
 	st := a.cfg.Store.State()
 	sec := a.cfg.Store.Secrets()
-	if st.Account == nil || sec.FRPToken == "" {
+	if st.Account == nil {
 		return nil, nil
+	}
+	if sec.FRPToken == "" {
+		return nil, fmt.Errorf("%w: paired account has no frp token", store.ErrInvalid)
 	}
 	acc := st.Account
 	if !allowedServer(acc.FRPServerAddr, a.cfg.AllowedDomains) {
@@ -308,15 +313,16 @@ func (a *Agent) desired() (*desired, error) {
 	if acc.FRPServerPort < 1 || acc.FRPServerPort > 65535 {
 		return nil, fmt.Errorf("frp server port %d out of range", acc.FRPServerPort)
 	}
-	ca := ""
-	if acc.FRPUseTLS {
-		ca = a.cfg.TrustedCAFile
+	// The token is sent at login, so the connection is always TLS with a
+	// verified certificate, whatever the imported v1 setting was.
+	if !fileExists(a.cfg.TrustedCAFile) {
+		return nil, fmt.Errorf("CA bundle %q not found; refusing to connect to frps without certificate verification", a.cfg.TrustedCAFile)
 	}
 	return &desired{
-		serverAddr: acc.FRPServerAddr, serverPort: acc.FRPServerPort, useTLS: acc.FRPUseTLS,
+		serverAddr: acc.FRPServerAddr, serverPort: acc.FRPServerPort,
 		token: sec.FRPToken, serverID: acc.ServerID, connectionID: a.connectionID,
-		adminHost: "127.0.0.1", adminPort: a.cfg.AdminPort, adminUser: a.adminUser, adminPass: a.adminPass,
-		trustedCA: ca, targets: tunnelled(st.Targets),
+		adminHost: "127.0.0.1", adminPort: a.adminPort, adminUser: a.adminUser, adminPass: a.adminPass,
+		trustedCA: a.cfg.TrustedCAFile, targets: tunnelled(st.Targets),
 	}, nil
 }
 
@@ -331,41 +337,47 @@ func (a *Agent) reconcile() error {
 		a.stopProcess()
 		return nil
 	}
-
-	common, proxies := d.renderCommon(), d.renderProxies()
-	commonChanged := common != a.writtenCommon
-	proxiesChanged := proxies != a.writtenProxy
-	if commonChanged || proxiesChanged || !fileExists(a.ConfigPath()) {
-		data := []byte(common + proxies)
-		if err := store.WriteFileAtomic(a.ConfigPath(), data, 0o600); err != nil && !errors.Is(err, store.ErrNotDurable) {
-			a.status.LastError = err.Error()
-			return err
-		}
-		a.writtenCommon, a.writtenProxy = common, proxies
-		sum := sha256.Sum256(data)
-		a.status.ConfigSHA256 = hex.EncodeToString(sum[:])
-	}
-
 	if a.proc == nil {
 		if a.restartAt != nil {
 			return nil
 		}
-		return a.startProcess()
+		return a.startProcess(d)
+	}
+	commonChanged, proxiesChanged, err := a.writeConfig(d)
+	if err != nil {
+		return err
 	}
 	switch {
 	case commonChanged:
 		a.stopProcess()
-		return a.startProcess()
+		return a.startProcess(d)
 	case proxiesChanged:
 		ctx, cancel := context.WithTimeout(a.ctx(), 3*time.Second)
 		defer cancel()
 		if err := a.admin.reload(ctx); err != nil {
 			a.log.Warn("frpc reload failed, restarting", "error", err)
 			a.stopProcess()
-			return a.startProcess()
+			return a.startProcess(d)
 		}
 	}
 	return nil
+}
+
+func (a *Agent) writeConfig(d *desired) (commonChanged, proxiesChanged bool, err error) {
+	common, proxies := d.renderCommon(), d.renderProxies()
+	commonChanged = common != a.writtenCommon
+	proxiesChanged = proxies != a.writtenProxy
+	if commonChanged || proxiesChanged || !fileExists(a.ConfigPath()) {
+		data := []byte(common + proxies)
+		if err := store.WriteFileAtomic(a.ConfigPath(), data, 0o600); err != nil && !errors.Is(err, store.ErrNotDurable) {
+			a.status.LastError = err.Error()
+			return false, false, err
+		}
+		a.writtenCommon, a.writtenProxy = common, proxies
+		sum := sha256.Sum256(data)
+		a.status.ConfigSHA256 = hex.EncodeToString(sum[:])
+	}
+	return commonChanged, proxiesChanged, nil
 }
 
 func (a *Agent) ctx() context.Context {
@@ -375,8 +387,28 @@ func (a *Agent) ctx() context.Context {
 	return context.Background()
 }
 
-func (a *Agent) startProcess() error {
+func (a *Agent) startProcess(d *desired) error {
+	port := a.cfg.AdminPort
+	if port == 0 {
+		var err error
+		if port, err = freeLoopbackPort(); err != nil {
+			a.status.LastError = err.Error()
+			a.scheduleRestart(time.Time{})
+			return err
+		}
+	}
+	admin, err := newAdminClient("127.0.0.1", port, a.adminUser, a.adminPass, 2*time.Second)
+	if err != nil {
+		return err
+	}
+	a.adminPort, a.admin, d.adminPort = port, admin, port
+	if _, _, err := a.writeConfig(d); err != nil {
+		a.scheduleRestart(time.Time{})
+		return err
+	}
+
 	cmd := exec.Command(a.cfg.FRPCPath, "-c", a.ConfigPath())
+	setPdeathsig(cmd)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = a.cfg.Env
@@ -393,6 +425,9 @@ func (a *Agent) startProcess() error {
 	a.status.LastError = ""
 	a.status.Proxies = nil
 	a.log.Info("frpc started", "pid", p.pid)
+	if err := a.recordPID(p.pid); err != nil {
+		a.log.Warn("record frpc pid", "error", err)
+	}
 	go func() {
 		err := cmd.Wait()
 		close(p.done)
@@ -418,6 +453,7 @@ func (a *Agent) stopProcess() {
 		_ = p.cmd.Process.Kill()
 		<-p.done
 	}
+	a.clearPID()
 	a.log.Info("frpc stopped", "pid", p.pid)
 }
 
@@ -427,6 +463,7 @@ func (a *Agent) onExit(ev exitEvent) {
 	}
 	p := a.proc
 	a.proc = nil
+	a.clearPID()
 	a.status.Restarts++
 	a.status.LastExit = fmt.Sprint(ev.err)
 	a.log.Warn("frpc exited", "pid", ev.pid, "error", ev.err)
@@ -464,11 +501,11 @@ func (a *Agent) startPoll() {
 		return
 	}
 	a.polling = true
-	pid := a.proc.pid
+	pid, admin := a.proc.pid, a.admin
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		proxies, err := a.admin.status(ctx)
+		proxies, err := admin.status(ctx)
 		select {
 		case a.polls <- pollEvent{pid: pid, proxies: proxies, err: err}:
 		case <-a.done:
@@ -476,8 +513,9 @@ func (a *Agent) startPoll() {
 	}()
 }
 
+// frpc is a static binary given absolute paths and an explicit CA file, so
+// it needs no PATH, HOME, TZ or SSL_CERT_* from us.
 var passEnv = map[string]bool{
-	"PATH": true, "HOME": true, "TZ": true, "SSL_CERT_FILE": true, "SSL_CERT_DIR": true,
 	"HTTP_PROXY": true, "HTTPS_PROXY": true, "NO_PROXY": true, "ALL_PROXY": true,
 	"http_proxy": true, "https_proxy": true, "no_proxy": true, "all_proxy": true,
 }
@@ -490,6 +528,15 @@ func childEnv() []string {
 		}
 	}
 	return out
+}
+
+func freeLoopbackPort() (int, error) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer ln.Close()
+	return ln.Addr().(*net.TCPAddr).Port, nil
 }
 
 func fileExists(path string) bool {
