@@ -6,6 +6,7 @@ GO_CACHE_VOLUME ?= seawise-gomod
 GO_DOCKER ?= 1
 PKGS ?= ./...
 IMAGE_TAG ?= seawise-client:local
+AGENT_IMAGE_TAG ?= seawise-agent:local
 VERSION ?= dev
 CMDS ?= seawise seawise-agent
 
@@ -27,7 +28,7 @@ else
 RUN :=
 endif
 
-.PHONY: all test race vet fmt fmt-fix cover build repro image cache-init cache-clean
+.PHONY: all test race vet fmt fmt-fix cover build repro image image-agent cache-init cache-clean
 
 all: fmt vet race
 
@@ -68,6 +69,9 @@ repro: build
 
 image:
 	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE_TAG) .
+
+image-agent:
+	docker build -f Dockerfile.agent --build-arg VERSION=$(VERSION) -t $(AGENT_IMAGE_TAG) .
 
 cache-clean:
 	-docker volume rm $(GO_CACHE_VOLUME)

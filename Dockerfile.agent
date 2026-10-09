@@ -1,0 +1,81 @@
+# Client v2 image: runs seawise-agent. Published only under the :2, :2.x.y,
+# :beta and :stable tags; the v1 image is built from Dockerfile.
+#
+# Runs non-root and works on a read-only root filesystem: all state lives
+# under /config. Hardened run:
+#   docker run --read-only --cap-drop ALL --security-opt no-new-privileges \
+#     --user 1000:1000 -v ./config:/config -p 8082:8082 <image>
+
+ARG BUILDPLATFORM=linux/amd64
+
+# Build stage: pinned by digest; bump with go.mod's toolchain version
+FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS builder
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+
+ARG VERSION=dev
+ARG TARGETARCH=amd64
+ARG TARGETVARIANT=
+RUN GOARM="" && \
+    if [ "${TARGETARCH}" = "arm" ]; then GOARM="${TARGETVARIANT#v}"; fi && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} GOARM=${GOARM} go build \
+    -trimpath -buildvcs=false \
+    -ldflags="-s -w -buildid= -X github.com/seawise/client/internal/constants.Version=${VERSION}" \
+    -o /seawise-agent ./cmd/seawise-agent
+
+# frpc download stage (with checksum verification)
+FROM --platform=$BUILDPLATFORM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS frp-downloader
+ARG FRP_VERSION=0.68.1
+ARG TARGETARCH=amd64
+ARG TARGETVARIANT=
+# SHA-256 checksums from https://github.com/fatedier/frp/releases/download/v0.68.1/frp_sha256_checksums.txt
+# linux_arm_hf is the GOARM=7 build; linux_arm is GOARM=5.
+ARG FRP_SHA256_AMD64=4a4e88987d39561e1b3b3b23d0ede48a457eebf76a87231999957e870f5f02b6
+ARG FRP_SHA256_ARM64=e7ad15b0cfe4cf0125df4217778b66cb4426179270967b59900ecb2362d8cd01
+ARG FRP_SHA256_ARMV7=63954351f92337fedd26c966d1085480cba26cbb87976e545f8515fd350cb5f3
+RUN apk add --no-cache curl tar && \
+    case "${TARGETARCH}${TARGETVARIANT}" in \
+      amd64) FRP_ARCH=amd64; EXPECTED="${FRP_SHA256_AMD64}" ;; \
+      arm64) FRP_ARCH=arm64; EXPECTED="${FRP_SHA256_ARM64}" ;; \
+      armv7) FRP_ARCH=arm_hf; EXPECTED="${FRP_SHA256_ARMV7}" ;; \
+      *) echo "unsupported platform: ${TARGETARCH}${TARGETVARIANT}" >&2; exit 1 ;; \
+    esac && \
+    FRP_DIR="frp_${FRP_VERSION}_linux_${FRP_ARCH}" && \
+    curl -fsSLo "/tmp/${FRP_DIR}.tar.gz" "https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/${FRP_DIR}.tar.gz" && \
+    echo "${EXPECTED}  /tmp/${FRP_DIR}.tar.gz" | sha256sum -c - && \
+    tar -xzf "/tmp/${FRP_DIR}.tar.gz" -C /tmp && \
+    mv "/tmp/${FRP_DIR}/frpc" /frpc && \
+    mv "/tmp/${FRP_DIR}/LICENSE" /frp-LICENSE
+
+# Runtime stage
+FROM alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
+
+RUN apk add --no-cache ca-certificates su-exec && \
+    mkdir -p /config && chown 1000:1000 /config
+
+COPY --from=builder /seawise-agent /app/seawise-agent
+COPY --from=frp-downloader /frpc /app/frpc
+# frp is Apache 2.0 licensed; ship its LICENSE
+COPY --from=frp-downloader /frp-LICENSE /app/licenses/frp-LICENSE
+COPY entrypoint-agent.sh /app/entrypoint.sh
+RUN chmod 0755 /app/entrypoint.sh /app/seawise-agent /app/frpc
+
+ARG VERSION=dev
+LABEL org.opencontainers.image.source="https://github.com/seawise-io/seawise-client" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${VERSION}" \
+      io.seawise.line="2"
+
+ENV SEAWISE_DATA_DIR=/config
+VOLUME ["/config"]
+WORKDIR /config
+EXPOSE 8082
+
+# /healthz answers plain HTTP to loopback peers only
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget -q -O /dev/null "http://127.0.0.1:${SEAWISE_PORT:-8082}/healthz" || exit 1
+
+ENTRYPOINT ["/app/entrypoint.sh"]

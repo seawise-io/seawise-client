@@ -78,6 +78,35 @@ the same target policy, so this exposes nothing beyond what the machine can
 already reach. Each forwarder is limited in concurrent connections,
 connection lifetime and idle time.
 
+## Container image
+
+`Dockerfile.agent` builds the image for this agent (`make image-agent`).
+Images are published only under `:2`, `:2.x.y`, `:beta` and `:stable`;
+`:latest` and `:1.x` stay on the current client.
+
+- **Users.** Started as root, the entrypoint switches to `PUID`/`PGID`
+  (default `1000`) by number, so IDs that already exist in the image, such
+  as GID 100, work as they are. It sets the data folder's owner and hands
+  any root-owned files in it to that user; contents are not changed.
+  Started with `--user`, it runs the agent directly.
+- **Hardened run.** All state is under `/config`, so the root filesystem
+  can be read-only and no capabilities are needed when the data folder is
+  already owned by the chosen user:
+
+  ```
+  docker run -d --name seawise --restart unless-stopped \
+    --read-only --cap-drop ALL --security-opt no-new-privileges \
+    --user 1000:1000 -v ./seawise:/config -p 8082:8082 \
+    ghcr.io/seawise-io/seawise-client:beta
+  ```
+
+  Without `--user`, the entrypoint needs the `CHOWN`, `SETUID` and `SETGID`
+  capabilities to switch users.
+- **Health check.** `GET http://127.0.0.1:8082/healthz` (plain HTTP,
+  loopback only). If `SEAWISE_BIND_ADDR` is set to an address other than
+  `0.0.0.0` or `127.0.0.1`, the image health check cannot reach it.
+- **Platforms.** `linux/amd64`, `linux/arm64`, `linux/arm/v7`.
+
 ## Settings
 
 | Variable | Meaning |
