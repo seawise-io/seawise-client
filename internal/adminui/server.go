@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
+	"log"
 	"log/slog"
 	"net"
 	"net/http"
@@ -56,7 +57,8 @@ type Config struct {
 	PublicAllowed    bool
 	OnTargetsChanged func(context.Context)
 	PeekTimeout      time.Duration
-	MaxPending       int
+	MaxConns         int
+	MaxConnsPerIP    int
 }
 
 type Server struct {
@@ -119,15 +121,9 @@ func (s *Server) PlainHandler() http.Handler {
 
 // Serve runs both servers on ln until ctx is cancelled.
 func (s *Server) Serve(ctx context.Context, ln net.Listener, cert tls.Certificate) error {
-	tlsL, plainL := splitListener(ln, s.cfg.PeekTimeout, s.cfg.MaxPending)
+	tlsL, plainL := splitListener(ln, limits{peek: s.cfg.PeekTimeout, total: s.cfg.MaxConns, perIP: s.cfg.MaxConnsPerIP})
 	errLog := slog.NewLogLogger(s.log.Handler(), slog.LevelDebug)
-	newServer := func(h http.Handler) *http.Server {
-		return &http.Server{
-			Handler: h, ErrorLog: errLog, MaxHeaderBytes: maxHeaderBytes,
-			ReadHeaderTimeout: constants.WebUIReadHeaderTimeout, ReadTimeout: constants.WebUIReadTimeout,
-			WriteTimeout: constants.WebUIWriteTimeout, IdleTimeout: constants.WebUIIdleTimeout,
-		}
-	}
+	newServer := func(h http.Handler) *http.Server { return newHTTPServer(h, errLog) }
 	secure := newServer(s.SecureHandler())
 	secure.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}
 	plain := newServer(s.PlainHandler())
@@ -148,6 +144,14 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, cert tls.Certificat
 		return err
 	}
 	return ctx.Err()
+}
+
+func newHTTPServer(h http.Handler, errLog *log.Logger) *http.Server {
+	return &http.Server{
+		Handler: h, ErrorLog: errLog, MaxHeaderBytes: maxHeaderBytes,
+		ReadHeaderTimeout: constants.WebUIReadHeaderTimeout, ReadTimeout: constants.WebUIReadTimeout,
+		WriteTimeout: constants.WebUIWriteTimeout, IdleTimeout: constants.WebUIIdleTimeout,
+	}
 }
 
 func (s *Server) headers(next http.Handler) http.Handler {

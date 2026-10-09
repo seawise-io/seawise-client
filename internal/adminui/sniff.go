@@ -5,13 +5,15 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"sync"
 	"time"
 )
 
 const (
-	DefaultPeekTimeout = 10 * time.Second
-	DefaultMaxPending  = 128
+	DefaultPeekTimeout = 3 * time.Second
+	DefaultMaxConns    = 128
+	DefaultMaxPerIP    = 16
 )
 
 // isTLSClientHello reports whether b starts like a TLS handshake record.
@@ -19,27 +21,43 @@ func isTLSClientHello(b []byte) bool {
 	return len(b) >= 3 && b[0] == 0x16 && b[1] == 0x03 && b[2] <= 0x04
 }
 
-// split serves TLS and plain HTTP on one listener. Each connection is
-// classified by its first bytes in its own goroutine, so a silent client
-// cannot block Accept; at most maxPending connections wait to be classified.
-type split struct {
-	ln      net.Listener
-	tls     *chanListener
-	plain   *chanListener
-	pending chan struct{}
-	peek    time.Duration
-	done    chan struct{}
-	once    sync.Once
+type limits struct {
+	peek  time.Duration
+	total int
+	perIP int
 }
 
-func splitListener(ln net.Listener, peek time.Duration, maxPending int) (tlsL, plainL net.Listener) {
-	if peek <= 0 {
-		peek = DefaultPeekTimeout
+func (l limits) withDefaults() limits {
+	if l.peek <= 0 {
+		l.peek = DefaultPeekTimeout
 	}
-	if maxPending <= 0 {
-		maxPending = DefaultMaxPending
+	if l.total <= 0 {
+		l.total = DefaultMaxConns
 	}
-	s := &split{ln: ln, pending: make(chan struct{}, maxPending), peek: peek, done: make(chan struct{})}
+	if l.perIP <= 0 {
+		l.perIP = DefaultMaxPerIP
+	}
+	return l
+}
+
+// split serves TLS and plain HTTP on one listener. Each connection is
+// classified by its first bytes in its own goroutine, so a silent client
+// cannot block Accept. A connection holds its slot in the total and
+// per-address caps until it is closed.
+type split struct {
+	ln     net.Listener
+	lim    limits
+	tls    *chanListener
+	plain  *chanListener
+	done   chan struct{}
+	once   sync.Once
+	mu     sync.Mutex
+	open   int
+	byPeer map[string]int
+}
+
+func splitListener(ln net.Listener, lim limits) (tlsL, plainL net.Listener) {
+	s := &split{ln: ln, lim: lim.withDefaults(), done: make(chan struct{}), byPeer: map[string]int{}}
 	s.tls = &chanListener{s: s, ch: make(chan net.Conn)}
 	s.plain = &chanListener{s: s, ch: make(chan net.Conn)}
 	go s.acceptLoop()
@@ -55,30 +73,66 @@ func (s *split) close() error {
 	return err
 }
 
+// acceptLoop retries every error except a closed listener, backing off so
+// a burst of failures (for example running out of file descriptors) does
+// not spin.
 func (s *split) acceptLoop() {
 	defer s.close()
+	delay := 5 * time.Millisecond
 	for {
 		c, err := s.ln.Accept()
 		if err != nil {
-			var ne net.Error
-			if errors.As(err, &ne) && ne.Timeout() {
-				time.Sleep(50 * time.Millisecond)
-				continue
+			if errors.Is(err, net.ErrClosed) {
+				return
 			}
-			return
+			select {
+			case <-s.done:
+				return
+			case <-time.After(delay):
+			}
+			delay = min(delay*2, time.Second)
+			continue
 		}
-		select {
-		case s.pending <- struct{}{}:
-			go s.classify(c)
-		default:
+		delay = 5 * time.Millisecond
+		lc, ok := s.admit(c)
+		if !ok {
 			_ = c.Close()
+			continue
 		}
+		go s.classify(lc)
+	}
+}
+
+func peerKey(addr net.Addr) string {
+	if ap, err := netip.ParseAddrPort(addr.String()); err == nil {
+		return ap.Addr().Unmap().String()
+	}
+	return addr.String()
+}
+
+func (s *split) admit(c net.Conn) (net.Conn, bool) {
+	key := peerKey(c.RemoteAddr())
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.open >= s.lim.total || s.byPeer[key] >= s.lim.perIP {
+		return nil, false
+	}
+	s.open++
+	s.byPeer[key]++
+	return &limitedConn{Conn: c, release: func() { s.release(key) }}, true
+}
+
+func (s *split) release(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.open--
+	if s.byPeer[key]--; s.byPeer[key] <= 0 {
+		delete(s.byPeer, key)
 	}
 }
 
 func (s *split) classify(c net.Conn) {
-	defer func() { <-s.pending }()
-	_ = c.SetReadDeadline(time.Now().Add(s.peek))
+	_ = c.SetReadDeadline(time.Now().Add(s.lim.peek))
 	br := bufio.NewReader(c)
 	b, err := br.Peek(3)
 	if len(b) == 0 || (err != nil && !errors.Is(err, io.EOF)) {
@@ -114,6 +168,19 @@ func (l *chanListener) Accept() (net.Conn, error) {
 
 func (l *chanListener) Close() error   { return l.s.close() }
 func (l *chanListener) Addr() net.Addr { return l.s.ln.Addr() }
+
+// limitedConn gives its slot back exactly once, when closed.
+type limitedConn struct {
+	net.Conn
+	once    sync.Once
+	release func()
+}
+
+func (c *limitedConn) Close() error {
+	err := c.Conn.Close()
+	c.once.Do(c.release)
+	return err
+}
 
 // peekedConn replays the bytes read during classification.
 type peekedConn struct {
