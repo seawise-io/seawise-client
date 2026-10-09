@@ -71,7 +71,7 @@
     var text = "";
     if (u.available && u.available.version) {
       text = "Version " + u.available.version + " is available on the " + u.channel + " channel. " +
-        "To update, pull " + u.available.image + ":" + u.available.version + " and recreate the container. " +
+        "To update, pull " + u.available.ref + " (the signed image digest) and recreate the container. " +
         "This client does not update itself.";
     } else if (u.state === "expired") {
       text = "Update information could not be verified because it has expired. Tunnels are not affected.";

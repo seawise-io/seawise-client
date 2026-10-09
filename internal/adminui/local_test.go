@@ -167,7 +167,10 @@ func TestUIShowsUpdateNotice(t *testing.T) {
 		t.Error("index.html has no update notice element")
 	}
 	js, _ := staticFS.ReadFile("static/app.js")
-	for _, want := range []string{"s.updates", "u.available.version", `u.state === "expired"`, "does not update itself"} {
+	if strings.Contains(string(js), `u.available.image + ":"`) {
+		t.Error("update notice names a mutable tag")
+	}
+	for _, want := range []string{"s.updates", "u.available.version", "u.available.ref", `u.state === "expired"`, "does not update itself"} {
 		if !strings.Contains(string(js), want) {
 			t.Errorf("app.js does not use %s", want)
 		}

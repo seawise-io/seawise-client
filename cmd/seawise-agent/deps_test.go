@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -25,5 +26,30 @@ func TestAgentDependencies(t *testing.T) {
 	}
 	if !strings.Contains(deps, "github.com/seawise/client/internal/updatecheck") {
 		t.Error("seawise-agent does not use the signed update check")
+	}
+}
+
+// The build tag that points update checks at a test repository must never
+// reach a release build.
+func TestReleaseBuildsHaveNoTestTag(t *testing.T) {
+	for _, f := range []string{"../../Dockerfile.agent", "../../Makefile", "../../.github/workflows/release.yml", "../../.github/workflows/promote-stable.yml"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), "seawise_tuftest") {
+			t.Errorf("%s uses the seawise_tuftest build tag", f)
+		}
+	}
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatalf("Go toolchain needed to list the agent files: %v", err)
+	}
+	out, err := exec.Command(goBin, "list", "-f", "{{.GoFiles}}", ".").CombinedOutput()
+	if err != nil {
+		t.Fatalf("go list: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "tuftest.go") {
+		t.Error("the test hook is part of the default build")
 	}
 }

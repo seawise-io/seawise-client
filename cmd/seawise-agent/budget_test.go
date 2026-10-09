@@ -139,16 +139,16 @@ func updateRepo(t *testing.T) string {
 	if _, err := tufrepo.SignTargets(repo, keys.Targets, map[string][]byte{"release/stable.json": []byte(manifest), "keyset.json": []byte(`{"keys":[]}`)}, nil, now, tufrepo.DefaultTargetsExpiry); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tufrepo.Refresh(repo, keys.Snapshot, keys.Timestamp, now, tufrepo.DefaultOnlineExpiry, tufrepo.DefaultMinRemaining); err != nil {
+	root, err := os.ReadFile(filepath.Join(repo, "metadata", "1.root.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tufrepo.Refresh(repo, root, keys.Snapshot, keys.Timestamp, now, tufrepo.DefaultOnlineExpiry, tufrepo.DefaultMinRemaining); err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewTLSServer(http.FileServer(http.Dir(repo)))
 	t.Cleanup(srv.Close)
 	dir := t.TempDir()
-	root, err := os.ReadFile(filepath.Join(repo, "metadata", "1.root.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw})
 	for name, b := range map[string][]byte{"root.json": root, "url": []byte(srv.URL), "ca.pem": ca} {
 		if err := os.WriteFile(filepath.Join(dir, name), b, 0o600); err != nil {

@@ -74,12 +74,13 @@ newest first.
 
 The agent checks once a day whether a newer release is available on its
 channel and shows it in the admin UI. It never updates itself; to update,
-pull the image it names and recreate the container.
+pull the image it names (by its signed digest, `image@sha256:...`) and
+recreate the container.
 
 Release information and the signing key set are verified with
 [TUF](https://theupdateframework.io) against a root built into the agent
-(a primary and a backup root key), with rollback, freeze and
-mix-and-match protection, HTTPS only, no redirects, size limits and
+(at least two of three root keys sign any change to it), with rollback,
+freeze and mix-and-match protection, HTTPS only, no redirects, size limits and
 timeouts. Verified metadata is kept in `<data folder>/v2/tuf`. If the
 signed metadata expires, update notices stop until it can be refreshed;
 tunnels keep running with the last verified key set. Builds without a
