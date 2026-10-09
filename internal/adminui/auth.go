@@ -36,6 +36,7 @@ const (
 	loginMaxDelay       = 10 * time.Second
 	loginGlobalWindow   = time.Minute
 	loginGlobalMax      = 100
+	loginLocalMax       = 30
 	maxTrackedIPs       = 1024
 	maxConcurrentHash   = 2
 	hashWait            = 5 * time.Second
@@ -73,6 +74,7 @@ type Auth struct {
 	setupTotal int
 	loginIP    map[string]*ipFails
 	loginAll   []time.Time
+	loginLocal []time.Time
 	dummy      []byte
 	hashSlots  chan struct{}
 	compare    func(hash, password []byte) error
@@ -231,10 +233,27 @@ func isLoopbackIP(ip string) bool {
 	return err == nil && a.Unmap().IsLoopback()
 }
 
+// limiterKey groups IPv6 peers by /64, since one host usually controls a
+// whole /64; IPv4 and loopback are keyed by address.
+func limiterKey(ip string) string {
+	a, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ip
+	}
+	a = a.Unmap()
+	if a.Is6() && !a.IsLoopback() {
+		p, _ := a.WithZone("").Prefix(64)
+		return p.String()
+	}
+	return a.String()
+}
+
 // Setup sets the first password. Failures are limited per address and by a
 // larger global budget that does not apply to loopback, so a LAN peer
 // cannot lock the owner out of setting up on the machine itself.
-func (a *Auth) Setup(ip, code, password string) error {
+func (a *Auth) Setup(peer, code, password string) error {
+	ip := limiterKey(peer)
+	loopback := isLoopbackIP(peer)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.code == "" {
@@ -248,12 +267,14 @@ func (a *Auth) Setup(ip, code, password string) error {
 	} else {
 		a.setupByIP[ip] = mine
 	}
-	if len(mine) >= setupMaxFailsPerIP || (!isLoopbackIP(ip) && len(a.setupFails) >= setupMaxFailsGlobal) {
+	if len(mine) >= setupMaxFailsPerIP || (!loopback && len(a.setupFails) >= setupMaxFailsGlobal) {
 		return ErrRateLimited
 	}
 	if !equalSecret(normalizeCode(code), a.code) {
-		a.setupFails = append(a.setupFails, now)
-		if len(a.setupByIP) < maxTrackedIPs || a.setupByIP[ip] != nil {
+		if !loopback {
+			a.setupFails = append(a.setupFails, now)
+		}
+		if len(a.setupByIP) < maxTrackedIPs || a.setupByIP[ip] != nil || loopback {
 			a.setupByIP[ip] = append(mine, now)
 		}
 		a.setupTotal++
@@ -283,15 +304,22 @@ func (a *Auth) Setup(ip, code, password string) error {
 // check runs, so parallel guesses from one address cannot all reach it;
 // password checks run at most maxConcurrentHash at a time. The global
 // budget does not apply to loopback.
-func (a *Auth) Login(ip, password string) (time.Duration, error) {
+func (a *Auth) Login(peer, password string) (time.Duration, error) {
+	ip := limiterKey(peer)
+	loopback := isLoopbackIP(peer)
 	now := a.cfg.Now()
 	a.mu.Lock()
 	if a.code != "" {
 		a.mu.Unlock()
 		return 0, ErrSetupPending
 	}
-	a.loginAll = recent(a.loginAll, now, loginGlobalWindow)
-	if !isLoopbackIP(ip) && len(a.loginAll) >= loginGlobalMax {
+	// Loopback has its own budget, so LAN failures never use it up.
+	budget, limit := &a.loginAll, loginGlobalMax
+	if loopback {
+		budget, limit = &a.loginLocal, loginLocalMax
+	}
+	*budget = recent(*budget, now, loginGlobalWindow)
+	if len(*budget) >= limit {
 		a.mu.Unlock()
 		return loginGlobalWindow, ErrRateLimited
 	}
@@ -314,6 +342,9 @@ func (a *Auth) Login(ip, password string) (time.Duration, error) {
 				}
 			}
 		}
+		if len(a.loginIP) >= maxTrackedIPs && loopback {
+			evictOldest(a.loginIP)
+		}
 		if len(a.loginIP) >= maxTrackedIPs {
 			a.mu.Unlock()
 			return loginBaseDelay, ErrRateLimited
@@ -324,7 +355,7 @@ func (a *Auth) Login(ip, password string) (time.Duration, error) {
 	prev := *f
 	f.count++
 	f.last = now
-	a.loginAll = append(a.loginAll, now)
+	*budget = append(*budget, now)
 	a.mu.Unlock()
 
 	// unreserve gives the attempt back; success also clears the address.
@@ -338,9 +369,10 @@ func (a *Auth) Login(ip, password string) (time.Duration, error) {
 				*cur = prev
 			}
 		}
-		for i := len(a.loginAll) - 1; i >= 0; i-- {
-			if a.loginAll[i].Equal(now) {
-				a.loginAll = append(a.loginAll[:i], a.loginAll[i+1:]...)
+		b := *budget
+		for i := len(b) - 1; i >= 0; i-- {
+			if b[i].Equal(now) {
+				*budget = append(b[:i], b[i+1:]...)
 				break
 			}
 		}
@@ -364,6 +396,17 @@ func (a *Auth) Login(ip, password string) (time.Duration, error) {
 		return 0, nil
 	}
 	return loginDelay(f.count), ErrWrongLogin
+}
+
+func evictOldest(m map[string]*ipFails) {
+	var oldest string
+	var t time.Time
+	for k, v := range m {
+		if t.IsZero() || v.last.Before(t) {
+			oldest, t = k, v.last
+		}
+	}
+	delete(m, oldest)
 }
 
 func loginDelay(fails int) time.Duration {

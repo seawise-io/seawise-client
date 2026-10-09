@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -234,5 +235,62 @@ func TestHTTPServerLimits(t *testing.T) {
 	}
 	if DefaultPeekTimeout > 5*time.Second {
 		t.Fatalf("peek timeout %v", DefaultPeekTimeout)
+	}
+}
+
+// TestLANFloodCannotBlockLoopbackConnection dials from 127.0.0.2 as the
+// "LAN" flooder and from 127.0.0.1 as the owner.
+func TestLANFloodCannotBlockLoopbackConnection(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lim := limits{peek: 5 * time.Second, total: 6, perIP: 100, reserved: 2,
+		local: func(a net.Addr) bool { return strings.HasPrefix(a.String(), "127.0.0.1:") }}
+	_, plainL := splitListener(ln, lim)
+	defer plainL.Close()
+	flood := &net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.2")}}
+	var held []net.Conn
+	defer func() {
+		for _, c := range held {
+			c.Close()
+		}
+	}()
+	for i := 0; i < 10; i++ {
+		c, err := flood.Dial("tcp", ln.Addr().String())
+		if err != nil {
+			t.Skip("cannot bind 127.0.0.2:", err)
+		}
+		held = append(held, c)
+	}
+	time.Sleep(100 * time.Millisecond)
+	owner, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	_, _ = owner.Write([]byte("GET / HTTP/1.1\r\n"))
+	done := make(chan error, 1)
+	go func() {
+		for {
+			c, err := plainL.Accept()
+			if err != nil {
+				done <- err
+				return
+			}
+			if strings.HasPrefix(c.RemoteAddr().String(), "127.0.0.1:") {
+				c.Close()
+				done <- nil
+				return
+			}
+		}
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("owner connection starved by LAN flood")
 	}
 }

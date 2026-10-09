@@ -14,6 +14,9 @@ const (
 	DefaultPeekTimeout = 3 * time.Second
 	DefaultMaxConns    = 128
 	DefaultMaxPerIP    = 16
+	// DefaultReserved slots of the total are kept for loopback peers, so a
+	// LAN flood cannot lock the owner out on the machine itself.
+	DefaultReserved = 8
 )
 
 // isTLSClientHello reports whether b starts like a TLS handshake record.
@@ -22,9 +25,11 @@ func isTLSClientHello(b []byte) bool {
 }
 
 type limits struct {
-	peek  time.Duration
-	total int
-	perIP int
+	peek     time.Duration
+	total    int
+	perIP    int
+	reserved int
+	local    func(net.Addr) bool
 }
 
 func (l limits) withDefaults() limits {
@@ -37,6 +42,15 @@ func (l limits) withDefaults() limits {
 	if l.perIP <= 0 {
 		l.perIP = DefaultMaxPerIP
 	}
+	if l.reserved <= 0 {
+		l.reserved = min(DefaultReserved, l.total/2)
+	}
+	if l.local == nil {
+		l.local = func(a net.Addr) bool {
+			ap, err := netip.ParseAddrPort(a.String())
+			return err == nil && ap.Addr().Unmap().IsLoopback()
+		}
+	}
 	return l
 }
 
@@ -45,15 +59,16 @@ func (l limits) withDefaults() limits {
 // cannot block Accept. A connection holds its slot in the total and
 // per-address caps until it is closed.
 type split struct {
-	ln     net.Listener
-	lim    limits
-	tls    *chanListener
-	plain  *chanListener
-	done   chan struct{}
-	once   sync.Once
-	mu     sync.Mutex
-	open   int
-	byPeer map[string]int
+	ln        net.Listener
+	lim       limits
+	tls       *chanListener
+	plain     *chanListener
+	done      chan struct{}
+	once      sync.Once
+	mu        sync.Mutex
+	openLAN   int
+	openLocal int
+	byPeer    map[string]int
 }
 
 func splitListener(ln net.Listener, lim limits) (tlsL, plainL net.Listener) {
@@ -105,27 +120,42 @@ func (s *split) acceptLoop() {
 
 func peerKey(addr net.Addr) string {
 	if ap, err := netip.ParseAddrPort(addr.String()); err == nil {
-		return ap.Addr().Unmap().String()
+		return limiterKey(ap.Addr().Unmap().String())
 	}
 	return addr.String()
 }
 
 func (s *split) admit(c net.Conn) (net.Conn, bool) {
 	key := peerKey(c.RemoteAddr())
+	local := s.lim.local(c.RemoteAddr())
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.open >= s.lim.total || s.byPeer[key] >= s.lim.perIP {
+	if s.byPeer[key] >= s.lim.perIP {
 		return nil, false
 	}
-	s.open++
+	if local {
+		if s.openLAN+s.openLocal >= s.lim.total {
+			return nil, false
+		}
+		s.openLocal++
+	} else {
+		if s.openLAN >= s.lim.total-s.lim.reserved || s.openLAN+s.openLocal >= s.lim.total {
+			return nil, false
+		}
+		s.openLAN++
+	}
 	s.byPeer[key]++
-	return &limitedConn{Conn: c, release: func() { s.release(key) }}, true
+	return &limitedConn{Conn: c, release: func() { s.release(key, local) }}, true
 }
 
-func (s *split) release(key string) {
+func (s *split) release(key string, local bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.open--
+	if local {
+		s.openLocal--
+	} else {
+		s.openLAN--
+	}
 	if s.byPeer[key]--; s.byPeer[key] <= 0 {
 		delete(s.byPeer, key)
 	}

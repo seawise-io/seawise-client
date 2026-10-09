@@ -451,3 +451,42 @@ func TestSetupAndLoginOverHTTP(t *testing.T) {
 		t.Fatalf("cross-site login %d", w.Code)
 	}
 }
+
+func TestLANFloodCannotBlockLoopbackLogin(t *testing.T) {
+	clk := &testClock{now: t0}
+	a := newAuth(t, newStore(t, nil), clk, "")
+	a.Setup("127.0.0.1", a.currentCode(), "correct horse battery")
+	// Fill the per-address table and the global budget from the LAN.
+	for i := 0; i < maxTrackedIPs+10; i++ {
+		if i%90 == 0 {
+			clk.now = clk.now.Add(loginGlobalWindow)
+		}
+		a.Login(ipN(i), "wrong")
+	}
+	for i := 0; i < loginLocalMax-1; i++ {
+		a.Login("127.0.0."+strconv.Itoa(i%250+2), "wrong")
+		clk.now = clk.now.Add(loginMaxDelay)
+	}
+	if _, err := a.Login("127.0.0.1", "correct horse battery"); err != nil {
+		t.Fatalf("owner on loopback locked out by a LAN flood: %v", err)
+	}
+}
+
+func TestIPv6KeyedBySlash64(t *testing.T) {
+	clk := &testClock{now: t0}
+	a := newAuth(t, newStore(t, nil), clk, "")
+	code := a.currentCode()
+	for i := 0; i < setupMaxFailsPerIP; i++ {
+		_ = a.Setup("2001:db8:1:2::"+strconv.Itoa(i+1), "WRONG", "correct horse battery")
+	}
+	if err := a.Setup("2001:db8:1:2::ffff", code, "correct horse battery"); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("rotating within a /64 escaped the per-address limit: %v", err)
+	}
+	if err := a.Setup("2001:db8:1:3::1", code, "correct horse battery"); err != nil {
+		t.Fatalf("other /64 blocked: %v", err)
+	}
+	a.Login("2001:db8:9:9::1", "wrong")
+	if _, err := a.Login("2001:db8:9:9::2", "correct horse battery"); !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("login backoff not shared within a /64: %v", err)
+	}
+}
