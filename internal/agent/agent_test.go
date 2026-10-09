@@ -102,6 +102,8 @@ func freePort(t *testing.T) int {
 	return ln.Addr().(*net.TCPAddr).Port
 }
 
+var confirmed = time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+
 func pairedStore(t *testing.T, dir string) *store.Store {
 	t.Helper()
 	st, err := store.Open(dir, time.Now)
@@ -114,7 +116,7 @@ func pairedStore(t *testing.T, dir string) *store.Store {
 	err = st.Update(func(s *store.State) error {
 		s.Account = &store.Account{ServerID: "sid", FRPServerAddr: "frp-1.seawise.dev", FRPServerPort: 7000, APIURL: "https://api.example.invalid"}
 		s.Targets = []store.Target{
-			{LocalID: "a", Name: "jellyfin", Host: "192.168.1.20", Port: 8096, Subdomain: "jf", Source: store.SourceLocal},
+			{LocalID: "a", Name: "jellyfin", Host: "192.168.1.20", Port: 8096, Subdomain: "jf", Source: store.SourceLocal, ConfirmedAt: &confirmed},
 			{LocalID: "b", Name: "off", Host: "192.168.1.21", Port: 80, Subdomain: "off", Disabled: true, Source: store.SourceLocal},
 			{LocalID: "c", Name: "unregistered", Host: "192.168.1.22", Port: 81, Source: store.SourceLocal},
 		}
@@ -268,6 +270,44 @@ func TestStartsFRPCWithAtomicConfig(t *testing.T) {
 	})
 }
 
+func TestPolicyAppliedToTunnels(t *testing.T) {
+	st := pairedStore(t, t.TempDir())
+	err := st.Update(func(s *store.State) error {
+		s.Targets = append(s.Targets,
+			store.Target{LocalID: "m", Name: "metaapp", Host: "169.254.169.254", Port: 80, Subdomain: "m1", Source: store.SourceV1Machine, Grandfathered: true, ConfirmedAt: &confirmed},
+			store.Target{LocalID: "p", Name: "publicnogrant", Host: "93.184.216.34", Port: 443, Subdomain: "p1", Source: store.SourceLocal, ConfirmedAt: &confirmed},
+			store.Target{LocalID: "u", Name: "unconfirmed", Host: "192.168.1.30", Port: 80, Subdomain: "u1", Source: store.SourceLocal},
+			store.Target{LocalID: "d", Name: "dockerapi", Host: "192.168.1.31", Port: 2375, Subdomain: "d1", Source: store.SourceV1Machine, Grandfathered: true, ConfirmedAt: &confirmed},
+			store.Target{LocalID: "g", Name: "granted", Host: "93.184.216.35", Port: 443, Subdomain: "g1", Source: store.SourceLocal, ConfirmedAt: &confirmed, Allowed: []string{"public"}},
+		)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t, st, "run", nil)
+	eventually(t, "frpc ready", func() bool { s := h.status(); return s.Running && len(s.Proxies) > 0 })
+	b, _ := os.ReadFile(h.agent.ConfigPath())
+	conf := string(b)
+	for _, bad := range []string{"metaapp", "169.254", "publicnogrant", "93.184.216.34", "unconfirmed", "dockerapi", "192.168.1.20", "8096"} {
+		if strings.Contains(conf, bad) {
+			t.Errorf("config contains %q:\n%s", bad, conf)
+		}
+	}
+	if !strings.Contains(conf, `name = "sid-jellyfin"`) || !strings.Contains(conf, `name = "sid-granted"`) {
+		t.Fatalf("allowed apps missing:\n%s", conf)
+	}
+	if strings.Count(conf, `localIP = "127.0.0.1"`) != 2 {
+		t.Fatalf("apps not routed through loopback forwarder:\n%s", conf)
+	}
+	port := confValue(t, h.agent.ConfigPath(), "localPort")
+	c, err := net.DialTimeout("tcp", "127.0.0.1:"+port, time.Second)
+	if err != nil {
+		t.Fatalf("forwarder not listening on %s: %v", port, err)
+	}
+	c.Close()
+}
+
 func TestNoChangeNoRewriteNoRestart(t *testing.T) {
 	h := newHarness(t, pairedStore(t, t.TempDir()), "run", nil)
 	eventually(t, "frpc ready", func() bool { s := h.status(); return s.Running && len(s.Proxies) > 0 })
@@ -289,7 +329,7 @@ func TestTargetChangeReloadsInPlace(t *testing.T) {
 	eventually(t, "frpc ready", func() bool { s := h.status(); return s.Running && len(s.Proxies) > 0 })
 	pid := h.status().PID
 	err := h.st.Update(func(s *store.State) error {
-		s.Targets = append(s.Targets, store.Target{LocalID: "d", Name: "kuma", Host: "kuma", Port: 3001, Subdomain: "k", Source: store.SourceLocal})
+		s.Targets = append(s.Targets, store.Target{LocalID: "d", Name: "kuma", Host: "kuma", Port: 3001, Subdomain: "k", Source: store.SourceLocal, ConfirmedAt: &confirmed})
 		return nil
 	})
 	if err != nil {
@@ -428,6 +468,33 @@ func TestPauseResume(t *testing.T) {
 	}
 	if s := h.status(); !s.Running || s.Paused || s.Restarts != 0 {
 		t.Fatalf("resume: %+v", s)
+	}
+}
+
+func TestHoldsAreIndependent(t *testing.T) {
+	h := newHarness(t, pairedStore(t, t.TempDir()), "run", nil)
+	eventually(t, "frpc ready", func() bool { return len(h.status().Proxies) == 1 })
+	ctx := context.Background()
+	if err := h.agent.Hold(ctx, HoldRemoval); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.agent.Pause(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.agent.Release(ctx, HoldRemoval); err != nil {
+		t.Fatal(err)
+	}
+	if s := h.status(); s.Running || !s.Paused || len(s.Holds) != 1 || s.Holds[0] != HoldUser {
+		t.Fatalf("user hold released by another reason: %+v", s)
+	}
+	if err := h.agent.Resume(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if s := h.status(); !s.Running || s.Paused {
+		t.Fatalf("resume: %+v", s)
+	}
+	if err := h.agent.Hold(ctx, ""); err == nil {
+		t.Fatal("empty hold reason accepted")
 	}
 }
 
@@ -849,5 +916,47 @@ func TestStaleRecordForOtherProcessIsIgnored(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(st.Dir(), PIDFile)); err != nil {
 		t.Fatal("current frpc pid not recorded")
+	}
+}
+
+// TestStaleFRPCStoppedBeforeListenersBind: a surviving frpc could still be
+// pointing at forwarder ports reused by the new agent, so it must be gone
+// before any app listener is bound.
+func TestStaleFRPCStoppedBeforeListenersBind(t *testing.T) {
+	st := pairedStore(t, t.TempDir())
+	exe, _ := os.Executable()
+	prev, err := New(Config{Store: st, FRPCPath: exe, TrustedCAFile: caFile(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(prev.ConfigPath(), []byte(fmt.Sprintf("webServer.port = %d\n", freePort(t))), 0o600)
+	stale, staleLog := startLooseFRPC(t, prev.ConfigPath())
+	if err := prev.recordPID(stale.Process.Pid); err != nil {
+		t.Fatal(err)
+	}
+	reaped := make(chan struct{})
+	go func() { _ = stale.Wait(); close(reaped) }()
+	var mu sync.Mutex
+	var binds, staleAliveAtBind int
+	h := newHarness(t, st, "run", func(c *Config) {
+		c.Forward.OnListen = func(int) {
+			mu.Lock()
+			defer mu.Unlock()
+			binds++
+			if len(pidsFromLog(staleLog, "exit")) == 0 {
+				staleAliveAtBind++
+			}
+		}
+	})
+	eventually(t, "new frpc ready", func() bool { s := h.status(); return s.Running && len(s.Proxies) > 0 })
+	select {
+	case <-reaped:
+	case <-time.After(10 * time.Second):
+		t.Fatal("stale frpc not stopped")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if binds == 0 || staleAliveAtBind != 0 {
+		t.Fatalf("binds %d, while stale frpc alive %d", binds, staleAliveAtBind)
 	}
 }

@@ -65,7 +65,16 @@ type Target struct {
 	Source          string     `json:"source"`
 	Grandfathered   bool       `json:"grandfathered,omitempty"`
 	ConfirmedAt     *time.Time `json:"confirmed_at,omitempty"`
+	// Allowed lists the target classes the owner confirmed locally, beyond
+	// private addresses. Grandfathered targets are not limited by it.
+	Allowed []string `json:"allowed,omitempty"`
+	// ServerDisableRequestedAt is set while the server asks for this app to
+	// be turned off; the owner accepts or dismisses it locally.
+	ServerDisableRequestedAt *time.Time `json:"server_disable_requested_at,omitempty"`
 }
+
+// Grants a target can hold; see internal/targetpolicy.
+var KnownGrants = map[string]bool{"public": true, "loopback": true, "sensitive": true, "smtp": true, "gateway": true}
 
 type ImportedFile struct {
 	Name   string `json:"name"`
@@ -89,6 +98,9 @@ type State struct {
 	MachineName string     `json:"machine_name,omitempty"`
 	Account     *Account   `json:"account,omitempty"`
 	Targets     []Target   `json:"targets"`
+	// ServerDisableLog holds when disable requests from the server were
+	// recorded, for the rolling cap.
+	ServerDisableLog []time.Time `json:"server_disable_log,omitempty"`
 }
 
 type Secrets struct {
@@ -400,6 +412,9 @@ func validateState(st *State) error {
 	if st.Targets == nil {
 		st.Targets = []Target{}
 	}
+	if len(st.ServerDisableLog) > MaxTargets {
+		return fmt.Errorf("%w: disable log too long", ErrInvalid)
+	}
 	if len(st.Targets) > MaxTargets {
 		return fmt.Errorf("%w: too many targets", ErrInvalid)
 	}
@@ -414,6 +429,13 @@ func validateState(st *State) error {
 			return fmt.Errorf("%w: target %d: port out of range", ErrInvalid, i)
 		case t.Source != SourceV1Machine && t.Source != SourceV1FRPC && t.Source != SourceLocal:
 			return fmt.Errorf("%w: target %d: unknown source", ErrInvalid, i)
+		}
+		seen := map[string]bool{}
+		for _, g := range t.Allowed {
+			if !KnownGrants[g] || seen[g] {
+				return fmt.Errorf("%w: target %d: unknown or repeated grant", ErrInvalid, i)
+			}
+			seen[g] = true
 		}
 		ids[t.LocalID] = true
 	}
@@ -463,6 +485,7 @@ func randomID() (string, error) {
 func cloneState(st State) State {
 	out := st
 	out.Targets = append([]Target(nil), st.Targets...)
+	out.ServerDisableLog = append([]time.Time(nil), st.ServerDisableLog...)
 	if out.Targets == nil {
 		out.Targets = []Target{}
 	}
@@ -484,6 +507,11 @@ func cloneState(st State) State {
 		if c := out.Targets[i].ConfirmedAt; c != nil {
 			t := *c
 			out.Targets[i].ConfirmedAt = &t
+		}
+		out.Targets[i].Allowed = append([]string(nil), out.Targets[i].Allowed...)
+		if r := out.Targets[i].ServerDisableRequestedAt; r != nil {
+			t := *r
+			out.Targets[i].ServerDisableRequestedAt = &t
 		}
 	}
 	return out

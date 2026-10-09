@@ -284,6 +284,8 @@ func TestUpdateRejectsInvalidState(t *testing.T) {
 		{LocalID: "a", Host: "h", Port: 0, Source: SourceLocal},
 		{LocalID: "", Host: "h", Port: 1, Source: SourceLocal},
 		{LocalID: "a", Host: "h", Port: 1, Source: "server"},
+		{LocalID: "a", Host: "h", Port: 1, Source: SourceLocal, Allowed: []string{"everything"}},
+		{LocalID: "a", Host: "h", Port: 1, Source: SourceLocal, Allowed: []string{"public", "public"}},
 	}
 	for i, tg := range bad {
 		err := s.Update(func(st *State) error { st.Targets = []Target{tg}; return nil })
@@ -310,7 +312,15 @@ func TestStateIsACopy(t *testing.T) {
 	st.Targets[0].Host = "mutated"
 	st.Account.ServerID = "mutated"
 	*st.Targets[0].ConfirmedAt = time.Time{}
+	if err := s.Update(func(st *State) error { st.Targets[0].Allowed = []string{"public"}; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	st = s.State()
+	st.Targets[0].Allowed[0] = "smtp"
 	again := s.State()
+	if again.Targets[0].Allowed[0] != "public" {
+		t.Fatal("State() shares the grants slice")
+	}
 	if again.Targets[0].Host == "mutated" || again.Account.ServerID == "mutated" || again.Targets[0].ConfirmedAt.IsZero() {
 		t.Fatal("State() returned shared memory")
 	}
