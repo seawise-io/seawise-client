@@ -109,7 +109,14 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *age
 			return nil, errors.New("invalid SEAWISE_WEB_PORT")
 		}
 	}
-	bind := adminui.BindAddr(os.Getenv("SEAWISE_BIND_ADDR"), st.State(), st.Secrets(), adminui.InContainer())
+	bind, notice := adminui.BindAddr(os.Getenv("SEAWISE_BIND_ADDR"), st.State(), st.Secrets(), adminui.InContainer())
+	if notice != "" {
+		log.Warn(notice)
+		inner := status
+		status = func(ctx context.Context) any {
+			return map[string]any{"status": inner(ctx), "notices": []string{notice}}
+		}
+	}
 	srv, err := adminui.New(adminui.Config{
 		Store: st, Auth: auth, Status: status, AllowedHosts: extra, Hostname: hostname, Logger: log,
 		PublicAllowed:    os.Getenv("SEAWISE_ALLOW_PUBLIC_TARGETS") == "1",

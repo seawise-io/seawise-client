@@ -252,23 +252,59 @@ func TestLoginRateLimit(t *testing.T) {
 func TestBindAddr(t *testing.T) {
 	up := t0
 	for _, c := range []struct {
-		explicit  string
-		upgraded  *time.Time
-		hash      string
-		container bool
-		want      string
+		explicit   string
+		upgraded   *time.Time
+		hash       string
+		container  bool
+		want       string
+		wantNotice bool
 	}{
-		{"10.0.0.5", nil, "", false, "10.0.0.5"},
-		{"", &up, "h", false, "0.0.0.0"},
-		{"", &up, "", false, "127.0.0.1"},
-		{"", nil, "h", false, "127.0.0.1"},
-		{"", nil, "", true, "0.0.0.0"},
-		{"", nil, "", false, "127.0.0.1"},
+		{"10.0.0.5", &up, "h", false, "10.0.0.5", false},
+		{"", &up, "h", false, "127.0.0.1", true},
+		{"", &up, "h", true, "0.0.0.0", false},
+		{"", &up, "", false, "127.0.0.1", false},
+		{"", nil, "h", false, "127.0.0.1", false},
+		{"", nil, "", true, "0.0.0.0", false},
+		{"", nil, "", false, "127.0.0.1", false},
 	} {
-		got := BindAddr(c.explicit, store.State{UpgradedAt: c.upgraded}, store.Secrets{AdminPasswordHash: c.hash}, c.container)
-		if got != c.want {
-			t.Errorf("%+v: %s", c, got)
+		got, notice := BindAddr(c.explicit, store.State{UpgradedAt: c.upgraded}, store.Secrets{AdminPasswordHash: c.hash}, c.container)
+		if got != c.want || (notice != "") != c.wantNotice {
+			t.Errorf("%+v: %s %q", c, got, notice)
 		}
+		if notice != "" && !strings.Contains(notice, "SEAWISE_BIND_ADDR") {
+			t.Errorf("notice does not say how to expose the UI: %q", notice)
+		}
+	}
+}
+
+func TestDetectContainer(t *testing.T) {
+	root := t.TempDir()
+	if detectContainer(root, func(string) string { return "" }) {
+		t.Fatal("empty root detected as container")
+	}
+	if !detectContainer(root, func(k string) string {
+		if k == "SEAWISE_CONTAINER" {
+			return "1"
+		}
+		return ""
+	}) {
+		t.Fatal("env flag ignored")
+	}
+	os.MkdirAll(filepath.Join(root, "proc/1"), 0o755)
+	os.WriteFile(filepath.Join(root, "proc/1/cgroup"), []byte("0::/init.scope\n"), 0o644)
+	if detectContainer(root, func(string) string { return "" }) {
+		t.Fatal("host cgroup detected as container")
+	}
+	for _, cg := range []string{"12:pids:/docker/abc\n", "0::/kubepods/besteffort/pod1\n", "0::/system.slice/containerd.service\n", "1:name=systemd:/libpod_parent/x\n", "0::/lxc.payload.c1\n"} {
+		os.WriteFile(filepath.Join(root, "proc/1/cgroup"), []byte(cg), 0o644)
+		if !detectContainer(root, func(string) string { return "" }) {
+			t.Errorf("cgroup %q not detected", cg)
+		}
+	}
+	os.WriteFile(filepath.Join(root, "proc/1/cgroup"), []byte("0::/\n"), 0o644)
+	os.WriteFile(filepath.Join(root, ".dockerenv"), nil, 0o644)
+	if !detectContainer(root, func(string) string { return "" }) {
+		t.Fatal(".dockerenv not detected")
 	}
 }
 
