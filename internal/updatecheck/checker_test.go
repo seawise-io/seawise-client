@@ -74,7 +74,7 @@ func (f *fixture) publish(add map[string][]byte, at time.Time) {
 			f.t.Fatal(err)
 		}
 	}
-	if _, err := tufrepo.Refresh(f.repo, f.keys.Snapshot, f.keys.Timestamp, at, tufrepo.DefaultOnlineExpiry, tufrepo.DefaultMinRemaining); err != nil {
+	if _, err := tufrepo.Refresh(f.repo, f.root(), f.keys.Snapshot, f.keys.Timestamp, at, tufrepo.DefaultOnlineExpiry, tufrepo.DefaultMinRemaining); err != nil {
 		f.t.Fatal(err)
 	}
 }
@@ -182,6 +182,9 @@ func TestValidUpdate(t *testing.T) {
 	st := c.Status()
 	if st.State != StateOK || !st.Fresh || st.Available == nil || st.Available.Version != "2.1.0" || st.Available.Digest != goodDigest {
 		t.Fatalf("status %+v", st)
+	}
+	if st.Available.Ref != Image+"@"+goodDigest {
+		t.Fatalf("notice names %q, not the signed digest", st.Available.Ref)
 	}
 	if string(c.KeySet()) != keysetV1 {
 		t.Fatalf("key set %q", c.KeySet())
@@ -380,7 +383,7 @@ func TestWrongKeyAndThreshold(t *testing.T) {
 	if _, err := tufrepo.RotateRoot(f.repo, tufrepo.RootChange{
 		Roles: map[string]tufrepo.RoleKeys{metadata.TIMESTAMP: {Keys: []ed25519.PublicKey{
 			f.keys.Timestamp.Public().(ed25519.PublicKey), second.Public().(ed25519.PublicKey)}, Threshold: 2}},
-		Signers: []ed25519.PrivateKey{f.keys.RootPrimary}, Now: t0, Expires: tufrepo.DefaultRootExpiry,
+		Signers: f.keys.Root[:2], Now: t0, Expires: tufrepo.DefaultRootExpiry,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -399,21 +402,22 @@ func TestRootRotation(t *testing.T) {
 	c := f.checker(dir)
 	mustCheck(t, c)
 
-	// The primary root key is lost: the backup root key signs a new root
-	// that replaces it and rotates the timestamp key.
-	newPrimary, _ := tufrepo.GenerateKey()
+	// Root key 1 is lost: keys 2 and 3 sign a new root that replaces it
+	// and rotates the timestamp key.
+	newRoot1, _ := tufrepo.GenerateKey()
 	newTS, _ := tufrepo.GenerateKey()
 	if _, err := tufrepo.RotateRoot(f.repo, tufrepo.RootChange{
 		Roles: map[string]tufrepo.RoleKeys{
-			metadata.ROOT:      {Keys: []ed25519.PublicKey{newPrimary.Public().(ed25519.PublicKey), f.keys.RootBackup.Public().(ed25519.PublicKey)}, Threshold: 1},
+			metadata.ROOT: {Keys: []ed25519.PublicKey{newRoot1.Public().(ed25519.PublicKey),
+				f.keys.Root[1].Public().(ed25519.PublicKey), f.keys.Root[2].Public().(ed25519.PublicKey)}, Threshold: 2},
 			metadata.TIMESTAMP: {Keys: []ed25519.PublicKey{newTS.Public().(ed25519.PublicKey)}, Threshold: 1},
 		},
-		Signers: []ed25519.PrivateKey{f.keys.RootBackup}, Now: t0, Expires: tufrepo.DefaultRootExpiry,
+		Signers: f.keys.Root[1:], Now: t0, Expires: tufrepo.DefaultRootExpiry,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	oldTSBytes := f.read("timestamp.json")
-	if _, err := tufrepo.Refresh(f.repo, f.keys.Snapshot, newTS, t0.Add(time.Hour), tufrepo.DefaultOnlineExpiry, tufrepo.DefaultMinRemaining); err != nil {
+	if _, err := tufrepo.Refresh(f.repo, f.root(), f.keys.Snapshot, newTS, t0.Add(time.Hour), tufrepo.DefaultOnlineExpiry, tufrepo.DefaultMinRemaining); err != nil {
 		t.Fatal(err)
 	}
 	mustCheck(t, c)
@@ -431,14 +435,34 @@ func TestRootRotation(t *testing.T) {
 	}
 	f.serve("/metadata/timestamp.json", nil)
 
-	// A restarted agent starts from the rotated root on disk, not the
-	// older pinned one.
-	before := f.hit("/metadata/2.root.json")
+	// A restarted agent walks the rotations again from the pinned root.
 	c2 := f.checker(dir)
 	mustCheck(t, c2)
-	if f.hit("/metadata/2.root.json") != before {
-		t.Fatal("restarted agent fetched 2.root.json again")
+
+	// A disk root.json with a higher version is never used as the anchor.
+	r9, _ := metadata.Root().FromBytes(f.read("2.root.json"))
+	r9.Signed.Version = 9
+	r9b, _ := r9.ToBytes(true)
+	if err := os.WriteFile(filepath.Join(dir, "metadata", "root.json"), r9b, 0o600); err != nil {
+		t.Fatal(err)
 	}
+	mustCheck(t, f.checker(dir))
+
+	// A rotation to a root threshold of 1 is refused.
+	weak, _ := metadata.Root().FromBytes(f.read("2.root.json"))
+	weak.ClearSignatures()
+	weak.Signed.Version = 3
+	weak.Signed.Roles[metadata.ROOT].Threshold = 1
+	for _, k := range []ed25519.PrivateKey{f.keys.Root[1], f.keys.Root[2]} {
+		s, _ := signature.LoadED25519Signer(k)
+		_, _ = weak.Sign(s)
+	}
+	wb, _ := weak.ToBytes(true)
+	f.serveBytes("/metadata/3.root.json", wb)
+	if err := f.checker(stateDir(t)).Check(context.Background()); err == nil || !strings.Contains(err.Error(), "threshold") {
+		t.Fatalf("weak rotated root: %v", err)
+	}
+	f.serve("/metadata/3.root.json", nil)
 
 	// A root signed only by keys the current root does not trust.
 	evil1, _ := tufrepo.GenerateKey()
@@ -457,9 +481,11 @@ func TestRootRotation(t *testing.T) {
 		ids = append(ids, id)
 	}
 	r.Signed.Roles[metadata.ROOT] = &metadata.Role{KeyIDs: ids, Threshold: 1}
-	s, _ := signature.LoadED25519Signer(evil1)
-	if _, err := r.Sign(s); err != nil {
-		t.Fatal(err)
+	for _, k := range []ed25519.PrivateKey{evil1, evil2} {
+		s, _ := signature.LoadED25519Signer(k)
+		if _, err := r.Sign(s); err != nil {
+			t.Fatal(err)
+		}
 	}
 	rb, _ := r.ToBytes(true)
 	f.serveBytes("/metadata/3.root.json", rb)
@@ -614,24 +640,47 @@ func TestConfigRefusals(t *testing.T) {
 		t.Errorf("test root: %v", err)
 	}
 
-	// A pinned root with a single root key has no backup.
-	k, _ := tufrepo.GenerateKey()
-	one := tufrepo.RoleKeys{Keys: []ed25519.PublicKey{k.Public().(ed25519.PublicKey)}, Threshold: 1}
-	r := metadata.Root(t0.Add(time.Hour))
-	tk, _ := metadata.KeyFromPublicKey(k.Public())
-	id, _ := tk.ID()
-	r.Signed.Keys[id] = tk
-	for _, role := range []string{metadata.ROOT, metadata.TARGETS, metadata.SNAPSHOT, metadata.TIMESTAMP} {
-		r.Signed.Roles[role] = &metadata.Role{KeyIDs: []string{id}, Threshold: one.Threshold}
+	// Pinned roots that one key could replace, or that the loss of one key
+	// would freeze, are refused.
+	for name, kt := range map[string][2]int{"single key": {1, 1}, "one of three": {3, 1}, "two of two": {2, 2}} {
+		cfg = base()
+		cfg.Root = signedRoot(t, kt[0], kt[1])
+		if _, err := New(cfg); err == nil || !strings.Contains(err.Error(), "threshold") {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
-	s, _ := signature.LoadED25519Signer(k)
-	_, _ = r.Sign(s)
-	rb, _ := r.ToBytes(false)
 	cfg = base()
-	cfg.Root = rb
-	if _, err := New(cfg); err == nil || !strings.Contains(err.Error(), "backup") {
-		t.Errorf("single root key: %v", err)
+	cfg.Root = signedRoot(t, 3, 2)
+	if _, err := New(cfg); err != nil {
+		t.Errorf("two of three: %v", err)
 	}
+}
+
+// signedRoot returns a root with n root keys and the given threshold,
+// signed by all of them.
+func signedRoot(t *testing.T, n, threshold int) []byte {
+	t.Helper()
+	r := metadata.Root(t0.Add(time.Hour))
+	var ids []string
+	var keys []ed25519.PrivateKey
+	for i := 0; i < n; i++ {
+		k, _ := tufrepo.GenerateKey()
+		tk, _ := metadata.KeyFromPublicKey(k.Public())
+		id, _ := tk.ID()
+		r.Signed.Keys[id] = tk
+		ids = append(ids, id)
+		keys = append(keys, k)
+	}
+	for _, role := range []string{metadata.ROOT, metadata.TARGETS, metadata.SNAPSHOT, metadata.TIMESTAMP} {
+		r.Signed.Roles[role] = &metadata.Role{KeyIDs: ids, Threshold: 1}
+	}
+	r.Signed.Roles[metadata.ROOT].Threshold = threshold
+	for _, k := range keys {
+		s, _ := signature.LoadED25519Signer(k)
+		_, _ = r.Sign(s)
+	}
+	b, _ := r.ToBytes(false)
+	return b
 }
 
 func TestProductionRootPlaceholder(t *testing.T) {
@@ -645,28 +694,98 @@ func TestProductionRootPlaceholder(t *testing.T) {
 	}
 }
 
-func TestDiskRootSelection(t *testing.T) {
+func TestStateFileChecks(t *testing.T) {
 	f := newFixture(t)
 	dir := stateDir(t)
 	mustCheck(t, f.checker(dir))
-	if _, err := tufrepo.RotateRoot(f.repo, tufrepo.RootChange{Signers: []ed25519.PrivateKey{f.keys.RootPrimary}, Now: t0, Expires: tufrepo.DefaultRootExpiry}); err != nil {
+	statePath := filepath.Join(dir, "state.json")
+	orig, err := os.ReadFile(statePath)
+	if err != nil {
 		t.Fatal(err)
 	}
-	mustCheck(t, f.checker(dir))
+	restore := func() {
+		_ = os.Remove(statePath)
+		if err := os.WriteFile(statePath, orig, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 
-	// A disk root that is not self-signed is ignored in favour of the pinned root.
-	onDisk := filepath.Join(dir, "metadata", "root.json")
-	r, _ := metadata.Root().FromBytes(f.read("2.root.json"))
-	r.Signed.Version = 9
-	rb, _ := r.ToBytes(true)
-	if err := os.WriteFile(onDisk, rb, 0o600); err != nil {
+	// An edited record (fresh for longer) fails its MAC and is dropped.
+	edited := strings.Replace(string(orig), "2030-01-15", "2031-01-15", 1)
+	if edited == string(orig) {
+		t.Fatalf("fresh_until not found in %s", orig)
+	}
+	if err := os.WriteFile(statePath, []byte(edited), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	c := f.checker(dir)
-	if got, _ := c.trustedRoot(); !strings.Contains(string(got), `"version": 1`) {
-		t.Fatalf("unsigned disk root used:\n%s", got)
+	if c := f.checker(dir); c.Fresh(t0) || c.KeySet() != nil || c.Status().Available != nil {
+		t.Fatal("edited state trusted")
 	}
+
+	// Readable by others: not used.
+	restore()
+	if err := os.Chmod(statePath, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if f.checker(dir).Fresh(t0) {
+		t.Fatal("group-readable state trusted")
+	}
+
+	// A symlink: not followed.
+	elsewhere := filepath.Join(t.TempDir(), "state.json")
+	if err := os.WriteFile(elsewhere, orig, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(statePath)
+	if err := os.Symlink(elsewhere, statePath); err != nil {
+		t.Fatal(err)
+	}
+	if f.checker(dir).Fresh(t0) {
+		t.Fatal("symlinked state trusted")
+	}
+
+	// Intact again: trusted.
+	restore()
+	if !f.checker(dir).Fresh(t0) {
+		t.Fatal("intact state not trusted")
+	}
+}
+
+func TestFreshNotBeforeVerification(t *testing.T) {
+	f := newFixture(t)
+	f.setNow(t0.Add(48 * time.Hour))
+	c := f.checker(stateDir(t))
 	mustCheck(t, c)
+	if !c.Fresh(t0.Add(48 * time.Hour)) {
+		t.Fatal("not fresh right after verification")
+	}
+	// The clock moved back before the verification time.
+	if c.Fresh(t0) {
+		t.Fatal("fresh at a time before the metadata was verified")
+	}
+	f.setNow(t0)
+	if st := c.Status(); st.Fresh || st.Available != nil {
+		t.Fatalf("status with clock moved back %+v", st)
+	}
+}
+
+func TestKeySetRemovedFromTargets(t *testing.T) {
+	f := newFixture(t)
+	dir := stateDir(t)
+	c := f.checker(dir)
+	mustCheck(t, c)
+	if _, err := tufrepo.SignTargets(f.repo, f.keys.Targets, nil, []string{"keyset.json"}, t0, tufrepo.DefaultTargetsExpiry); err != nil {
+		t.Fatal(err)
+	}
+	f.publish(nil, t0.Add(time.Hour))
+	mustCheck(t, c)
+	// The last verified key set stays in use, also after a restart.
+	if string(c.KeySet()) != keysetV1 {
+		t.Fatal("key set dropped")
+	}
+	if string(f.checker(dir).KeySet()) != keysetV1 {
+		t.Fatal("key set dropped after restart")
+	}
 }
 
 func TestRunSchedules(t *testing.T) {

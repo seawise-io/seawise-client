@@ -27,6 +27,8 @@ type Release struct {
 	Version string    `json:"version"`
 	Digest  string    `json:"digest"`
 	Expires time.Time `json:"expires"`
+	// Ref is the image by its signed digest, set on update notices.
+	Ref string `json:"ref,omitempty"`
 }
 
 func parseManifest(b []byte, channel string) (*Release, error) {

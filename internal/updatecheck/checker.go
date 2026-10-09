@@ -10,13 +10,15 @@ package updatecheck
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/rand/v2"
+	mrand "math/rand/v2"
 	"net/http"
 	"net/url"
 	"os"
@@ -186,8 +188,8 @@ func checkPinnedRoot(raw []byte, allowTest bool) error {
 	if err := r.VerifyDelegate(metadata.ROOT, r); err != nil {
 		return fmt.Errorf("pinned update root is not self-signed: %w", err)
 	}
-	if role := r.Signed.Roles[metadata.ROOT]; role == nil || len(role.KeyIDs) < 2 {
-		return errors.New("pinned update root needs a primary and a backup root key")
+	if err := checkRootThreshold(r); err != nil {
+		return fmt.Errorf("pinned update root: %w", err)
 	}
 	if isTestRoot(r) && !allowTest {
 		return ErrTestRoot
@@ -195,30 +197,21 @@ func checkPinnedRoot(raw []byte, allowTest bool) error {
 	return nil
 }
 
+// minRootThreshold: no single root key can sign a new root, and the root
+// role must hold a spare key so losing one does not need a release.
+const minRootThreshold = 2
+
+func checkRootThreshold(r *metadata.Metadata[metadata.RootType]) error {
+	role := r.Signed.Roles[metadata.ROOT]
+	if role == nil || role.Threshold < minRootThreshold || len(role.KeyIDs) < role.Threshold+1 {
+		return fmt.Errorf("root threshold must be at least %d with at least one spare root key", minRootThreshold)
+	}
+	return nil
+}
+
 func isTestRoot(r *metadata.Metadata[metadata.RootType]) bool {
 	v, ok := r.Signed.UnrecognizedFields[testOnlyField]
 	return ok && v != false
-}
-
-// trustedRoot returns the root to start from: the root go-tuf saved after
-// the last verified rotation when it is newer than the pinned root and
-// still self-signed, otherwise the pinned root.
-func (c *Checker) trustedRoot() ([]byte, error) {
-	pinned, err := metadata.Root().FromBytes(c.cfg.Root)
-	if err != nil {
-		return nil, err
-	}
-	raw, err := os.ReadFile(filepath.Join(c.cfg.Dir, "metadata", "root.json"))
-	if err != nil {
-		return c.cfg.Root, nil
-	}
-	local, err := metadata.Root().FromBytes(raw)
-	if err != nil || local.Signed.Version <= pinned.Signed.Version ||
-		local.VerifyDelegate(metadata.ROOT, local) != nil ||
-		(isTestRoot(local) && !c.cfg.AllowTestRoot) {
-		return c.cfg.Root, nil
-	}
-	return raw, nil
 }
 
 // Check refreshes and verifies the metadata, then the release manifest for
@@ -255,7 +248,7 @@ func (c *Checker) Check(ctx context.Context) error {
 		c.log.Warn("update check", "state", c.state, "error", err)
 	} else if r := c.available(now); r != nil && r.Version != c.announced {
 		c.announced = r.Version
-		c.log.Info("a newer release is available", "version", r.Version, "channel", r.Channel, "image", r.Image+":"+r.Version)
+		c.log.Info("a newer release is available", "version", r.Version, "channel", r.Channel, "image", r.Ref)
 	}
 	return err
 }
@@ -266,11 +259,9 @@ type result struct {
 }
 
 func (c *Checker) check(ctx context.Context, now time.Time) (*result, error) {
-	root, err := c.trustedRoot()
-	if err != nil {
-		return nil, err
-	}
-	ucfg, err := config.New(c.metaURL, root)
+	// Always start from the pinned root; go-tuf walks every rotation from
+	// there. Metadata on disk only sets the rollback floor.
+	ucfg, err := config.New(c.metaURL, c.cfg.Root)
 	if err != nil {
 		return nil, err
 	}
@@ -292,6 +283,9 @@ func (c *Checker) check(ctx context.Context, now time.Time) (*result, error) {
 		return nil, err
 	}
 	tm := up.GetTrustedMetadataSet()
+	if err := checkRootThreshold(tm.Root); err != nil {
+		return nil, err
+	}
 	targets := tm.Targets[metadata.TARGETS]
 	fresh := tm.Root.Signed.Expires
 	for _, e := range []time.Time{tm.Timestamp.Signed.Expires, tm.Snapshot.Signed.Expires, targets.Signed.Expires} {
@@ -302,14 +296,14 @@ func (c *Checker) check(ctx context.Context, now time.Time) (*result, error) {
 	res := &result{saved: saved{VerifiedAt: now, FreshUntil: fresh, TargetsVersion: targets.Signed.Version}}
 
 	var errs []error
+	// Without a key set in the targets, the last verified one stays in use.
+	c.mu.Lock()
+	res.saved.KeySetSHA256 = c.saved.KeySetSHA256
+	c.mu.Unlock()
 	if tf := targets.Signed.Targets[keySetTarget]; tf != nil {
 		data, err := c.target(up, tf, maxKeySetSize)
 		if err != nil {
 			errs = append(errs, err)
-			// Keep the last verified key set rather than none.
-			c.mu.Lock()
-			res.saved.KeySetSHA256 = c.saved.KeySetSHA256
-			c.mu.Unlock()
 		} else {
 			sum := sha256.Sum256(data)
 			res.saved.KeySetSHA256 = hex.EncodeToString(sum[:])
@@ -343,27 +337,72 @@ func (c *Checker) target(up *updater.Updater, tf *metadata.TargetFiles, max int6
 }
 
 // persist writes the key set first, then the record naming its hash, so a
-// crash leaves either the old pair or a key set the record rejects.
+// crash leaves either the old pair or a key set the record rejects. The
+// record carries an HMAC with a key kept in the same private folder.
 func (c *Checker) persist() error {
 	if c.keySet != nil {
 		if err := store.WriteFileAtomic(filepath.Join(c.cfg.Dir, "keyset.json"), c.keySet, 0o600); err != nil {
 			return err
 		}
 	}
-	b, err := json.Marshal(c.saved)
+	key, err := c.macKey()
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(c.saved)
+	if err != nil {
+		return err
+	}
+	b, err := json.Marshal(sealed{State: raw, MAC: mac(key, raw)})
 	if err != nil {
 		return err
 	}
 	return store.WriteFileAtomic(filepath.Join(c.cfg.Dir, "state.json"), b, 0o600)
 }
 
+type sealed struct {
+	State json.RawMessage `json:"state"`
+	MAC   string          `json:"mac"`
+}
+
+func mac(key, data []byte) string {
+	h := hmac.New(sha256.New, key)
+	h.Write(data)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// macKey returns the state key, creating it on first use.
+func (c *Checker) macKey() ([]byte, error) {
+	path := filepath.Join(c.cfg.Dir, "state.key")
+	if b, err := store.ReadOwned(path); err == nil && len(b) == 32 {
+		return b, nil
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil, err
+	}
+	return key, store.WriteFileAtomic(path, key, 0o600)
+}
+
 func (c *Checker) load() {
-	b, err := os.ReadFile(filepath.Join(c.cfg.Dir, "state.json"))
+	b, err := store.ReadOwned(filepath.Join(c.cfg.Dir, "state.json"))
 	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			c.log.Warn("update state not used", "error", err)
+		}
+		return
+	}
+	key, err := store.ReadOwned(filepath.Join(c.cfg.Dir, "state.key"))
+	var env sealed
+	if err != nil || json.Unmarshal(b, &env) != nil ||
+		!hmac.Equal([]byte(mac(key, env.State)), []byte(env.MAC)) {
+		c.log.Warn("update state failed its integrity check; starting over")
 		return
 	}
 	var s saved
-	if err := json.Unmarshal(b, &s); err != nil {
+	if err := json.Unmarshal(env.State, &s); err != nil {
 		c.log.Warn("update state unreadable, starting over", "error", err)
 		return
 	}
@@ -376,8 +415,9 @@ func (c *Checker) load() {
 	if s.KeySetSHA256 == "" {
 		return
 	}
-	ks, err := os.ReadFile(filepath.Join(c.cfg.Dir, "keyset.json"))
+	ks, err := store.ReadOwned(filepath.Join(c.cfg.Dir, "keyset.json"))
 	if err != nil {
+		c.log.Warn("saved key set not used", "error", err)
 		return
 	}
 	sum := sha256.Sum256(ks)
@@ -402,8 +442,10 @@ func (c *Checker) Fresh(now time.Time) bool {
 	return c.fresh(now)
 }
 
+// fresh also refuses times before the verification, so a clock moved
+// back cannot stretch the window.
 func (c *Checker) fresh(now time.Time) bool {
-	return !c.saved.FreshUntil.IsZero() && now.Before(c.saved.FreshUntil)
+	return !c.saved.FreshUntil.IsZero() && now.Before(c.saved.FreshUntil) && !now.Before(c.saved.VerifiedAt)
 }
 
 // KeySet returns the last verified key set, or nil. It stays available
@@ -420,6 +462,7 @@ func (c *Checker) available(now time.Time) *Release {
 		return nil
 	}
 	cp := *r
+	cp.Ref = r.Image + "@" + r.Digest
 	return &cp
 }
 
@@ -475,7 +518,7 @@ func jitter(max, base time.Duration) time.Duration {
 	if max <= 0 {
 		return 0
 	}
-	return rand.N(max)
+	return mrand.N(max) // #nosec G404 -- spreads check times; not a secret
 }
 
 func isExpired(err error) bool {
