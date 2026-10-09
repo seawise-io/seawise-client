@@ -43,6 +43,7 @@ var noticeTmpl = template.Must(template.New("notice").Parse(`<!doctype html>
 
 type Config struct {
 	Store        *store.Store
+	Auth         *Auth
 	Status       func(ctx context.Context) any
 	AllowedHosts []string
 	Hostname     string
@@ -61,8 +62,8 @@ type Server struct {
 }
 
 func New(cfg Config) (*Server, error) {
-	if cfg.Store == nil {
-		return nil, errors.New("store required")
+	if cfg.Store == nil || cfg.Auth == nil {
+		return nil, errors.New("store and auth required")
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -84,6 +85,9 @@ func New(cfg Config) (*Server, error) {
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /static/{file}", s.handleStatic)
 	mux.Handle("GET /api/status", s.requireSession(http.HandlerFunc(s.handleStatus)))
+	mux.HandleFunc("GET /api/auth/status", s.handleAuthStatus)
+	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
+	mux.HandleFunc("POST /api/setup", s.handleSetup)
 	mux.Handle("POST /api/auth/logout", s.requireSession(http.HandlerFunc(s.handleLogout)))
 	s.secure = mux
 	return s, nil

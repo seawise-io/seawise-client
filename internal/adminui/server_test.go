@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/seawise/client/internal/store"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var t0 = time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
@@ -35,7 +36,11 @@ func newStore(t *testing.T, upgraded *time.Time) *store.Store {
 
 func newServer(t *testing.T, st *store.Store, clk *testClock) *Server {
 	t.Helper()
-	s, err := New(Config{Store: st, Now: clk.Now, Hostname: "nas", AllowedHosts: []string{"seawise.internal.example"},
+	auth, err := NewAuth(AuthConfig{Store: st, Now: clk.Now, BcryptCost: bcrypt.MinCost})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(Config{Store: st, Auth: auth, Now: clk.Now, Hostname: "nas", AllowedHosts: []string{"seawise.internal.example"},
 		Status: func(context.Context) any { return map[string]string{"state": "ok"} }})
 	if err != nil {
 		t.Fatal(err)
