@@ -298,8 +298,11 @@ func (a *Agent) desired() (*desired, error) {
 	}
 	st := a.cfg.Store.State()
 	sec := a.cfg.Store.Secrets()
-	if st.Account == nil || sec.FRPToken == "" {
+	if st.Account == nil {
 		return nil, nil
+	}
+	if sec.FRPToken == "" {
+		return nil, fmt.Errorf("%w: paired account has no frp token", store.ErrInvalid)
 	}
 	acc := st.Account
 	if !allowedServer(acc.FRPServerAddr, a.cfg.AllowedDomains) {
@@ -308,15 +311,16 @@ func (a *Agent) desired() (*desired, error) {
 	if acc.FRPServerPort < 1 || acc.FRPServerPort > 65535 {
 		return nil, fmt.Errorf("frp server port %d out of range", acc.FRPServerPort)
 	}
-	ca := ""
-	if acc.FRPUseTLS {
-		ca = a.cfg.TrustedCAFile
+	// The token is sent at login, so the connection is always TLS with a
+	// verified certificate, whatever the imported v1 setting was.
+	if !fileExists(a.cfg.TrustedCAFile) {
+		return nil, fmt.Errorf("CA bundle %q not found; refusing to connect to frps without certificate verification", a.cfg.TrustedCAFile)
 	}
 	return &desired{
-		serverAddr: acc.FRPServerAddr, serverPort: acc.FRPServerPort, useTLS: acc.FRPUseTLS,
+		serverAddr: acc.FRPServerAddr, serverPort: acc.FRPServerPort,
 		token: sec.FRPToken, serverID: acc.ServerID, connectionID: a.connectionID,
 		adminHost: "127.0.0.1", adminPort: a.cfg.AdminPort, adminUser: a.adminUser, adminPass: a.adminPass,
-		trustedCA: ca, targets: tunnelled(st.Targets),
+		trustedCA: a.cfg.TrustedCAFile, targets: tunnelled(st.Targets),
 	}, nil
 }
 

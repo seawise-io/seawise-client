@@ -65,6 +65,29 @@ func (f *fakeTimers) all() []time.Duration {
 	return append([]time.Duration(nil), f.durations...)
 }
 
+func caFile(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(p, []byte("synthetic placeholder\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func confValue(t *testing.T, path, key string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if k, v, ok := strings.Cut(line, " = "); ok && k == key {
+			return v
+		}
+	}
+	return ""
+}
+
 func freePort(t *testing.T) int {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -81,8 +104,11 @@ func pairedStore(t *testing.T, dir string) *store.Store {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := st.UpdateSecrets(func(s *store.Secrets) error { s.FRPToken = "synthetic-token"; return nil }); err != nil {
+		t.Fatal(err)
+	}
 	err = st.Update(func(s *store.State) error {
-		s.Account = &store.Account{ServerID: "sid", FRPServerAddr: "frp-1.seawise.dev", FRPServerPort: 7000, FRPUseTLS: true, APIURL: "https://api.example.invalid"}
+		s.Account = &store.Account{ServerID: "sid", FRPServerAddr: "frp-1.seawise.dev", FRPServerPort: 7000, APIURL: "https://api.example.invalid"}
 		s.Targets = []store.Target{
 			{LocalID: "a", Name: "jellyfin", Host: "192.168.1.20", Port: 8096, Subdomain: "jf", Source: store.SourceLocal},
 			{LocalID: "b", Name: "off", Host: "192.168.1.21", Port: 80, Subdomain: "off", Disabled: true, Source: store.SourceLocal},
@@ -91,9 +117,6 @@ func pairedStore(t *testing.T, dir string) *store.Store {
 		return nil
 	})
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := st.UpdateSecrets(func(s *store.Secrets) error { s.FRPToken = "synthetic-token"; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	return st
@@ -111,14 +134,15 @@ func newHarness(t *testing.T, st *store.Store, mode string, tweak func(*Config))
 	h.ctl = filepath.Join(tmp, "mode")
 	h.setMode(mode)
 	cfg := Config{
-		Store:        st,
-		FRPCPath:     exe,
-		AdminPort:    freePort(t),
-		StopTimeout:  2 * time.Second,
-		PollInterval: 50 * time.Millisecond,
-		After:        h.timers.after,
-		Logger:       nil,
-		Env:          append(os.Environ(), envFake+"=1", envFakeLog+"="+h.log, envFakeCtl+"="+h.ctl),
+		Store:         st,
+		FRPCPath:      exe,
+		AdminPort:     freePort(t),
+		TrustedCAFile: caFile(t),
+		StopTimeout:   2 * time.Second,
+		PollInterval:  50 * time.Millisecond,
+		After:         h.timers.after,
+		Logger:        nil,
+		Env:           append(os.Environ(), envFake+"=1", envFakeLog+"="+h.log, envFakeCtl+"="+h.ctl),
 	}
 	if tweak != nil {
 		tweak(&cfg)
@@ -212,6 +236,8 @@ func TestStartsFRPCWithAtomicConfig(t *testing.T) {
 		`transport.tls.serverName = "frp-1.seawise.dev"`,
 		`metadatas.token = "synthetic-token"`,
 		`metadatas.server_id = "sid"`,
+		`transport.tls.enable = true`,
+		`transport.tls.trustedCaFile = "` + h.agent.cfg.TrustedCAFile + `"`,
 		`webServer.addr = "127.0.0.1"`,
 		`name = "sid-jellyfin"`,
 		`subdomain = "jf"`,
@@ -564,5 +590,48 @@ func TestRunOnV1VolumeLeavesV1FilesUnchanged(t *testing.T) {
 		if after[k] != v {
 			t.Fatalf("%s changed", k)
 		}
+	}
+}
+
+func TestGroupAImportUsesVerifiedTLS(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join("..", "legacy", "testdata", "v1", "A")
+	for _, f := range []string{"config.json", "frpc.toml", "password.hash"} {
+		b, err := os.ReadFile(filepath.Join(src, f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.WriteFile(filepath.Join(dir, f), b, 0o600)
+	}
+	st, err := store.Open(dir, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.State().Account.ImportedFRPUseTLS {
+		t.Fatal("fixture should have TLS off in v1")
+	}
+	if err := st.Update(func(s *store.State) error { s.Account.FRPServerAddr = "frp-1.seawise.dev"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	h := newHarness(t, st, "run", nil)
+	eventually(t, "frpc ready", func() bool { s := h.status(); return s.Running && len(s.Proxies) > 0 })
+	p := h.agent.ConfigPath()
+	if confValue(t, p, "transport.tls.enable") != "true" || confValue(t, p, "transport.tls.trustedCaFile") != `"`+h.agent.cfg.TrustedCAFile+`"` || confValue(t, p, "transport.tls.serverName") != `"frp-1.seawise.dev"` {
+		b, _ := os.ReadFile(p)
+		t.Fatalf("config without verified TLS:\n%s", b)
+	}
+}
+
+func TestMissingCABundleRefusesToStart(t *testing.T) {
+	h := newHarness(t, pairedStore(t, t.TempDir()), "run", func(c *Config) { c.TrustedCAFile = "/nonexistent/ca.pem" })
+	err := h.agent.Reconcile(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "certificate verification") {
+		t.Fatalf("err = %v", err)
+	}
+	if s := h.status(); s.Running || h.count("start") != 0 {
+		t.Fatalf("started without a CA bundle: %+v", s)
+	}
+	if _, err := os.Stat(h.agent.ConfigPath()); err == nil {
+		t.Fatal("config written without a CA bundle")
 	}
 }
