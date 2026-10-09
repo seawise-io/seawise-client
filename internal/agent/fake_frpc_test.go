@@ -26,6 +26,10 @@ func TestMain(m *testing.M) {
 		fakeFRPC()
 		return
 	}
+	if os.Getenv(envTestAgent) == "1" {
+		runTestAgent()
+		return
+	}
 	os.Exit(m.Run())
 }
 
