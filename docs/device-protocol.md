@@ -31,7 +31,9 @@ All signatures are Ed25519 (RFC 8032), pure mode.
 
 **Key ID.** The key ID is the RFC 7638 JWK thumbprint: base64url of SHA-256 over `{"crv":"Ed25519","kty":"OKP","x":"<x>"}` with no whitespace. It is 43 characters and equals the `jkt` of RFC 9449.
 
-**Fingerprint.** The fingerprint shown to people is `SW-` followed by the first two bytes of the thumbprint digest in upper-case hex, `-`, and the next two bytes, for example `SW-4F2A-91C0`. It carries 32 bits and is a comparison aid only: it is not unique and MUST NOT be used to identify or look up a key.
+**Fingerprint.** The fingerprint shown to people is `SW-` followed by the first eight bytes of the thumbprint digest in upper-case hex, in four groups of four digits separated by `-`, for example `SW-4F2A-91C0-7D3E-0B65`. It carries 64 bits. It is a comparison aid for people only: it MUST NOT be used to identify or look up a key, and MUST NOT be used as an authentication factor. The key ID identifies a key.
+
+**Test keys.** The keys in `testdata/vectors/` have published seeds. Their key IDs are listed in `internal/protocol/testkeys.go` (`TestVectorKeyIDs`). A production server MUST refuse to register any of them, and the agent refuses to load or use them.
 
 ## 3. Signed tokens
 
@@ -42,7 +44,7 @@ Every signed format is a JWS in compact serialization (RFC 7515): three base64ur
 - `typ`: fixed per format (table below). It separates the formats: a token of one type MUST NOT be accepted as another.
 - either `kid` (the signer's key ID) or `jwk` (only DPoP proofs), as the format says.
 
-Any other header member (for example `crit`, `jku`, `x5u`, `b64`) MUST be rejected. A verifier takes the verification key from its own trusted source (pinned roots, the key set, the device registry), never from the token, except where a format says otherwise.
+Any other header member (for example `crit`, `jku`, `x5u`, `b64`) MUST be rejected. A verifier takes the verification key from its own trusted source (pinned roots, the key set, the device registry), never from the token, except where a format says otherwise. A key taken from the device registry is checked as in §2 before use, and the signature is verified **before** the key's status is examined, so only the holder of a key learns that it was revoked.
 
 | Format | `typ` | Key member | Signed by |
 |---|---|---|---|
@@ -72,7 +74,7 @@ HTTPS requests from the agent to the control plane carry a proof of possession o
 | `nonce` | The most recent `DPoP-Nonce` value from the server: 1 to 256 characters, `%x21 / %x23-5B / %x5D-7E` |
 | `body_sha256` | base64url SHA-256 of the exact request body bytes; an empty body hashes the empty string |
 
-**Canonical URL:** lower-case scheme and host, the port omitted when it is the scheme default, the path as sent (`/` when empty), no userinfo, query or fragment. The verifier computes the canonical form of the URL it received the request on and compares it byte for byte with `htu`.
+**Canonical URL:** lower-case scheme and host, the port omitted when it is the scheme default, the path as sent (`/` when empty), then `?` and the query exactly as sent (raw, not decoded or reordered) when the request has one, no userinfo or fragment. Unlike RFC 9449, the query is covered, so a proof for one query string cannot be used with another. The verifier computes the canonical form of the URL it received the request on and compares it byte for byte with `htu`; a server behind a proxy rebuilds the public URL, including the raw query, before comparing.
 
 **Verification order:** size; segments and base64url; header (`alg`, `typ`, `jwk`); signature with the `jwk`; claims; `htm`; `htu`; `body_sha256`; `nonce`; replay. Error codes in §10.
 
@@ -90,11 +92,16 @@ The agent mints its own login token for the tunnel server. It is placed in the f
 
 **Claims** (all required, no others): `server_id`, `key_id` (equal to the header `kid`), `iat`, `run_id` (random per agent start).
 
+**Lifetime.** A token is accepted for 72 hours after `iat`. The agent mints it with its own key and re-mints it at half life, so no control-plane call is needed; the lifetime bounds the use of a stolen token while tolerating a few days without signed time on a device whose clock drifts.
+
+**Sessions.** The edge records the `run_id` of each live session per server. A login whose `run_id` differs from that of a live session for the same server is refused (`run_conflict`) and raised as possible key theft; the same `run_id` may reconnect. An agent that restarts gets a new `run_id` and retries with backoff until the edge has dropped the old session.
+
 **Verification.** The verifier looks up the header `kid` in its device registry (public key, server, status, `valid_from`) and:
-1. rejects the token if the registry has no such key (`unknown_key`) or the key is not `active` (`key_revoked`);
-2. verifies the signature;
+1. rejects the token if the registry has no such key (`unknown_key`);
+2. verifies the signature, then rejects a key that is not `active` (`key_revoked`);
 3. rejects it if `key_id` differs from `kid` (`malformed`), or `server_id` is not the key's server or not the server named in the login (`wrong_server`);
-4. rejects `iat` more than 300 seconds in the future (`not_yet_valid`), older than 30 days (`expired`), or more than 300 seconds before the key's `valid_from` (`before_key_valid`).
+4. rejects `iat` more than 300 seconds in the future (`not_yet_valid`), older than 72 hours (`expired`), or more than 300 seconds before the key's `valid_from` (`before_key_valid`);
+5. rejects a `run_id` that conflicts with a live session (`run_conflict`).
 
 The agent re-mints the token when it passes half its life. Revoking a device is a registry change; tokens do not need to expire for it to take effect.
 
@@ -110,9 +117,11 @@ The agent may replace its device key at any time. A rotation is a JSON object wi
 
 **Claims** (all required, no others): `server_id`, `old_kid`, `new_jwk`, `iat`.
 
-**Verification:** the payload segments are byte-identical; the statement `kid` is the server's registered key (`unknown_key`), which is `active` (`key_revoked`); the statement verifies with the old key; `old_kid` equals the statement `kid`; `server_id` is the requesting server and the key's server (`wrong_server`); `new_jwk` is a valid key different from the old one; the `pop` `kid` is its key ID and the `pop` verifies with it. The request carrying the rotation is itself a request proof made with the old key. On success the old key is retired and the statement is kept as the rotation record.
+**Verification:** the payload segments are byte-identical; the statement `kid` is the server's registered key (`unknown_key`), which is `active` (`key_revoked`); the statement verifies with the old key; the key is `active` (`key_revoked`), unless the rotation is a retry (below); `old_kid` equals the statement `kid`; `server_id` is the requesting server and the key's server (`wrong_server`); `new_jwk` is a valid key different from the old one and was never registered for this server before (`bad_key`: a device cannot rotate back to a retired key); the `pop` `kid` is its key ID and the `pop` verifies with it. The request carrying the rotation is itself a request proof made with the old key. On success the old key is retired and the statement is kept as the rotation record.
 
-The agent keeps the new key as pending until the server confirms, and uses the pending key's creation time as `iat`, so a retry produces the identical rotation.
+**Retries.** The server keeps the accepted rotation. A later rotation that is byte-identical to the one already accepted from the same old key is answered as success without changing anything, even though the old key is now retired, so a retry after a lost response is safe. Any other rotation signed by a retired key is refused (`key_revoked`).
+
+**Agent recovery.** The agent keeps the new key as pending until the server confirms, and uses the pending key's creation time as `iat`, so a retry produces the identical rotation. If the agent stops after the server accepted the rotation but before it recorded that, its next request with the old key gets `key_revoked`. The agent then sends one request signed with the pending key; if it is accepted, the pending key becomes current. Only if that also fails does the agent ask to be paired again.
 
 ## 7. Key set
 
@@ -188,6 +197,9 @@ Verifiers report the first failing rule with one of these codes. The vectors ass
 | `bad_nonce` | Proof nonce is missing, unknown or expired |
 | `nonce_mismatch` | Signed time does not echo the agent's nonce |
 | `rollback` | Key set older than the one already accepted |
+| `run_conflict` | frp login from another run while a session is live |
+
+**Codes on the wire.** A server reports `unknown_key` and `bad_signature` to the client as one code, `invalid_proof`, so a response does not reveal whether a key is registered; the detailed code is for its logs. Every other code is sent as is. Each vector lists the wire code as `wire`.
 
 ## 11. Test vectors
 
