@@ -23,11 +23,13 @@ cosign verify ghcr.io/seawise-io/seawise-client:beta \
 ## Promoting to stable
 
 `:stable` moves only when `release/stable.json` on `main` is signed by the
-release key. The release key is an ECDSA P-256 cosign key held offline by
-the maintainer (hardware token or an encrypted key on an offline machine).
-It is never stored in CI or in repository secrets and is separate from any
-key the service uses. Only its public key is in this repository, at
-`release/keys/release.pub`.
+release key. The release key is an ECDSA P-256 cosign key kept offline by
+the maintainer (on a hardware token, or encrypted on removable media) and
+used only to sign this manifest. It is never stored in CI or in repository
+secrets and is separate from any key the service uses. Only its public key
+is in this repository, at `release/keys/release.pub`. Each signature is
+also recorded in the public Sigstore transparency log, which the workflow
+requires, so every use of the key is visible.
 
 1. Write `release/stable.json`:
 
