@@ -43,7 +43,7 @@ var errNoDNS = errors.New("no such host")
 
 func TestProxyRenderedForFRPC(t *testing.T) {
 	dns := &fakeDNS{}
-	dns.set(nil, "203.0.113.10")
+	dns.set(nil, "93.184.216.10")
 	env := map[string]string{"HTTPS_PROXY": "http://user:pw@proxy.lan:3128"}
 	h := newHarness(t, pairedStore(t, t.TempDir()), "run", func(c *Config) { c.Getenv = envOf(env); c.ResolveEdge = dns.resolve })
 	eventually(t, "frpc ready", func() bool { return h.status().Running })
@@ -94,14 +94,14 @@ func TestEdgeAddressCachedAndUsedWhenDNSFails(t *testing.T) {
 	dir := t.TempDir()
 	st := pairedStore(t, dir)
 	dns := &fakeDNS{}
-	dns.set(nil, "2001:db8::10", "203.0.113.10", "127.0.0.1")
+	dns.set(nil, "2606:4700::10", "93.184.216.10", "127.0.0.1")
 	h := newHarness(t, st, "run", func(c *Config) { c.ResolveEdge = dns.resolve })
 	eventually(t, "frpc ready", func() bool { return h.status().Running })
 	if got := confValue(t, h.agent.ConfigPath(), "serverAddr"); got != `"frp-1.seawise.dev"` {
 		t.Fatalf("serverAddr with working DNS = %s", got)
 	}
 	e := st.State().EdgeDNS
-	if e == nil || e.Host != "frp-1.seawise.dev" || strings.Join(e.Addrs, ",") != "2001:db8::10,203.0.113.10" {
+	if e == nil || e.Host != "frp-1.seawise.dev" || strings.Join(e.Addrs, ",") != "2606:4700::10,93.184.216.10" {
 		t.Fatalf("cache = %+v", e)
 	}
 	h.stop()
@@ -109,21 +109,21 @@ func TestEdgeAddressCachedAndUsedWhenDNSFails(t *testing.T) {
 	dns.set(errNoDNS)
 	h = newHarness(t, st, "run", func(c *Config) { c.ResolveEdge = dns.resolve })
 	eventually(t, "frpc ready", func() bool { return h.status().Running })
-	if got := confValue(t, h.agent.ConfigPath(), "serverAddr"); got != `"203.0.113.10"` {
+	if got := confValue(t, h.agent.ConfigPath(), "serverAddr"); got != `"93.184.216.10"` {
 		t.Fatalf("fallback serverAddr = %s", got)
 	}
 	if got := confValue(t, h.agent.ConfigPath(), "transport.tls.serverName"); got != `"frp-1.seawise.dev"` {
 		t.Fatalf("TLS server name = %s", got)
 	}
-	if s := h.status(); s.EdgeFallback != "203.0.113.10" {
+	if s := h.status(); s.EdgeFallback != "93.184.216.10" {
 		t.Fatalf("status = %+v", s)
 	}
 }
 
 func TestEdgeCacheExpiresAndIsPerHost(t *testing.T) {
 	for name, cache := range map[string]*store.EdgeDNS{
-		"expired":    {Host: "frp-1.seawise.dev", Addrs: []string{"203.0.113.10"}, ResolvedAt: time.Now().Add(-EdgeCacheTTL - time.Hour)},
-		"other host": {Host: "frp-2.seawise.dev", Addrs: []string{"203.0.113.10"}, ResolvedAt: time.Now()},
+		"expired":    {Host: "frp-1.seawise.dev", Addrs: []string{"93.184.216.10"}, ResolvedAt: time.Now().Add(-EdgeCacheTTL - time.Hour)},
+		"other host": {Host: "frp-2.seawise.dev", Addrs: []string{"93.184.216.10"}, ResolvedAt: time.Now()},
 	} {
 		t.Run(name, func(t *testing.T) {
 			st := pairedStore(t, t.TempDir())
@@ -144,7 +144,8 @@ func TestEdgeCacheExpiresAndIsPerHost(t *testing.T) {
 func TestEdgeCacheIgnoresNonGlobal(t *testing.T) {
 	st := pairedStore(t, t.TempDir())
 	dns := &fakeDNS{}
-	dns.set(nil, "127.0.0.1", "::1", "169.254.1.1", "0.0.0.0", "224.0.0.1")
+	dns.set(nil, "127.0.0.1", "::1", "169.254.1.1", "0.0.0.0", "224.0.0.1",
+		"10.0.0.5", "172.16.1.1", "192.168.1.1", "100.64.0.1", "fd00::1", "198.18.0.1", "203.0.113.5", "2001:db8::1", "64:ff9b::a00:1")
 	h := newHarness(t, st, "run", func(c *Config) { c.ResolveEdge = dns.resolve })
 	eventually(t, "frpc ready", func() bool { return h.status().Running })
 	if e := st.State().EdgeDNS; e != nil {
@@ -155,7 +156,7 @@ func TestEdgeCacheIgnoresNonGlobal(t *testing.T) {
 func TestEdgeRecheckReturnsToHostname(t *testing.T) {
 	st := pairedStore(t, t.TempDir())
 	if err := st.Update(func(s *store.State) error {
-		s.EdgeDNS = &store.EdgeDNS{Host: "frp-1.seawise.dev", Addrs: []string{"203.0.113.10"}, ResolvedAt: time.Now()}
+		s.EdgeDNS = &store.EdgeDNS{Host: "frp-1.seawise.dev", Addrs: []string{"93.184.216.10"}, ResolvedAt: time.Now()}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -164,12 +165,36 @@ func TestEdgeRecheckReturnsToHostname(t *testing.T) {
 	dns.set(errNoDNS)
 	h := newHarness(t, st, "run", func(c *Config) { c.ResolveEdge = dns.resolve; c.EdgeRecheck = 50 * time.Millisecond })
 	eventually(t, "fallback", func() bool { return h.status().EdgeFallback != "" })
-	dns.set(nil, "203.0.113.11")
+	dns.set(nil, "93.184.216.11")
 	eventually(t, "back on the host name", func() bool {
 		s := h.status()
 		return s.Running && s.EdgeFallback == "" && confValue(t, h.agent.ConfigPath(), "serverAddr") == `"frp-1.seawise.dev"`
 	})
 	if _, err := os.Stat(h.agent.ConfigPath()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestEdgeCacheFilteredWhenRead(t *testing.T) {
+	for name, cache := range map[string]*store.EdgeDNS{
+		"private":  {Host: "frp-1.seawise.dev", Addrs: []string{"10.0.0.5"}, ResolvedAt: time.Now()},
+		"cgnat":    {Host: "frp-1.seawise.dev", Addrs: []string{"100.64.1.1"}, ResolvedAt: time.Now()},
+		"ula":      {Host: "frp-1.seawise.dev", Addrs: []string{"fd12::1"}, ResolvedAt: time.Now()},
+		"future":   {Host: "frp-1.seawise.dev", Addrs: []string{"93.184.216.10"}, ResolvedAt: time.Now().Add(48 * time.Hour)},
+		"loopback": {Host: "frp-1.seawise.dev", Addrs: []string{"127.0.0.1"}, ResolvedAt: time.Now()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			st := pairedStore(t, t.TempDir())
+			if err := st.Update(func(s *store.State) error { s.EdgeDNS = cache; return nil }); err != nil {
+				t.Fatal(err)
+			}
+			dns := &fakeDNS{}
+			dns.set(errNoDNS)
+			h := newHarness(t, st, "run", func(c *Config) { c.ResolveEdge = dns.resolve })
+			eventually(t, "frpc ready", func() bool { return h.status().Running })
+			if got := confValue(t, h.agent.ConfigPath(), "serverAddr"); got != `"frp-1.seawise.dev"` {
+				t.Fatalf("serverAddr = %s", got)
+			}
+		})
 	}
 }

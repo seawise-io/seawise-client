@@ -130,7 +130,7 @@ func pairedStore(t *testing.T, dir string) *store.Store {
 }
 
 func staticDNS(context.Context, string) ([]netip.Addr, error) {
-	return []netip.Addr{netip.MustParseAddr("203.0.113.10")}, nil
+	return []netip.Addr{netip.MustParseAddr("93.184.216.10")}, nil
 }
 
 func newHarness(t *testing.T, st *store.Store, mode string, tweak func(*Config)) *harness {

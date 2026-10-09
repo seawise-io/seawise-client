@@ -46,6 +46,9 @@ const (
 	maxEdgeAddrs       = 4
 )
 
+// edgeClockSkew tolerates a cache entry dated slightly in the future.
+const edgeClockSkew = 5 * time.Minute
+
 // Proxy schemes frpc supports for its connection to frps.
 var frpcProxySchemes = []string{"http", "socks5", "ntlm"}
 
@@ -517,12 +520,25 @@ func (a *Agent) resolveEdge(d *desired) {
 		return
 	}
 	e := a.cfg.Store.State().EdgeDNS
-	if e == nil || e.Host != host || time.Since(e.ResolvedAt) >= EdgeCacheTTL {
+	if e == nil || e.Host != host {
 		return
 	}
-	ip := e.Addrs[0]
+	if age := time.Since(e.ResolvedAt); age < -edgeClockSkew || age >= EdgeCacheTTL {
+		return
+	}
+	var cached []netip.Addr
 	for _, s := range e.Addrs {
-		if addr, err := netip.ParseAddr(s); err == nil && addr.Is4() {
+		if addr, err := netip.ParseAddr(s); err == nil {
+			cached = append(cached, addr)
+		}
+	}
+	usable = usableEdgeAddrs(cached)
+	if len(usable) == 0 {
+		return
+	}
+	ip := usable[0]
+	for _, s := range usable {
+		if netip.MustParseAddr(s).Is4() {
 			ip = s
 			break
 		}
@@ -531,11 +547,14 @@ func (a *Agent) resolveEdge(d *desired) {
 	a.log.Warn("DNS lookup for the tunnel server failed; using its last known address", "host", host, "addr", ip, "resolved_at", e.ResolvedAt)
 }
 
+// usableEdgeAddrs keeps public unicast addresses only: no private, CGNAT,
+// ULA, loopback, link-local, documentation or other special-use ranges,
+// as classified by the target policy.
 func usableEdgeAddrs(addrs []netip.Addr) []string {
 	var out []string
 	for _, a := range addrs {
 		a = a.Unmap()
-		if !a.IsGlobalUnicast() || a.IsLoopback() || a.IsLinkLocalUnicast() || a.Zone() != "" || slices.Contains(out, a.String()) {
+		if c, _ := targetpolicy.Classify(a); c != targetpolicy.Public || a.Zone() != "" || slices.Contains(out, a.String()) {
 			continue
 		}
 		out = append(out, a.String())

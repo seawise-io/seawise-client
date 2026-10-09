@@ -710,3 +710,46 @@ func TestPublicToggleIsCopied(t *testing.T) {
 		t.Fatal("no decision must count as private")
 	}
 }
+
+func TestImplausibleEdgeDNSDroppedAtLoad(t *testing.T) {
+	for name, at := range map[string]time.Time{
+		"future": fixedNow.Add(48 * time.Hour),
+		"old":    fixedNow.Add(-400 * 24 * time.Hour),
+		"zero":   {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			s, err := Open(dir, clock)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Update(func(st *State) error {
+				st.EdgeDNS = &EdgeDNS{Host: "frp.example", Addrs: []string{"93.184.216.10"}, ResolvedAt: at}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			s.Close()
+			s, err = Open(dir, clock)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			if s.State().EdgeDNS != nil {
+				t.Fatalf("kept edge cache resolved at %v", at)
+			}
+		})
+	}
+	dir := t.TempDir()
+	s, _ := Open(dir, clock)
+	_ = s.Update(func(st *State) error {
+		st.EdgeDNS = &EdgeDNS{Host: "frp.example", Addrs: []string{"93.184.216.10"}, ResolvedAt: fixedNow.Add(-time.Hour)}
+		return nil
+	})
+	s.Close()
+	s, _ = Open(dir, clock)
+	defer s.Close()
+	if s.State().EdgeDNS == nil {
+		t.Fatal("plausible edge cache dropped")
+	}
+}
