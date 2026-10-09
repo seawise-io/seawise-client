@@ -13,7 +13,10 @@ const (
 	RemovalMinSpan    = 10 * time.Minute
 	DisableMinReports = 2
 	DisableMinSpan    = 10 * time.Minute
-	DefaultDisableCap = 1
+	// DefaultServerDisablesPerDay caps disable requests recorded from the
+	// server in any rolling 24 hours.
+	DefaultServerDisablesPerDay = 3
+	disableWindow               = 24 * time.Hour
 )
 
 // RemovalState describes what the server has said about this machine.
@@ -82,36 +85,72 @@ type Notice struct {
 	Count   int        `json:"count,omitempty"`
 }
 
-// Plan is the only set of local changes a service list can cause.
+// Plan is the only set of local changes a service list can cause. A server
+// request to disable an app is recorded for the owner to accept; it never
+// turns the app off by itself.
 type Plan struct {
-	FillSubdomain map[string]string
-	Disable       []string
-	Notices       []Notice
+	FillSubdomain  map[string]string
+	RequestDisable []string
+	ClearRequest   []string
+	Notices        []Notice
 }
 
-func (p Plan) Empty() bool { return len(p.FillSubdomain) == 0 && len(p.Disable) == 0 }
+func (p Plan) Empty() bool {
+	return len(p.FillSubdomain) == 0 && len(p.RequestDisable) == 0 && len(p.ClearRequest) == 0
+}
 
 // Apply makes the planned changes on st and reports whether anything
 // changed. It re-checks each condition against st, which may have moved on
-// since the plan was made.
-func (p Plan) Apply(st *store.State) bool {
+// since the plan was made. New disable requests are recorded only if the
+// whole batch fits in the rolling daily cap.
+func (p Plan) Apply(st *store.State, now time.Time, perDay int) (bool, []Notice) {
 	changed := false
-	disable := map[string]bool{}
-	for _, id := range p.Disable {
-		disable[id] = true
-	}
+	var notices []Notice
+	byID := map[string]*store.Target{}
 	for i := range st.Targets {
-		t := &st.Targets[i]
-		if sub, ok := p.FillSubdomain[t.LocalID]; ok && t.Subdomain == "" && ValidSubdomain(sub) {
+		byID[st.Targets[i].LocalID] = &st.Targets[i]
+	}
+	for id, sub := range p.FillSubdomain {
+		if t := byID[id]; t != nil && t.Subdomain == "" && ValidSubdomain(sub) {
 			t.Subdomain = sub
 			changed = true
 		}
-		if disable[t.LocalID] && !t.Disabled {
-			t.Disabled = true
+	}
+	for _, id := range p.ClearRequest {
+		if t := byID[id]; t != nil && t.ServerDisableRequestedAt != nil {
+			t.ServerDisableRequestedAt = nil
 			changed = true
 		}
 	}
-	return changed
+	recent := st.ServerDisableLog[:0:0]
+	for _, at := range st.ServerDisableLog {
+		if now.Sub(at) < disableWindow {
+			recent = append(recent, at)
+		}
+	}
+	if len(recent) != len(st.ServerDisableLog) {
+		st.ServerDisableLog = recent
+		changed = true
+	}
+	var fresh []*store.Target
+	for _, id := range p.RequestDisable {
+		if t := byID[id]; t != nil && !t.Disabled && t.ServerDisableRequestedAt == nil {
+			fresh = append(fresh, t)
+		}
+	}
+	switch {
+	case len(fresh) == 0:
+	case len(recent)+len(fresh) > perDay:
+		notices = append(notices, Notice{Kind: NoticeDisableCap, Count: len(fresh)})
+	default:
+		for _, t := range fresh {
+			at := now
+			t.ServerDisableRequestedAt = &at
+			st.ServerDisableLog = append(st.ServerDisableLog, now)
+		}
+		changed = true
+	}
+	return changed, notices
 }
 
 type sighting struct {
@@ -152,11 +191,9 @@ func (d *DisableTracker) confirmed(id string, now time.Time) bool {
 // PlanServices compares the local targets with a service list. Matching is by
 // the server app ID stored when this client registered the app. Absence is
 // never a deletion, unknown apps are never imported, host and port are never
-// taken from the server, and disables are capped.
-func PlanServices(local []store.Target, remote []Service, dt *DisableTracker, now time.Time, disableCap int) Plan {
-	if disableCap < 0 {
-		disableCap = 0
-	}
+// taken from the server, and a disable is only a request, made after the
+// server has repeated it over time.
+func PlanServices(local []store.Target, remote []Service, dt *DisableTracker, now time.Time) Plan {
 	plan := Plan{FillSubdomain: map[string]string{}}
 	byID := make(map[string]Service, len(remote))
 	for _, s := range remote {
@@ -189,9 +226,11 @@ func PlanServices(local []store.Target, remote []Service, dt *DisableTracker, no
 		}
 		if s.Status == "disabled" {
 			disabledNow[s.ID] = true
-			if !t.Disabled {
+			if !t.Disabled && t.ServerDisableRequestedAt == nil {
 				candidates = append(candidates, t.LocalID)
 			}
+		} else if t.ServerDisableRequestedAt != nil {
+			plan.ClearRequest = append(plan.ClearRequest, t.LocalID)
 		}
 	}
 	if len(remote) == 0 && registered > 0 {
@@ -206,19 +245,13 @@ func PlanServices(local []store.Target, remote []Service, dt *DisableTracker, no
 	for _, t := range local {
 		idOf[t.LocalID] = t.ServerServiceID
 	}
-	var confirmed []string
 	for _, lid := range candidates {
 		if dt.confirmed(idOf[lid], now) {
-			confirmed = append(confirmed, lid)
+			plan.RequestDisable = append(plan.RequestDisable, lid)
 		} else {
 			plan.Notices = append(plan.Notices, Notice{Kind: NoticeDisablePending, LocalID: lid})
 		}
 	}
-	if len(confirmed) > disableCap {
-		plan.Notices = append(plan.Notices, Notice{Kind: NoticeDisableCap, Count: len(confirmed)})
-	} else {
-		sort.Strings(confirmed)
-		plan.Disable = confirmed
-	}
+	sort.Strings(plan.RequestDisable)
 	return plan
 }

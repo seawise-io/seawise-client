@@ -207,7 +207,7 @@ func TestGrandfatheredReview(t *testing.T) {
 		}
 		return nil, errors.New("nxdomain")
 	}
-	items := BuildReview(context.Background(), targets, resolve, nil)
+	items := BuildReview(context.Background(), targets, resolve, nil, true)
 	byID := map[string]ReviewItem{}
 	for _, it := range items {
 		byID[it.LocalID] = it
@@ -226,7 +226,7 @@ func TestGrandfatheredReview(t *testing.T) {
 	}
 
 	st := store.State{Targets: targets}
-	if err := Confirm(&st, "b", byID["b"].Assessment, now); err != nil {
+	if err := Confirm(&st, "b", "example.com", 443, byID["b"].Assessment, now); err != nil {
 		t.Fatal(err)
 	}
 	b := st.Targets[1]
@@ -239,13 +239,19 @@ func TestGrandfatheredReview(t *testing.T) {
 	if err := Check(RuleFor(b), ap("93.184.216.34", 25), nil); err == nil {
 		t.Fatal("confirmed grants widened to smtp")
 	}
-	if err := Confirm(&st, "c", byID["c"].Assessment, now); err == nil {
+	if err := Confirm(&st, "c", "169.254.169.254", 80, byID["c"].Assessment, now); err == nil {
 		t.Fatal("forbidden target confirmed")
 	}
 	if err := Disable(&st, "c"); err != nil || !st.Targets[2].Disabled || len(st.Targets) != 5 {
 		t.Fatal("disable")
 	}
-	if Confirm(&st, "zz", Assessment{}, now) != ErrNotFound || Disable(&st, "zz") != ErrNotFound {
+	if err := Confirm(&st, "a", "192.168.1.99", 32400, Assessment{Required: []string{}}, now); err != ErrChanged {
+		t.Fatalf("changed target confirmed: %v", err)
+	}
+	if items := BuildReview(context.Background(), st.Targets, resolve, nil, false); len(items) == 0 {
+		t.Fatal("disabled target not listed for re-enable")
+	}
+	if Confirm(&st, "zz", "h", 1, Assessment{}, now) != ErrNotFound || Disable(&st, "zz") != ErrNotFound {
 		t.Fatal("unknown id")
 	}
 }
@@ -264,16 +270,16 @@ func TestParseRoutes(t *testing.T) {
 
 func TestClassifyTranslationForms(t *testing.T) {
 	cases := map[string]Class{
-		"::ffff:0:a9fe:a9fe":         Forbidden, // SIIT metadata
-		"::ffff:0:7f00:1":            Forbidden, // SIIT loopback
-		"::ffff:0:c0a8:101":          Forbidden, // SIIT private
-		"::ffff:0:808:808":           Public,
+		"::ffff:0:a9fe:a9fe":                   Forbidden, // SIIT metadata
+		"::ffff:0:7f00:1":                      Forbidden, // SIIT loopback
+		"::ffff:0:c0a8:101":                    Forbidden, // SIIT private
+		"::ffff:0:808:808":                     Public,
 		"2001:0:4136:e378:8000:63bf:5601:5601": Forbidden, // Teredo, client 169.254.169.254 (xor ff)
 		"2001:0:4136:e378:8000:63bf:f5ff:fefe": Forbidden, // Teredo, client 10.0.1.1
 		"2001:0:4136:e378:8000:63bf:f7f7:f7f7": Public,    // Teredo, client 8.8.8.8
-		"fd00::5efe:a9fe:a9fe":       Forbidden, // ISATAP metadata
-		"2001:db9::200:5efe:7f00:1":  Forbidden, // ISATAP loopback
-		"2606:4700::5efe:808:808":    Public,
+		"fd00::5efe:a9fe:a9fe":                 Forbidden, // ISATAP metadata
+		"2001:db9::200:5efe:7f00:1":            Forbidden, // ISATAP loopback
+		"2606:4700::5efe:808:808":              Public,
 	}
 	for s, want := range cases {
 		if got, _ := Classify(netip.MustParseAddr(s)); got != want {

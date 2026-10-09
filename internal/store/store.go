@@ -68,6 +68,9 @@ type Target struct {
 	// Allowed lists the target classes the owner confirmed locally, beyond
 	// private addresses. Grandfathered targets are not limited by it.
 	Allowed []string `json:"allowed,omitempty"`
+	// ServerDisableRequestedAt is set while the server asks for this app to
+	// be turned off; the owner accepts or dismisses it locally.
+	ServerDisableRequestedAt *time.Time `json:"server_disable_requested_at,omitempty"`
 }
 
 // Grants a target can hold; see internal/targetpolicy.
@@ -95,6 +98,9 @@ type State struct {
 	MachineName string     `json:"machine_name,omitempty"`
 	Account     *Account   `json:"account,omitempty"`
 	Targets     []Target   `json:"targets"`
+	// ServerDisableLog holds when disable requests from the server were
+	// recorded, for the rolling cap.
+	ServerDisableLog []time.Time `json:"server_disable_log,omitempty"`
 }
 
 type Secrets struct {
@@ -406,6 +412,9 @@ func validateState(st *State) error {
 	if st.Targets == nil {
 		st.Targets = []Target{}
 	}
+	if len(st.ServerDisableLog) > MaxTargets {
+		return fmt.Errorf("%w: disable log too long", ErrInvalid)
+	}
 	if len(st.Targets) > MaxTargets {
 		return fmt.Errorf("%w: too many targets", ErrInvalid)
 	}
@@ -476,6 +485,7 @@ func randomID() (string, error) {
 func cloneState(st State) State {
 	out := st
 	out.Targets = append([]Target(nil), st.Targets...)
+	out.ServerDisableLog = append([]time.Time(nil), st.ServerDisableLog...)
 	if out.Targets == nil {
 		out.Targets = []Target{}
 	}
@@ -499,6 +509,10 @@ func cloneState(st State) State {
 			out.Targets[i].ConfirmedAt = &t
 		}
 		out.Targets[i].Allowed = append([]string(nil), out.Targets[i].Allowed...)
+		if r := out.Targets[i].ServerDisableRequestedAt; r != nil {
+			t := *r
+			out.Targets[i].ServerDisableRequestedAt = &t
+		}
 	}
 	return out
 }

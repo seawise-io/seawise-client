@@ -259,3 +259,24 @@ func TestSyncerUnpairedDoesNothing(t *testing.T) {
 		t.Fatal("unpaired agent called the server")
 	}
 }
+
+func TestSyncerServerDisableNeedsOwner(t *testing.T) {
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, n int) {
+		if r.Method == "GET" {
+			jsonReply(w, 200, `{"data":[{"id":"`+sidA+`","name":"jellyfin","host":"192.168.1.20","port":8096,"subdomain":"calm-otter","status":"disabled"}]}`)
+			return
+		}
+		jsonReply(w, 200, okHeartbeat)
+	})
+	st, _ := pairedStore(t)
+	ag := &fakeAgent{}
+	clk := &clock{now: t0}
+	s := newSyncer(t, f, st, ag, clk)
+	s.Step(context.Background())
+	clk.Add(11 * time.Minute)
+	s.Step(context.Background())
+	a := st.State().Targets[0]
+	if a.Disabled || a.ServerDisableRequestedAt == nil || ag.reconciles != 0 || len(st.State().ServerDisableLog) != 1 {
+		t.Fatalf("server disable not left to the owner: %+v reconciles %d", a, ag.reconciles)
+	}
+}

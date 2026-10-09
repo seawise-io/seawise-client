@@ -24,11 +24,12 @@ type Agent interface {
 }
 
 type SyncerConfig struct {
-	Client     *Client
-	Store      *store.Store
-	Agent      Agent
-	Version    string
-	DisableCap int
+	Client  *Client
+	Store   *store.Store
+	Agent   Agent
+	Version string
+	// ServerDisablesPerDay caps disable requests recorded per rolling day.
+	ServerDisablesPerDay int
 	// ListEvery is how many heartbeats pass between service list syncs.
 	ListEvery int
 	Now       func() time.Time
@@ -64,8 +65,8 @@ func NewSyncer(cfg SyncerConfig) (*Syncer, error) {
 	if cfg.ListEvery <= 0 {
 		cfg.ListEvery = 2
 	}
-	if cfg.DisableCap == 0 {
-		cfg.DisableCap = DefaultDisableCap
+	if cfg.ServerDisablesPerDay <= 0 {
+		cfg.ServerDisablesPerDay = DefaultServerDisablesPerDay
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -203,8 +204,11 @@ func (s *Syncer) syncList(ctx context.Context, serverID string, now time.Time) {
 	var plan Plan
 	changed := false
 	err = s.cfg.Store.Update(func(st *store.State) error {
-		plan = PlanServices(st.Targets, remote, &s.disables, now, s.cfg.DisableCap)
-		if changed = plan.Apply(st); !changed {
+		plan = PlanServices(st.Targets, remote, &s.disables, now)
+		var notices []Notice
+		changed, notices = plan.Apply(st, now, s.cfg.ServerDisablesPerDay)
+		plan.Notices = append(plan.Notices, notices...)
+		if !changed {
 			return errUnchanged
 		}
 		return nil
@@ -219,10 +223,10 @@ func (s *Syncer) syncList(ctx context.Context, serverID string, now time.Time) {
 			s.log.Warn("service list ignored in part", "notice", n.Kind, "count", n.Count)
 		}
 	}
-	if len(plan.Disable) > 0 {
-		s.log.Warn("apps disabled at the server's request", "local_ids", plan.Disable)
+	if len(plan.RequestDisable) > 0 {
+		s.log.Warn("server asks to turn off apps; waiting for local confirmation", "local_ids", plan.RequestDisable)
 	}
-	if changed {
+	if changed && len(plan.FillSubdomain) > 0 {
 		_ = s.cfg.Agent.Reconcile(ctx)
 	}
 }

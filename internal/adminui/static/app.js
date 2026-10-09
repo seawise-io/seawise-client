@@ -17,28 +17,36 @@
       return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; });
     });
   }
+  function button(label, localID, action) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.addEventListener("click", function () {
+      call("POST", "/api/targets/review", { local_id: localID, action: action }).then(function (r) {
+        say(r.ok ? "Saved." : (r.body.error || "Failed."));
+        refresh();
+      });
+    });
+    return b;
+  }
   function renderReview(items) {
     var ul = $("review");
     ul.textContent = "";
     (items || []).forEach(function (it) {
       var li = document.createElement("li");
-      var text = it.name + " (" + it.host + ":" + it.port + ")";
-      if (it.required && it.required.length) text += ": needs " + it.required.join(", ");
-      if (it.refused) text += ": blocked, " + it.refused;
-      li.appendChild(document.createTextNode(text + " "));
-      ["confirm", "disable"].forEach(function (action) {
-        if (action === "confirm" && it.refused) return;
-        var b = document.createElement("button");
-        b.type = "button";
-        b.textContent = action === "confirm" ? "Confirm" : "Turn off";
-        b.addEventListener("click", function () {
-          call("POST", "/api/targets/review", { local_id: it.local_id, action: action }).then(function (r) {
-            say(r.ok ? "Saved." : (r.body.error || "Failed."));
-            refresh();
-          });
-        });
-        li.appendChild(b);
-      });
+      var notes = [];
+      if (it.disabled) notes.push("turned off");
+      if (it.refused) notes.push("connections refused: " + it.refused);
+      else if (it.missing && it.missing.length) notes.push("connections refused until you confirm: " + it.missing.join(", "));
+      else if (it.grandfathered) notes.push("set up before this version, still working");
+      if (it.server_disable_requested_at) notes.push("SeaWise asks to turn this app off; it keeps running until you accept");
+      li.appendChild(document.createTextNode(it.name + " (" + it.host + ":" + it.port + "): " + notes.join("; ") + " "));
+      if (!it.refused && (it.grandfathered || (it.missing && it.missing.length))) li.appendChild(button("Confirm", it.local_id, "confirm"));
+      if (it.server_disable_requested_at) {
+        li.appendChild(button("Turn off as asked", it.local_id, "accept_server_disable"));
+        li.appendChild(button("Keep running", it.local_id, "dismiss_server_disable"));
+      }
+      li.appendChild(it.disabled ? button("Turn on", it.local_id, "enable") : button("Turn off", it.local_id, "disable"));
       ul.appendChild(li);
     });
   }

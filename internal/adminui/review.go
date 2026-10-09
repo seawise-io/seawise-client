@@ -21,12 +21,13 @@ func defaultResolver(ctx context.Context, host string) ([]netip.Addr, error) {
 }
 
 func (s *Server) handleReviewList(w http.ResponseWriter, r *http.Request) {
-	items := targetpolicy.BuildReview(r.Context(), s.cfg.Store.State().Targets, s.cfg.Resolver, s.cfg.Gateways())
+	items := targetpolicy.BuildReview(r.Context(), s.cfg.Store.State().Targets, s.cfg.Resolver, s.cfg.Gateways(), s.cfg.PublicAllowed)
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-// handleReviewAction confirms or disables one target. A confirmation is
-// re-assessed here, so the client cannot grant more than the target needs.
+// handleReviewAction applies one owner decision to a target. A confirmation
+// is assessed here, so the browser cannot grant more than the target needs,
+// and stored only if the target still has the host and port assessed.
 func (s *Server) handleReviewAction(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		LocalID string `json:"local_id"`
@@ -55,22 +56,33 @@ func (s *Server) handleReviewAction(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "host did not resolve"})
 			return
 		}
-		as := targetpolicy.Assess(target.Host, target.Port, addrs, s.cfg.Gateways(), targetpolicy.Options{PublicAllowed: target.Grandfathered || s.cfg.PublicAllowed})
+		as := targetpolicy.Assess(target.Host, target.Port, addrs, s.cfg.Gateways(), targetpolicy.Options{PublicAllowed: s.cfg.PublicAllowed})
 		if as.Refused != "" {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": as.Refused})
 			return
 		}
 		now := s.cfg.Now()
-		apply = func(st *store.State) error { return targetpolicy.Confirm(st, body.LocalID, as, now) }
+		host, port := target.Host, target.Port
+		apply = func(st *store.State) error { return targetpolicy.Confirm(st, body.LocalID, host, port, as, now) }
 	case "disable":
 		apply = func(st *store.State) error { return targetpolicy.Disable(st, body.LocalID) }
+	case "enable":
+		apply = func(st *store.State) error { return targetpolicy.Enable(st, body.LocalID) }
+	case "accept_server_disable":
+		apply = func(st *store.State) error { return targetpolicy.AcceptServerDisable(st, body.LocalID) }
+	case "dismiss_server_disable":
+		apply = func(st *store.State) error { return targetpolicy.DismissServerDisable(st, body.LocalID) }
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown action"})
 		return
 	}
 	if err := s.cfg.Store.Update(apply); err != nil && !errors.Is(err, store.ErrNotDurable) {
-		if errors.Is(err, targetpolicy.ErrNotFound) {
+		switch {
+		case errors.Is(err, targetpolicy.ErrNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "app not found"})
+			return
+		case errors.Is(err, targetpolicy.ErrChanged), errors.Is(err, targetpolicy.ErrNoAction):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 			return
 		}
 		s.log.Error("review", "error", err)

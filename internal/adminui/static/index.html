@@ -14,7 +14,7 @@
 
 <form id="setup" hidden>
 <h2>Set up this client</h2>
-<p>Enter the setup code from the client's logs, or from the <code>setup-code</code> file in its data folder, and choose a password.</p>
+<p>Enter the setup code from the <code>v2/setup-code</code> file in the client's data folder (the client's log shows its path), and choose a password.</p>
 <label for="setup-code">Setup code</label>
 <input id="setup-code" name="code" autocomplete="off" required>
 <label for="setup-password">New password</label>
@@ -33,7 +33,7 @@
 <h2>Status</h2>
 <pre id="status"></pre>
 <h2>Apps to review</h2>
-<p>These apps were set up before this version. They keep working; confirm each one to record that you expect it, or turn it off.</p>
+<p>Apps set up before this version, apps that reach addresses needing your confirmation, apps that are turned off, and requests from SeaWise to turn an app off.</p>
 <ul id="review"></ul>
 <button id="logout" type="button">Sign out</button>
 </section>
