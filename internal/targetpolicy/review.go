@@ -27,6 +27,10 @@ type ReviewItem struct {
 	// ServerDisableRequestedAt is set while the server asks to turn the app
 	// off; the app keeps running until the owner accepts.
 	ServerDisableRequestedAt *time.Time `json:"server_disable_requested_at,omitempty"`
+	// Public is the local toggle; ServerPublic is what the server reports.
+	// An app public on the server but not here is not tunnelled.
+	Public       bool `json:"public"`
+	ServerPublic bool `json:"server_public"`
 	Assessment
 	// Missing lists required grants the target does not hold. The agent does
 	// not tunnel a target while its literal address misses a grant, and the
@@ -44,8 +48,9 @@ func ResolveHost(ctx context.Context, r Resolver, host string) ([]netip.Addr, er
 }
 
 // BuildReview lists targets that are grandfathered, disabled, have a pending
-// server disable request, or whose current addresses need grants they do
-// not hold. publicAllowed is the operator opt-in for public targets.
+// server disable request, whose current addresses need grants they do not
+// hold, or that the server reports public while they are private here.
+// publicAllowed is the operator opt-in for public targets.
 func BuildReview(ctx context.Context, targets []store.Target, resolve Resolver, gateways []netip.Addr, publicAllowed bool) []ReviewItem {
 	out := []ReviewItem{}
 	for _, t := range targets {
@@ -66,13 +71,14 @@ func BuildReview(ctx context.Context, targets []store.Target, resolve Resolver, 
 				missing = append(missing, g)
 			}
 		}
-		if !t.Grandfathered && !t.Disabled && t.ServerDisableRequestedAt == nil && len(missing) == 0 && as.Refused == "" {
+		conflict := t.ServerPublic && !t.IsPublicLocally()
+		if !t.Grandfathered && !t.Disabled && t.ServerDisableRequestedAt == nil && len(missing) == 0 && as.Refused == "" && !conflict {
 			continue
 		}
 		out = append(out, ReviewItem{
 			LocalID: t.LocalID, Name: t.Name, Host: t.Host, Port: t.Port, Disabled: t.Disabled,
 			Grandfathered: t.Grandfathered, ConfirmedAt: t.ConfirmedAt, Granted: granted, Assessment: as, Missing: missing,
-			ServerDisableRequestedAt: t.ServerDisableRequestedAt,
+			ServerDisableRequestedAt: t.ServerDisableRequestedAt, Public: t.IsPublicLocally(), ServerPublic: t.ServerPublic,
 		})
 	}
 	return out
@@ -112,6 +118,17 @@ func Confirm(st *store.State, localID, host string, port int, as Assessment, now
 	t.Grandfathered = false
 	at := now
 	t.ConfirmedAt = &at
+	return nil
+}
+
+// SetPublic records the owner's public toggle for a target.
+func SetPublic(st *store.State, localID string, on bool) error {
+	t := find(st, localID)
+	if t == nil {
+		return ErrNotFound
+	}
+	v := on
+	t.Public = &v
 	return nil
 }
 

@@ -72,6 +72,10 @@ func (s *Server) handleReviewAction(w http.ResponseWriter, r *http.Request) {
 		apply = func(st *store.State) error { return targetpolicy.AcceptServerDisable(st, body.LocalID) }
 	case "dismiss_server_disable":
 		apply = func(st *store.State) error { return targetpolicy.DismissServerDisable(st, body.LocalID) }
+	case "make_public":
+		apply = func(st *store.State) error { return targetpolicy.SetPublic(st, body.LocalID, true) }
+	case "make_private":
+		apply = func(st *store.State) error { return targetpolicy.SetPublic(st, body.LocalID, false) }
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown action"})
 		return
