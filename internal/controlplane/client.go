@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -18,12 +19,14 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/seawise/client/internal/constants"
+	"github.com/seawise/client/internal/netproxy"
 )
 
 const (
@@ -33,6 +36,7 @@ const (
 	DefaultBackoffBase = 500 * time.Millisecond
 	DefaultBackoffMax  = 5 * time.Second
 	MaxRetryAfter      = 30 * time.Second
+	tcpKeepAlive       = 45 * time.Second
 )
 
 type Kind int
@@ -117,7 +121,10 @@ type Config struct {
 	AllowedDomains []string
 	// HTTPClient is for tests; its redirect policy is replaced.
 	HTTPClient *http.Client
-	Sleep      func(context.Context, time.Duration) error
+	// Getenv supplies the proxy variables; nil reads the process
+	// environment on every request.
+	Getenv netproxy.Getenv
+	Sleep  func(context.Context, time.Duration) error
 }
 
 type Client struct {
@@ -150,18 +157,12 @@ func New(cfg Config) (*Client, error) {
 	if cfg.Version == "" {
 		cfg.Version = constants.Version
 	}
+	if cfg.Getenv == nil {
+		cfg.Getenv = os.Getenv
+	}
 	hc := cfg.HTTPClient
 	if hc == nil {
-		hc = &http.Client{Transport: &http.Transport{
-			Proxy:                 http.ProxyFromEnvironment,
-			DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-			TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
-			TLSHandshakeTimeout:   10 * time.Second,
-			ResponseHeaderTimeout: 15 * time.Second,
-			IdleConnTimeout:       90 * time.Second,
-			MaxIdleConns:          4,
-			ForceAttemptHTTP2:     true,
-		}}
+		hc = &http.Client{Transport: NewTransport(cfg.Getenv, nil)}
 	} else {
 		c := *hc
 		hc = &c
@@ -171,6 +172,24 @@ func New(cfg Config) (*Client, error) {
 		base: base, token: cfg.Token, ua: "seawise-agent/" + cfg.Version, timeout: cfg.Timeout,
 		domains: cfg.AllowedDomains, http: hc, sleep: cfg.Sleep,
 	}, nil
+}
+
+// NewTransport is the production transport: proxy from the environment,
+// TLS 1.2 or newer, HTTP/2 when offered, and a kept-alive connection so
+// each heartbeat does not pay for a new handshake. The TCP keepalive idle
+// time is longer than the heartbeat interval, so an active connection
+// sends no probes. roots nil uses the system roots.
+func NewTransport(getenv netproxy.Getenv, roots *x509.CertPool) *http.Transport {
+	return &http.Transport{
+		Proxy:                 netproxy.Func(getenv),
+		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: tcpKeepAlive}).DialContext,
+		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots},
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 15 * time.Second,
+		IdleConnTimeout:       90 * time.Second,
+		MaxIdleConns:          4,
+		ForceAttemptHTTP2:     true,
+	}
 }
 
 func validateBaseURL(raw string) (string, error) {

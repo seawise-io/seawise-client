@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/seawise/client/internal/accesslog"
 	"github.com/seawise/client/internal/adminui"
 	"github.com/seawise/client/internal/agent"
 	"github.com/seawise/client/internal/constants"
@@ -43,6 +44,7 @@ func main() {
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	slog.SetDefault(log)
+	applyMemoryLimit(os.Getenv)
 
 	st, err := store.Open(paths.DataDir(), time.Now)
 	if err != nil {
@@ -50,6 +52,13 @@ func main() {
 		os.Exit(1)
 	}
 	defer st.Close()
+
+	accessLog, err := accesslog.Open(accesslog.Config{Dir: st.Dir(), Logger: log})
+	if err != nil {
+		log.Error("open access log", "error", err)
+		os.Exit(1)
+	}
+	defer accessLog.Close()
 
 	if v := os.Getenv("SEAWISE_NAT64_PREFIXES"); v != "" {
 		var prefixes []netip.Prefix
@@ -74,6 +83,7 @@ func main() {
 		Logger:        log,
 		Gateways:      targetpolicy.Gateways(),
 	}
+	cfg.Forward.Record = accessLog.Record
 	if v := os.Getenv("SEAWISE_FRPC_ADMIN_PORT"); v != "" {
 		p, err := strconv.Atoi(v)
 		if err != nil {
@@ -107,9 +117,9 @@ func main() {
 	}
 	go func() { _ = syncer.Run(ctx) }()
 
-	ui, err := startAdminUI(ctx, log, st, a, func(ctx context.Context) any {
+	ui, err := startAdminUI(ctx, log, st, a, accessLog, func(ctx context.Context) any {
 		as, _ := a.Status(ctx)
-		return map[string]any{"agent": as, "control_plane": syncer.Status()}
+		return map[string]any{"agent": as, "control_plane": syncer.Status(), "access_log": accessLog.Status()}
 	})
 	if err != nil {
 		log.Error("admin UI", "error", err)
@@ -125,7 +135,7 @@ func main() {
 
 // startAdminUI serves HTTPS and plain HTTP on the admin port and returns a
 // function that waits for it to stop.
-func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *agent.Agent, status func(context.Context) any) (func(), error) {
+func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *agent.Agent, al *accesslog.Log, status func(context.Context) any) (func(), error) {
 	auth, err := adminui.NewAuth(adminui.AuthConfig{Store: st, PasswordFile: os.Getenv("SEAWISE_ADMIN_PASSWORD_FILE"), Logger: log})
 	if err != nil {
 		return nil, err
@@ -155,6 +165,8 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *age
 		Store: st, Auth: auth, Status: status, AllowedHosts: extra, Hostname: hostname, Logger: log,
 		PublicAllowed:    os.Getenv("SEAWISE_ALLOW_PUBLIC_TARGETS") == "1",
 		OnTargetsChanged: func(ctx context.Context) { _ = a.Reconcile(ctx) },
+		AccessLog:        al,
+		KillSwitch:       a.SetKillSwitch,
 	})
 	if err != nil {
 		return nil, err

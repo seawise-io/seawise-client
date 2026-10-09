@@ -16,13 +16,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/seawise/client/internal/constants"
 	"github.com/seawise/client/internal/forwarder"
+	"github.com/seawise/client/internal/netproxy"
 	"github.com/seawise/client/internal/store"
 	"github.com/seawise/client/internal/targetpolicy"
 )
@@ -36,7 +37,17 @@ const (
 	DefaultTrustedCA    = "/etc/ssl/certs/ca-certificates.crt"
 	ConfigFile          = "frpc.toml"
 	PIDFile             = "frpc.pid"
+	// EdgeCacheTTL bounds how old a cached frps address may be when local
+	// DNS fails.
+	EdgeCacheTTL       = 7 * 24 * time.Hour
+	DefaultEdgeRecheck = 5 * time.Minute
+	edgeResolveTimeout = 3 * time.Second
+	edgeCacheRefresh   = time.Hour
+	maxEdgeAddrs       = 4
 )
+
+// Proxy schemes frpc supports for its connection to frps.
+var frpcProxySchemes = []string{"http", "socks5", "ntlm"}
 
 var ErrStopped = errors.New("agent stopped")
 
@@ -55,9 +66,18 @@ type Config struct {
 	PollInterval   time.Duration
 	After          func(time.Duration) <-chan time.Time
 	Logger         *slog.Logger
-	// Env is the frpc environment; nil passes only the proxy variables of
-	// the current process.
+	// Env is the frpc environment; nil gives frpc an empty one. Proxy
+	// settings reach frpc through its config, never its environment.
 	Env []string
+	// Getenv supplies the proxy variables; nil reads the process
+	// environment.
+	Getenv netproxy.Getenv
+	// ResolveEdge resolves the frps host before each frpc start; nil uses
+	// the system resolver.
+	ResolveEdge func(ctx context.Context, host string) ([]netip.Addr, error)
+	// EdgeRecheck is how often DNS is tried again while frpc runs on a
+	// cached address.
+	EdgeRecheck time.Duration
 	// Gateways are this host's default gateways, for the target policy.
 	Gateways []netip.Addr
 	// Forward configures the loopback forwarder frpc connects through.
@@ -83,6 +103,9 @@ type Status struct {
 	Proxies      []ProxyStatus
 	PollError    string
 	Refused      []RefusedApp
+	// EdgeFallback is the cached frps address in use because DNS failed.
+	EdgeFallback string
+	Proxied      bool
 }
 
 type intentKind int
@@ -98,6 +121,8 @@ const (
 const (
 	HoldUser    = "user"
 	HoldRemoval = "removal"
+	// HoldKillSwitch is kept in the store, so it survives restarts.
+	HoldKillSwitch = store.HoldKillSwitch
 )
 
 type intent struct {
@@ -154,6 +179,9 @@ type Agent struct {
 	status        Status
 	polling       bool
 	runCtx        context.Context
+	// edgeDial is the cached address frpc dials instead of edgeHost.
+	edgeHost string
+	edgeDial string
 }
 
 func New(cfg Config) (*Agent, error) {
@@ -187,6 +215,17 @@ func New(cfg Config) (*Agent, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
+	if cfg.Getenv == nil {
+		cfg.Getenv = os.Getenv
+	}
+	if cfg.ResolveEdge == nil {
+		cfg.ResolveEdge = func(ctx context.Context, host string) ([]netip.Addr, error) {
+			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+		}
+	}
+	if cfg.EdgeRecheck <= 0 {
+		cfg.EdgeRecheck = DefaultEdgeRecheck
+	}
 	user, err := randomHex(8)
 	if err != nil {
 		return nil, err
@@ -198,6 +237,10 @@ func New(cfg Config) (*Agent, error) {
 	connID, err := randomHex(16)
 	if err != nil {
 		return nil, err
+	}
+	holds := map[string]bool{}
+	for _, h := range cfg.Store.State().Holds {
+		holds[h] = true
 	}
 	fwdCfg := cfg.Forward
 	fwdCfg.Gateways = cfg.Gateways
@@ -214,7 +257,7 @@ func New(cfg Config) (*Agent, error) {
 		adminUser:    user,
 		adminPass:    pass,
 		connectionID: connID,
-		holds:        map[string]bool{},
+		holds:        holds,
 		fwd:          forwarder.New(fwdCfg),
 	}, nil
 }
@@ -234,6 +277,8 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.killStale()
 	ticker := time.NewTicker(a.cfg.PollInterval)
 	defer ticker.Stop()
+	recheck := time.NewTicker(a.cfg.EdgeRecheck)
+	defer recheck.Stop()
 
 	a.reconcile()
 	for {
@@ -252,6 +297,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			a.reconcile()
 		case <-ticker.C:
 			a.startPoll()
+		case <-recheck.C:
+			a.recheckEdge()
 		case pe := <-a.polls:
 			a.polling = false
 			if a.proc != nil && pe.pid == a.proc.pid {
@@ -286,6 +333,31 @@ func (a *Agent) Hold(ctx context.Context, reason string) error {
 func (a *Agent) Release(ctx context.Context, reason string) error {
 	_, err := a.send(ctx, intentRelease, reason)
 	return err
+}
+
+// SetKillSwitch drops or restores every tunnel. Turning it on holds the
+// tunnels even if the store cannot be written; turning it off needs the
+// store first, so a restart cannot bring tunnels back unasked.
+func (a *Agent) SetKillSwitch(ctx context.Context, on bool) error {
+	err := a.cfg.Store.Update(func(st *store.State) error {
+		st.Holds = slices.DeleteFunc(st.Holds, func(h string) bool { return h == HoldKillSwitch })
+		if on {
+			st.Holds = append(st.Holds, HoldKillSwitch)
+		}
+		return nil
+	})
+	if err != nil && !errors.Is(err, store.ErrNotDurable) {
+		if on {
+			return errors.Join(fmt.Errorf("persist kill switch: %w", err), a.Hold(ctx, HoldKillSwitch))
+		}
+		return fmt.Errorf("persist kill switch: %w", err)
+	}
+	if on {
+		a.log.Warn("kill switch on: all tunnels dropped")
+		return a.Hold(ctx, HoldKillSwitch)
+	}
+	a.log.Info("kill switch off")
+	return a.Release(ctx, HoldKillSwitch)
 }
 
 func (a *Agent) Status(ctx context.Context) (Status, error) {
@@ -329,6 +401,7 @@ func (a *Agent) handle(in intent) reply {
 
 func (a *Agent) snapshot() Status {
 	s := a.status
+	s.EdgeFallback = a.edgeDial
 	s.Paused = len(a.holds) > 0
 	s.Holds = make([]string, 0, len(a.holds))
 	for h := range a.holds {
@@ -367,12 +440,115 @@ func (a *Agent) desired() (*desired, error) {
 	if !fileExists(a.cfg.TrustedCAFile) {
 		return nil, fmt.Errorf("CA bundle %q not found; refusing to connect to frps without certificate verification", a.cfg.TrustedCAFile)
 	}
+	proxyURL, err := a.frpcProxy(acc.FRPServerAddr, acc.FRPServerPort)
+	if err != nil {
+		return nil, err
+	}
+	a.status.Proxied = proxyURL != ""
+	dial := acc.FRPServerAddr
+	if proxyURL == "" && a.edgeHost == acc.FRPServerAddr && a.edgeDial != "" {
+		dial = a.edgeDial
+	}
 	return &desired{
-		serverAddr: acc.FRPServerAddr, serverPort: acc.FRPServerPort,
+		serverAddr: dial, tlsName: acc.FRPServerAddr, serverPort: acc.FRPServerPort, proxyURL: proxyURL,
 		token: sec.FRPToken, serverID: acc.ServerID, connectionID: a.connectionID,
 		adminHost: "127.0.0.1", adminPort: a.adminPort, adminUser: a.adminUser, adminPass: a.adminPass,
 		trustedCA: a.cfg.TrustedCAFile, proxies: a.proxies(st.Targets),
 	}, nil
+}
+
+// frpcProxy returns the proxy URL frpc uses for frps, or "" for a direct
+// connection. A proxy frpc cannot use is an error rather than a silent
+// direct connection.
+func (a *Agent) frpcProxy(host string, port int) (string, error) {
+	u, err := netproxy.ForHost(a.cfg.Getenv, host, port, netproxy.Tunnel...)
+	if err != nil {
+		return "", fmt.Errorf("proxy settings: %w", err)
+	}
+	if u == nil {
+		return "", nil
+	}
+	if err := netproxy.CheckScheme(u, frpcProxySchemes...); err != nil {
+		return "", fmt.Errorf("proxy settings: %w (frpc supports http, socks5 and ntlm)", err)
+	}
+	return u.String(), nil
+}
+
+// resolveEdge runs before each frpc start without a proxy. A successful
+// lookup is cached and frpc dials the host name; a failed one falls back
+// to a cached address for the same host that is younger than
+// EdgeCacheTTL. TLS still verifies the host name either way.
+func (a *Agent) resolveEdge(d *desired) {
+	host := d.tlsName
+	ctx, cancel := context.WithTimeout(a.ctx(), edgeResolveTimeout)
+	addrs, err := a.cfg.ResolveEdge(ctx, host)
+	cancel()
+	usable := usableEdgeAddrs(addrs)
+	a.edgeHost, a.edgeDial, d.serverAddr = host, "", host
+	if err == nil && len(usable) > 0 {
+		a.cacheEdge(host, usable)
+		return
+	}
+	e := a.cfg.Store.State().EdgeDNS
+	if e == nil || e.Host != host || time.Since(e.ResolvedAt) >= EdgeCacheTTL {
+		return
+	}
+	ip := e.Addrs[0]
+	for _, s := range e.Addrs {
+		if addr, err := netip.ParseAddr(s); err == nil && addr.Is4() {
+			ip = s
+			break
+		}
+	}
+	a.edgeDial, d.serverAddr = ip, ip
+	a.log.Warn("DNS lookup for the tunnel server failed; using its last known address", "host", host, "addr", ip, "resolved_at", e.ResolvedAt)
+}
+
+func usableEdgeAddrs(addrs []netip.Addr) []string {
+	var out []string
+	for _, a := range addrs {
+		a = a.Unmap()
+		if !a.IsGlobalUnicast() || a.IsLoopback() || a.IsLinkLocalUnicast() || a.Zone() != "" || slices.Contains(out, a.String()) {
+			continue
+		}
+		out = append(out, a.String())
+		if len(out) == maxEdgeAddrs {
+			break
+		}
+	}
+	return out
+}
+
+func (a *Agent) cacheEdge(host string, addrs []string) {
+	e := a.cfg.Store.State().EdgeDNS
+	if e != nil && e.Host == host && slices.Equal(e.Addrs, addrs) && time.Since(e.ResolvedAt) < edgeCacheRefresh {
+		return
+	}
+	err := a.cfg.Store.Update(func(st *store.State) error {
+		st.EdgeDNS = &store.EdgeDNS{Host: host, Addrs: addrs, ResolvedAt: time.Now().UTC()}
+		return nil
+	})
+	if err != nil && !errors.Is(err, store.ErrNotDurable) {
+		a.log.Warn("store tunnel server address", "error", err)
+	}
+}
+
+// recheckEdge moves frpc back to the host name once DNS works again.
+func (a *Agent) recheckEdge() {
+	if a.edgeDial == "" || a.proc == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(a.ctx(), edgeResolveTimeout)
+	addrs, err := a.cfg.ResolveEdge(ctx, a.edgeHost)
+	cancel()
+	usable := usableEdgeAddrs(addrs)
+	if err != nil || len(usable) == 0 {
+		return
+	}
+	a.cacheEdge(a.edgeHost, usable)
+	a.edgeDial = ""
+	a.log.Info("DNS works again; reconnecting by host name", "host", a.edgeHost)
+	_ = a.reconcile()
 }
 
 // proxies admits targets through the policy and routes each one through its
@@ -398,13 +574,11 @@ func (a *Agent) reconcile() error {
 	d, err := a.desired()
 	if err != nil {
 		a.status.LastError = err.Error()
-		a.stopProcess()
-		a.fwd.Sync(nil)
+		a.dropAll()
 		return err
 	}
 	if d == nil {
-		a.stopProcess()
-		a.fwd.Sync(nil)
+		a.dropAll()
 		return nil
 	}
 	if a.proc == nil {
@@ -431,6 +605,17 @@ func (a *Agent) reconcile() error {
 		}
 	}
 	return nil
+}
+
+// dropAll stops frpc, closes every forwarder listener and connection, and
+// removes frpc.toml so no proxy list is left on disk.
+func (a *Agent) dropAll() {
+	a.stopProcess()
+	a.fwd.Sync(nil)
+	if err := os.Remove(a.ConfigPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+		a.log.Warn("remove frpc config", "error", err)
+	}
+	a.writtenCommon, a.writtenProxy, a.status.ConfigSHA256 = "", "", ""
 }
 
 func (a *Agent) writeConfig(d *desired) (commonChanged, proxiesChanged bool, err error) {
@@ -470,6 +655,9 @@ func (a *Agent) startProcess(d *desired) error {
 	admin, err := newAdminClient("127.0.0.1", port, a.adminUser, a.adminPass, 2*time.Second)
 	if err != nil {
 		return err
+	}
+	if d.proxyURL == "" {
+		a.resolveEdge(d)
 	}
 	a.adminPort, a.admin, d.adminPort = port, admin, port
 	if _, _, err := a.writeConfig(d); err != nil {
@@ -583,22 +771,9 @@ func (a *Agent) startPoll() {
 	}()
 }
 
-// frpc is a static binary given absolute paths and an explicit CA file, so
-// it needs no PATH, HOME, TZ or SSL_CERT_* from us.
-var passEnv = map[string]bool{
-	"HTTP_PROXY": true, "HTTPS_PROXY": true, "NO_PROXY": true, "ALL_PROXY": true,
-	"http_proxy": true, "https_proxy": true, "no_proxy": true, "all_proxy": true,
-}
-
-func childEnv() []string {
-	out := []string{}
-	for _, kv := range os.Environ() {
-		if k, _, ok := strings.Cut(kv, "="); ok && passEnv[k] {
-			out = append(out, kv)
-		}
-	}
-	return out
-}
+// frpc is a static binary given absolute paths, an explicit CA file and
+// its proxy in the config, so it needs nothing from the environment.
+func childEnv() []string { return []string{} }
 
 func freeLoopbackPort() (int, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

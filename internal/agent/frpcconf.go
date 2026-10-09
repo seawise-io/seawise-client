@@ -10,8 +10,12 @@ import (
 )
 
 type desired struct {
+	// serverAddr is what frpc dials: the host name, or a cached address
+	// when DNS fails. tlsName is always the host name.
 	serverAddr   string
+	tlsName      string
 	serverPort   int
+	proxyURL     string
 	token        string
 	serverID     string
 	connectionID string
@@ -39,7 +43,10 @@ func (d *desired) renderCommon() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "serverAddr = \"%s\"\nserverPort = %d\n", tomlEscape(d.serverAddr), d.serverPort)
 	fmt.Fprintf(&b, "transport.tls.enable = true\ntransport.tls.serverName = \"%s\"\ntransport.tls.trustedCaFile = \"%s\"\n",
-		tomlEscape(d.serverAddr), tomlEscape(d.trustedCA))
+		tomlEscape(d.tlsName), tomlEscape(d.trustedCA))
+	if d.proxyURL != "" {
+		fmt.Fprintf(&b, "transport.proxyURL = \"%s\"\n", tomlEscape(d.proxyURL))
+	}
 	fmt.Fprintf(&b, "metadatas.token = \"%s\"\nmetadatas.server_id = \"%s\"\nmetadatas.connection_id = \"%s\"\n",
 		tomlEscape(d.token), tomlEscape(d.serverID), tomlEscape(d.connectionID))
 	fmt.Fprintf(&b, "webServer.addr = \"%s\"\nwebServer.port = %d\nwebServer.user = \"%s\"\nwebServer.password = \"%s\"\n",
@@ -58,7 +65,8 @@ func (d *desired) renderProxies() string {
 }
 
 // admit returns the targets that may be tunnelled: enabled, registered,
-// confirmed locally (or grandfathered), and, where the address is known
+// confirmed locally (or grandfathered), not public on the server unless the
+// owner made them public here, and, where the address is known
 // without DNS, accepted by the target policy. Names are checked again on
 // every connection by the forwarder.
 func admit(targets []store.Target, gateways []netip.Addr) ([]store.Target, []RefusedApp) {
@@ -70,6 +78,10 @@ func admit(targets []store.Target, gateways []netip.Addr) ([]store.Target, []Ref
 		}
 		if !t.Grandfathered && t.ConfirmedAt == nil {
 			refused = append(refused, RefusedApp{LocalID: t.LocalID, Reason: "not confirmed on this machine"})
+			continue
+		}
+		if t.ServerPublic && !t.IsPublicLocally() {
+			refused = append(refused, RefusedApp{LocalID: t.LocalID, Reason: "public on SeaWise but private on this machine"})
 			continue
 		}
 		if addr, ok := literal(t.Host); ok {

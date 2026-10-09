@@ -218,6 +218,8 @@ type Service struct {
 	Port      int
 	Subdomain string
 	Status    string
+	// Public is the server's public flag, nil when the reply has none.
+	Public *bool
 }
 
 type wireService struct {
@@ -227,6 +229,7 @@ type wireService struct {
 	Port      int    `json:"port"`
 	Subdomain string `json:"subdomain"`
 	Status    string `json:"status"`
+	IsPublic  *bool  `json:"is_public"`
 }
 
 // check validates an item; full requires name, host and port (list and
@@ -252,7 +255,7 @@ func (w wireService) check(full bool) (Service, error) {
 	if len(w.Status) > 32 || strings.ContainsFunc(w.Status, isControl) {
 		return Service{}, errors.New("status")
 	}
-	return Service{ID: strings.ToLower(w.ID), Name: w.Name, Host: w.Host, Port: w.Port, Subdomain: w.Subdomain, Status: w.Status}, nil
+	return Service{ID: strings.ToLower(w.ID), Name: w.Name, Host: w.Host, Port: w.Port, Subdomain: w.Subdomain, Status: w.Status, Public: w.IsPublic}, nil
 }
 
 func (c *Client) RegisterService(ctx context.Context, serverID, name, host string, port int) (*Service, error) {

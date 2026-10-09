@@ -14,6 +14,12 @@ import (
 
 var errUnchanged = errors.New("unchanged")
 
+// DefaultListEvery is how many heartbeats pass between service list syncs
+// (15 minutes at the usual 30 s heartbeat). The list only carries disable
+// requests and public flags; new apps get their subdomain from the
+// register reply. The first list sync runs on the first heartbeat.
+const DefaultListEvery = 30
+
 // Agent is the part of the reconcile loop the syncer drives.
 type Agent interface {
 	Hold(ctx context.Context, reason string) error
@@ -63,7 +69,7 @@ func NewSyncer(cfg SyncerConfig) (*Syncer, error) {
 		return nil, errors.New("client, store and agent required")
 	}
 	if cfg.ListEvery <= 0 {
-		cfg.ListEvery = 2
+		cfg.ListEvery = DefaultListEvery
 	}
 	if cfg.ServerDisablesPerDay <= 0 {
 		cfg.ServerDisablesPerDay = DefaultServerDisablesPerDay
@@ -121,7 +127,7 @@ func (s *Syncer) Step(ctx context.Context) time.Duration {
 		}
 		s.applyEndpoint(ctx, hb)
 		s.beats++
-		if s.beats%s.cfg.ListEvery == 0 {
+		if (s.beats-1)%s.cfg.ListEvery == 0 {
 			s.syncList(ctx, st.Account.ServerID, now)
 		}
 		s.update(func(ss *SyncStatus) { ss.Removal = s.removal.State(now) })
@@ -226,7 +232,7 @@ func (s *Syncer) syncList(ctx context.Context, serverID string, now time.Time) {
 	if len(plan.RequestDisable) > 0 {
 		s.log.Warn("server asks to turn off apps; waiting for local confirmation", "local_ids", plan.RequestDisable)
 	}
-	if changed && len(plan.FillSubdomain) > 0 {
+	if changed && (len(plan.FillSubdomain) > 0 || len(plan.ServerPublic) > 0) {
 		_ = s.cfg.Agent.Reconcile(ctx)
 	}
 }

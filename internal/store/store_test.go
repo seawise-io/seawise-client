@@ -632,3 +632,81 @@ func TestFailedMigrationLeavesFileUntouched(t *testing.T) {
 		t.Fatal("state file changed after failed migration")
 	}
 }
+
+func TestHoldsPersistAcrossReopen(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Update(func(st *State) error { st.Holds = []string{HoldKillSwitch}; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	s, err = Open(dir, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if !s.State().HasHold(HoldKillSwitch) {
+		t.Fatal("kill switch hold lost on reopen")
+	}
+	for _, bad := range [][]string{{"user"}, {"removal"}, {HoldKillSwitch, HoldKillSwitch}, {""}} {
+		if err := s.Update(func(st *State) error { st.Holds = bad; return nil }); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("holds %q: err = %v", bad, err)
+		}
+	}
+}
+
+func TestEdgeDNSValidated(t *testing.T) {
+	s, err := Open(t.TempDir(), clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	bad := []*EdgeDNS{
+		{Host: "", Addrs: []string{"203.0.113.7"}},
+		{Host: "frp.example", Addrs: nil},
+		{Host: "frp.example", Addrs: []string{"not-an-ip"}},
+		{Host: "frp.example", Addrs: []string{"fe80::1%eth0"}},
+		{Host: "frp.example", Addrs: []string{"203.0.113.1", "203.0.113.2", "203.0.113.3", "203.0.113.4", "203.0.113.5"}},
+	}
+	for i, e := range bad {
+		if err := s.Update(func(st *State) error { st.EdgeDNS = e; return nil }); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("case %d: err = %v", i, err)
+		}
+	}
+	good := &EdgeDNS{Host: "frp.example", Addrs: []string{"203.0.113.7", "2001:db8::7"}, ResolvedAt: fixedNow}
+	if err := s.Update(func(st *State) error { st.EdgeDNS = good; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	st := s.State()
+	st.EdgeDNS.Addrs[0] = "mutated"
+	if s.State().EdgeDNS.Addrs[0] != "203.0.113.7" {
+		t.Fatal("State() shares edge addresses")
+	}
+}
+
+func TestPublicToggleIsCopied(t *testing.T) {
+	s, err := Open(t.TempDir(), clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	on := true
+	err = s.Update(func(st *State) error {
+		st.Targets = []Target{{LocalID: "a", Host: "h", Port: 1, Source: SourceLocal, Public: &on, ServerPublic: true}}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := s.State()
+	*st.Targets[0].Public = false
+	if !s.State().Targets[0].IsPublicLocally() {
+		t.Fatal("State() shares the public toggle")
+	}
+	if (Target{}).IsPublicLocally() {
+		t.Fatal("no decision must count as private")
+	}
+}

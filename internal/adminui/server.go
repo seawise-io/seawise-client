@@ -56,9 +56,13 @@ type Config struct {
 	Gateways         func() []netip.Addr
 	PublicAllowed    bool
 	OnTargetsChanged func(context.Context)
-	PeekTimeout      time.Duration
-	MaxConns         int
-	MaxConnsPerIP    int
+	// AccessLog backs the access log page; KillSwitch drops or restores
+	// all tunnels.
+	AccessLog     AccessLog
+	KillSwitch    KillSwitchFunc
+	PeekTimeout   time.Duration
+	MaxConns      int
+	MaxConnsPerIP int
 }
 
 type Server struct {
@@ -104,6 +108,8 @@ func New(cfg Config) (*Server, error) {
 	mux.HandleFunc("POST /api/setup", s.handleSetup)
 	mux.Handle("GET /api/targets/review", s.requireSession(http.HandlerFunc(s.handleReviewList)))
 	mux.Handle("POST /api/targets/review", s.requireSession(http.HandlerFunc(s.handleReviewAction)))
+	mux.Handle("GET /api/access-log", s.requireSession(http.HandlerFunc(s.handleAccessLog)))
+	mux.Handle("POST /api/kill-switch", s.requireSession(http.HandlerFunc(s.handleKillSwitch)))
 	mux.Handle("POST /api/auth/logout", s.requireSession(http.HandlerFunc(s.handleLogout)))
 	s.secure = mux
 	return s, nil

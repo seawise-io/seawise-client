@@ -595,3 +595,24 @@ func TestOtherEndpoints(t *testing.T) {
 		t.Fatal(out, err)
 	}
 }
+
+func TestListServicesPublicFlag(t *testing.T) {
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, _ int) {
+		jsonReply(w, 200, `{"data":[`+
+			`{"id":"`+serviceID+`","name":"a","host":"h","port":80,"subdomain":"calm-otter","is_public":true},`+
+			`{"id":"aaaaaaaa-0000-4000-8000-000000000002","name":"b","host":"h","port":81,"subdomain":"brave-seal"}]}`)
+	})
+	got, err := f.client(t).ListServices(context.Background(), serverID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].Public == nil || !*got[0].Public || got[1].Public != nil {
+		t.Fatalf("public flags = %v %v", got[0].Public, got[1].Public)
+	}
+	f = newFake(t, func(w http.ResponseWriter, r *http.Request, _ int) {
+		jsonReply(w, 200, `{"data":[{"id":"`+serviceID+`","name":"a","host":"h","port":80,"is_public":"yes"}]}`)
+	})
+	if _, err := f.client(t).ListServices(context.Background(), serverID); err == nil {
+		t.Fatal("non-boolean is_public accepted")
+	}
+}

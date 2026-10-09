@@ -39,6 +39,13 @@ func readOwned(path string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(f, maxFileSize))
 }
 
+func OpenOwned(path string, flag int) (*os.File, error) {
+	if info, err := os.Lstat(path); err == nil && !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%w: %s is not a regular file", ErrUnsafePath, path)
+	}
+	return os.OpenFile(path, flag, 0o600)
+}
+
 func lockDir(dir string) (*os.File, error) {
 	return nil, fmt.Errorf("%w: locking not supported on this platform", ErrLocked)
 }

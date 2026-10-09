@@ -30,11 +30,22 @@
 </form>
 
 <section id="dashboard" hidden>
+<h2>Tunnels</h2>
+<p id="tunnels"></p>
+<button id="kill-switch" type="button"></button>
 <h2>Status</h2>
 <pre id="status"></pre>
 <h2>Apps to review</h2>
 <p>Apps set up before this version, apps that reach addresses needing your confirmation, apps that are turned off, and requests from SeaWise to turn an app off.</p>
 <ul id="review"></ul>
+<h2>Access log</h2>
+<p>Connections forwarded to your apps from this machine, newest first. Kept for 30 days on this machine only.</p>
+<table id="access">
+<thead><tr><th scope="col">Time</th><th scope="col">App</th><th scope="col">From</th><th scope="col">To</th><th scope="col">In</th><th scope="col">Out</th><th scope="col">Duration</th><th scope="col">Result</th></tr></thead>
+<tbody id="access-rows"></tbody>
+</table>
+<button id="access-newest" type="button">Newest</button>
+<button id="access-older" type="button">Older</button>
 <button id="logout" type="button">Sign out</button>
 </section>
 </main>

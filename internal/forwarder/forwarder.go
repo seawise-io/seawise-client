@@ -1,7 +1,9 @@
 // Package forwarder runs one loopback listener per app. frpc connects to it
 // instead of to the app, and every connection is dialled to the real target
 // through the target policy, which checks the address actually connected to.
-// It passes bytes through unchanged and never logs or inspects payloads.
+// It passes bytes through unchanged and never logs or inspects payloads;
+// each connection is reported to Config.Record with addresses, byte counts,
+// duration and result only.
 package forwarder
 
 import (
@@ -17,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/seawise/client/internal/accesslog"
 	"github.com/seawise/client/internal/targetpolicy"
 )
 
@@ -57,6 +60,9 @@ type Config struct {
 	Logger      *slog.Logger
 	// OnListen, if set, is called with each new listener's port.
 	OnListen func(port int)
+	// Record, if set, receives one entry per connection when it ends. It
+	// must not block.
+	Record func(accesslog.Entry)
 }
 
 type Forwarder struct {
@@ -214,6 +220,7 @@ func (l *listener) serve() {
 		select {
 		case l.sem <- struct{}{}:
 		default:
+			l.record(time.Now(), c, l.configured(), 0, 0, accesslog.ResultBusy)
 			_ = c.Close()
 			continue
 		}
@@ -230,9 +237,15 @@ func (l *listener) handle(in net.Conn) {
 		return
 	}
 	defer l.untrack(in)
+	start := time.Now()
 	out, err := l.dial()
 	if err != nil {
 		l.refusal(err)
+		result := accesslog.ResultUnreachable
+		if errors.Is(err, targetpolicy.ErrRefused) {
+			result = accesslog.ResultRefused
+		}
+		l.record(start, in, l.configured(), 0, 0, result)
 		return
 	}
 	if !l.track(out) {
@@ -241,21 +254,36 @@ func (l *listener) handle(in net.Conn) {
 	}
 	defer l.untrack(out)
 	idle := l.f.cfg.IdleTimeout
-	var moved atomic.Int64
+	var up, down atomic.Int64
 	closeBoth := func() { _ = in.Close(); _ = out.Close() }
 	done := make(chan struct{})
-	go l.watch(&moved, closeBoth, done)
+	go l.watch(func() int64 { return up.Load() + down.Load() }, closeBoth, done)
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); pipe(out, in, idle, &moved, closeBoth) }()
-	go func() { defer wg.Done(); pipe(in, out, idle, &moved, closeBoth) }()
+	go func() { defer wg.Done(); pipe(out, in, idle, &up, closeBoth) }()
+	go func() { defer wg.Done(); pipe(in, out, idle, &down, closeBoth) }()
 	wg.Wait()
 	close(done)
+	l.record(start, in, out.RemoteAddr().String(), up.Load(), down.Load(), accesslog.ResultOK)
+}
+
+func (l *listener) configured() string {
+	return net.JoinHostPort(l.app.Host, strconv.Itoa(l.app.Port))
+}
+
+func (l *listener) record(start time.Time, in net.Conn, target string, up, down int64, result string) {
+	if l.f.cfg.Record == nil {
+		return
+	}
+	l.f.cfg.Record(accesslog.Entry{
+		Time: start, App: l.app.ID, Peer: in.RemoteAddr().String(), Target: target,
+		BytesIn: up, BytesOut: down, DurationMS: time.Since(start).Milliseconds(), Result: result,
+	})
 }
 
 // watch closes a connection that outlives MaxLifetime or moves fewer than
 // MinBytes in a CheckEvery window.
-func (l *listener) watch(moved *atomic.Int64, closeBoth func(), done <-chan struct{}) {
+func (l *listener) watch(moved func() int64, closeBoth func(), done <-chan struct{}) {
 	cfg := l.f.cfg
 	life := time.NewTimer(cfg.MaxLifetime)
 	defer life.Stop()
@@ -270,7 +298,7 @@ func (l *listener) watch(moved *atomic.Int64, closeBoth func(), done <-chan stru
 			closeBoth()
 			return
 		case <-tick.C:
-			now := moved.Load()
+			now := moved()
 			if now-last < cfg.MinBytes {
 				closeBoth()
 				return

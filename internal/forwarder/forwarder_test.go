@@ -8,10 +8,12 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/seawise/client/internal/accesslog"
 	"github.com/seawise/client/internal/targetpolicy"
 )
 
@@ -263,4 +265,107 @@ func TestTargetResetClosesClient(t *testing.T) {
 	} else if ne, ok := err.(net.Error); ok && ne.Timeout() {
 		t.Fatal("client left open after target reset")
 	}
+}
+
+type recorder struct {
+	mu      sync.Mutex
+	entries []accesslog.Entry
+}
+
+func (r *recorder) record(e accesslog.Entry) {
+	r.mu.Lock()
+	r.entries = append(r.entries, e)
+	r.mu.Unlock()
+}
+
+func (r *recorder) wait(t *testing.T, n int) []accesslog.Entry {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		r.mu.Lock()
+		if len(r.entries) >= n {
+			out := append([]accesslog.Entry(nil), r.entries...)
+			r.mu.Unlock()
+			return out
+		}
+		r.mu.Unlock()
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("expected %d access log entries", n)
+	return nil
+}
+
+func TestRecordsEachConnection(t *testing.T) {
+	port, _ := echoServer(t)
+	rec := &recorder{}
+	f := newFwd(t, Config{Record: rec.record})
+	ports := f.Sync([]App{{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1", Grants: []string{targetpolicy.GrantLoopback}}}})
+	c := dialApp(t, ports["a"])
+	if _, err := roundTrip(c, "hello"); err != nil {
+		t.Fatal(err)
+	}
+	local := c.LocalAddr().String()
+	c.Close()
+	e := rec.wait(t, 1)[0]
+	if e.App != "a" || e.Result != accesslog.ResultOK || e.Peer != local || e.Target != "127.0.0.1:"+strconv.Itoa(port) {
+		t.Fatalf("entry = %+v", e)
+	}
+	if e.BytesIn != int64(len("hello\n")) || e.BytesOut != int64(len("echo:hello\n")) || e.Time.IsZero() || e.DurationMS < 0 {
+		t.Fatalf("counts = %+v", e)
+	}
+}
+
+func TestRecordsRefusalsAndBusy(t *testing.T) {
+	port, _ := echoServer(t)
+	rec := &recorder{}
+	f := newFwd(t, Config{Record: rec.record, MaxConns: 1, DialTimeout: time.Second})
+	ports := f.Sync([]App{
+		{ID: "meta", Host: "169.254.169.254", Port: 80, Rule: targetpolicy.Rule{Host: "169.254.169.254", Grandfathered: true}},
+		{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1", Grants: []string{targetpolicy.GrantLoopback}}},
+	})
+	m := dialApp(t, ports["meta"])
+	_, _ = roundTrip(m, "x")
+	m.Close()
+	first := dialApp(t, ports["a"])
+	defer first.Close()
+	if _, err := roundTrip(first, "x"); err != nil {
+		t.Fatal(err)
+	}
+	second := dialApp(t, ports["a"])
+	_, _ = roundTrip(second, "y")
+	second.Close()
+	got := map[string]string{}
+	for _, e := range rec.wait(t, 2) {
+		got[e.App+"/"+e.Result] = e.Target
+	}
+	if _, ok := got["meta/"+accesslog.ResultRefused]; !ok {
+		t.Fatalf("refusal not recorded: %v", got)
+	}
+	if _, ok := got["a/"+accesslog.ResultBusy]; !ok {
+		t.Fatalf("busy not recorded: %v", got)
+	}
+}
+
+func TestRecordsUnreachable(t *testing.T) {
+	rec := &recorder{}
+	f := newFwd(t, Config{Record: rec.record, DialTimeout: time.Second})
+	port := freePort(t)
+	ports := f.Sync([]App{{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1", Grants: []string{targetpolicy.GrantLoopback}}}})
+	c := dialApp(t, ports["a"])
+	_, _ = roundTrip(c, "x")
+	c.Close()
+	e := rec.wait(t, 1)[0]
+	if e.Result != accesslog.ResultUnreachable || e.Target != "127.0.0.1:"+strconv.Itoa(port) {
+		t.Fatalf("entry = %+v", e)
+	}
+}
+
+func freePort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	return ln.Addr().(*net.TCPAddr).Port
 }
