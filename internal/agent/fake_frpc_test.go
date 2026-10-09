@@ -133,6 +133,11 @@ func fakeFRPC() {
 		fakeLog("reload")
 	}))
 	go http.Serve(ln, mux)
+	if strings.TrimSpace(string(mode)) == "stubborn" {
+		// Ignores SIGTERM, so stopping it takes the full stop timeout.
+		for range sig {
+		}
+	}
 	<-sig
 	fakeLog("exit")
 	os.Exit(0)

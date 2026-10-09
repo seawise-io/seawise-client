@@ -98,7 +98,13 @@ type EdgeDNS struct {
 	ResolvedAt time.Time `json:"resolved_at"`
 }
 
-const maxEdgeAddrs = 4
+const (
+	maxEdgeAddrs = 4
+	// An edge cache resolved in the future or longer ago than this is
+	// ignored at load; it can only come from a wrong clock or a stale file.
+	maxEdgeAge    = 365 * 24 * time.Hour
+	maxEdgeFuture = time.Hour
+)
 
 type ImportedFile struct {
 	Name   string `json:"name"`
@@ -181,8 +187,12 @@ func (s *Store) open(dataDir string, now func() time.Time) error {
 		return fmt.Errorf("clean temp files: %w", err)
 	}
 	loaded, err := s.load()
-	if err != nil || loaded {
+	if err != nil {
 		return err
+	}
+	if loaded {
+		s.dropImplausibleEdge(now().UTC())
+		return nil
 	}
 	return s.importV1(dataDir, now().UTC())
 }
@@ -200,6 +210,16 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) Dir() string { return s.dir }
+
+func (s *Store) dropImplausibleEdge(now time.Time) {
+	e := s.state.EdgeDNS
+	if e == nil {
+		return
+	}
+	if e.ResolvedAt.IsZero() || e.ResolvedAt.After(now.Add(maxEdgeFuture)) || now.Sub(e.ResolvedAt) > maxEdgeAge {
+		s.state.EdgeDNS = nil
+	}
+}
 
 // CheckDir refuses a directory that is a symlink, owned by another user or
 // accessible to group or others.

@@ -46,6 +46,9 @@ const (
 	maxEdgeAddrs       = 4
 )
 
+// edgeClockSkew tolerates a cache entry dated slightly in the future.
+const edgeClockSkew = 5 * time.Minute
+
 // Proxy schemes frpc supports for its connection to frps.
 var frpcProxySchemes = []string{"http", "socks5", "ntlm"}
 
@@ -238,10 +241,6 @@ func New(cfg Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
-	holds := map[string]bool{}
-	for _, h := range cfg.Store.State().Holds {
-		holds[h] = true
-	}
 	fwdCfg := cfg.Forward
 	fwdCfg.Gateways = cfg.Gateways
 	if fwdCfg.Logger == nil {
@@ -257,7 +256,7 @@ func New(cfg Config) (*Agent, error) {
 		adminUser:    user,
 		adminPass:    pass,
 		connectionID: connID,
-		holds:        holds,
+		holds:        map[string]bool{},
 		fwd:          forwarder.New(fwdCfg),
 	}, nil
 }
@@ -296,6 +295,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			a.status.NextRestart = 0
 			a.reconcile()
 		case <-ticker.C:
+			if (a.proc != nil || a.writtenCommon != "") && a.cfg.Store.State().HasHold(HoldKillSwitch) {
+				a.reconcile()
+			}
 			a.startPoll()
 		case <-recheck.C:
 			a.recheckEdge()
@@ -324,20 +326,32 @@ func (a *Agent) Pause(ctx context.Context) error { return a.Hold(ctx, HoldUser) 
 
 func (a *Agent) Resume(ctx context.Context) error { return a.Release(ctx, HoldUser) }
 
+// ErrKillSwitchReason is returned when Hold or Release is called with the
+// kill switch reason; only SetKillSwitch changes it.
+var ErrKillSwitchReason = errors.New("the kill switch is changed only through SetKillSwitch")
+
 // Hold stops tunnels until every hold is released.
 func (a *Agent) Hold(ctx context.Context, reason string) error {
+	if reason == HoldKillSwitch {
+		return ErrKillSwitchReason
+	}
 	_, err := a.send(ctx, intentHold, reason)
 	return err
 }
 
 func (a *Agent) Release(ctx context.Context, reason string) error {
+	if reason == HoldKillSwitch {
+		return ErrKillSwitchReason
+	}
 	_, err := a.send(ctx, intentRelease, reason)
 	return err
 }
 
-// SetKillSwitch drops or restores every tunnel. Turning it on holds the
-// tunnels even if the store cannot be written; turning it off needs the
-// store first, so a restart cannot bring tunnels back unasked.
+// SetKillSwitch drops or restores every tunnel. The persisted hold is what
+// the loop obeys, on every reconcile. If the store cannot be written when
+// turning it on, the hold is still applied in memory; turning it off needs
+// the store first, so a restart cannot bring tunnels back unasked. The
+// change is delivered to the loop even if ctx ends first.
 func (a *Agent) SetKillSwitch(ctx context.Context, on bool) error {
 	err := a.cfg.Store.Update(func(st *store.State) error {
 		st.Holds = slices.DeleteFunc(st.Holds, func(h string) bool { return h == HoldKillSwitch })
@@ -346,18 +360,22 @@ func (a *Agent) SetKillSwitch(ctx context.Context, on bool) error {
 		}
 		return nil
 	})
-	if err != nil && !errors.Is(err, store.ErrNotDurable) {
-		if on {
-			return errors.Join(fmt.Errorf("persist kill switch: %w", err), a.Hold(ctx, HoldKillSwitch))
-		}
+	persisted := err == nil || errors.Is(err, store.ErrNotDurable)
+	if !persisted && !on {
 		return fmt.Errorf("persist kill switch: %w", err)
 	}
+	kind := intentRelease
 	if on {
+		kind = intentHold
 		a.log.Warn("kill switch on: all tunnels dropped")
-		return a.Hold(ctx, HoldKillSwitch)
+	} else {
+		a.log.Info("kill switch off")
 	}
-	a.log.Info("kill switch off")
-	return a.Release(ctx, HoldKillSwitch)
+	_, serr := a.send(context.WithoutCancel(ctx), kind, HoldKillSwitch)
+	if !persisted {
+		return errors.Join(fmt.Errorf("persist kill switch: %w", err), serr)
+	}
+	return serr
 }
 
 func (a *Agent) Status(ctx context.Context) (Status, error) {
@@ -399,15 +417,27 @@ func (a *Agent) handle(in intent) reply {
 	return reply{status: a.snapshot(), err: err}
 }
 
+// currentHolds merges in-memory holds with the ones persisted in the
+// store, so the two cannot diverge.
+func (a *Agent) currentHolds() []string {
+	out := make([]string, 0, len(a.holds)+1)
+	for h := range a.holds {
+		out = append(out, h)
+	}
+	for _, h := range a.cfg.Store.State().Holds {
+		if !a.holds[h] {
+			out = append(out, h)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 func (a *Agent) snapshot() Status {
 	s := a.status
 	s.EdgeFallback = a.edgeDial
-	s.Paused = len(a.holds) > 0
-	s.Holds = make([]string, 0, len(a.holds))
-	for h := range a.holds {
-		s.Holds = append(s.Holds, h)
-	}
-	sort.Strings(s.Holds)
+	s.Holds = a.currentHolds()
+	s.Paused = len(s.Holds) > 0
 	s.Proxies = append([]ProxyStatus(nil), a.status.Proxies...)
 	s.Refused = append([]RefusedApp(nil), a.status.Refused...)
 	if a.proc != nil {
@@ -417,7 +447,7 @@ func (a *Agent) snapshot() Status {
 }
 
 func (a *Agent) desired() (*desired, error) {
-	if len(a.holds) > 0 {
+	if len(a.currentHolds()) > 0 {
 		return nil, nil
 	}
 	st := a.cfg.Store.State()
@@ -490,12 +520,25 @@ func (a *Agent) resolveEdge(d *desired) {
 		return
 	}
 	e := a.cfg.Store.State().EdgeDNS
-	if e == nil || e.Host != host || time.Since(e.ResolvedAt) >= EdgeCacheTTL {
+	if e == nil || e.Host != host {
 		return
 	}
-	ip := e.Addrs[0]
+	if age := time.Since(e.ResolvedAt); age < -edgeClockSkew || age >= EdgeCacheTTL {
+		return
+	}
+	var cached []netip.Addr
 	for _, s := range e.Addrs {
-		if addr, err := netip.ParseAddr(s); err == nil && addr.Is4() {
+		if addr, err := netip.ParseAddr(s); err == nil {
+			cached = append(cached, addr)
+		}
+	}
+	usable = usableEdgeAddrs(cached)
+	if len(usable) == 0 {
+		return
+	}
+	ip := usable[0]
+	for _, s := range usable {
+		if netip.MustParseAddr(s).Is4() {
 			ip = s
 			break
 		}
@@ -504,11 +547,14 @@ func (a *Agent) resolveEdge(d *desired) {
 	a.log.Warn("DNS lookup for the tunnel server failed; using its last known address", "host", host, "addr", ip, "resolved_at", e.ResolvedAt)
 }
 
+// usableEdgeAddrs keeps public unicast addresses only: no private, CGNAT,
+// ULA, loopback, link-local, documentation or other special-use ranges,
+// as classified by the target policy.
 func usableEdgeAddrs(addrs []netip.Addr) []string {
 	var out []string
 	for _, a := range addrs {
 		a = a.Unmap()
-		if !a.IsGlobalUnicast() || a.IsLoopback() || a.IsLinkLocalUnicast() || a.Zone() != "" || slices.Contains(out, a.String()) {
+		if c, _ := targetpolicy.Classify(a); c != targetpolicy.Public || a.Zone() != "" || slices.Contains(out, a.String()) {
 			continue
 		}
 		out = append(out, a.String())
@@ -607,11 +653,12 @@ func (a *Agent) reconcile() error {
 	return nil
 }
 
-// dropAll stops frpc, closes every forwarder listener and connection, and
-// removes frpc.toml so no proxy list is left on disk.
+// dropAll closes every forwarder listener and connection first, so no
+// visitor gets through while frpc stops, then stops frpc and removes
+// frpc.toml so no proxy list is left on disk.
 func (a *Agent) dropAll() {
-	a.stopProcess()
 	a.fwd.Sync(nil)
+	a.stopProcess()
 	if err := os.Remove(a.ConfigPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		a.log.Warn("remove frpc config", "error", err)
 	}

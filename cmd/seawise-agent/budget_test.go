@@ -46,9 +46,11 @@ func TestMemoryBudget(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("reads /proc")
 	}
+	// The gate must not pass silently: without a toolchain to build the
+	// agent, the test fails. Use -short to leave it out on purpose.
 	goBin, err := exec.LookPath("go")
 	if err != nil {
-		t.Skip("no Go toolchain")
+		t.Fatalf("Go toolchain needed to build the agent for the memory budget: %v", err)
 	}
 	tmp := t.TempDir()
 	bin := filepath.Join(tmp, "seawise-agent")

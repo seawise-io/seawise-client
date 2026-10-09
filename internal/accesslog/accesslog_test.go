@@ -385,3 +385,64 @@ func TestDirMustBeOwnerOnly(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestPruneCountsOnlyDeletedFiles(t *testing.T) {
+	c := &clock{now: t0}
+	dir := ownerDir(t)
+	l := open(t, dir, c, func(cfg *Config) { cfg.MaxFileBytes = 2000; cfg.MaxTotalBytes = 6000 })
+	files := func() []string { f, _ := filepath.Glob(filepath.Join(dir, "access-*.log")); return f }
+	for len(files()) < 3 {
+		l.Record(entry(1, c.Now()))
+		l.Flush()
+	}
+	stuck := files()[0]
+	removeFile = func(p string) error {
+		if p == stuck {
+			return errors.New("permission denied")
+		}
+		return os.Remove(p)
+	}
+	defer func() { removeFile = os.Remove }()
+	for i := 0; i < 200; i++ {
+		l.Record(entry(i, c.Now()))
+	}
+	l.Flush()
+	l.Prune()
+	var others int64
+	cur := files()
+	for _, f := range cur[:len(cur)-1] {
+		info, _ := os.Stat(f)
+		others += info.Size()
+	}
+	if others > 6000-2000 {
+		t.Fatalf("older files hold %d bytes: a failed delete was counted as freed", others)
+	}
+	if l.Status().DeleteErrors == 0 {
+		t.Fatal("delete failures not counted")
+	}
+}
+
+func TestPageBoundsScannedLines(t *testing.T) {
+	c := &clock{now: t0}
+	dir := ownerDir(t)
+	l := open(t, dir, c, nil)
+	l.Record(entry(7, t0))
+	l.Flush()
+	files, _ := filepath.Glob(filepath.Join(dir, "access-*.log"))
+	f, err := os.OpenFile(files[0], os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.WriteString(strings.Repeat("x\n", 3*maxScanLines))
+	f.Close()
+	p, err := l.Page("", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Entries) != 0 || p.Next == "" {
+		t.Fatalf("first page scanned everything: %d entries, next %q", len(p.Entries), p.Next)
+	}
+	if got := all(t, l); len(got) != 1 || got[0].BytesIn != 7 {
+		t.Fatalf("entry not reached by paging: %+v", got)
+	}
+}
