@@ -7,7 +7,7 @@ GO_DOCKER ?= 1
 PKGS ?= ./...
 IMAGE_TAG ?= seawise-client:local
 VERSION ?= dev
-CMDS ?= seawise
+CMDS ?= seawise seawise-agent
 
 UID := $(shell id -u)
 GID := $(shell id -g)
