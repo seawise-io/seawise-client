@@ -36,6 +36,7 @@ const (
 	DefaultBackoffBase = 500 * time.Millisecond
 	DefaultBackoffMax  = 5 * time.Second
 	MaxRetryAfter      = 30 * time.Second
+	tcpKeepAlive       = 45 * time.Second
 )
 
 type Kind int
@@ -175,12 +176,13 @@ func New(cfg Config) (*Client, error) {
 
 // NewTransport is the production transport: proxy from the environment,
 // TLS 1.2 or newer, HTTP/2 when offered, and a kept-alive connection so
-// each heartbeat does not pay for a new handshake. roots nil uses the
-// system roots.
+// each heartbeat does not pay for a new handshake. The TCP keepalive idle
+// time is longer than the heartbeat interval, so an active connection
+// sends no probes. roots nil uses the system roots.
 func NewTransport(getenv netproxy.Getenv, roots *x509.CertPool) *http.Transport {
 	return &http.Transport{
 		Proxy:                 netproxy.Func(getenv),
-		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: tcpKeepAlive}).DialContext,
 		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots},
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 15 * time.Second,
