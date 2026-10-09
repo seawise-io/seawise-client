@@ -12,8 +12,10 @@ import (
 	"io"
 	"io/fs"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -71,10 +73,32 @@ type Target struct {
 	// ServerDisableRequestedAt is set while the server asks for this app to
 	// be turned off; the owner accepts or dismisses it locally.
 	ServerDisableRequestedAt *time.Time `json:"server_disable_requested_at,omitempty"`
+	// Public is the owner's local toggle for a public link. Nil means no
+	// decision yet, which counts as private.
+	Public *bool `json:"public,omitempty"`
+	// ServerPublic is the server's last report of the app's public flag.
+	ServerPublic bool `json:"server_public,omitempty"`
 }
+
+// IsPublicLocally reports whether the owner turned the public toggle on.
+func (t Target) IsPublicLocally() bool { return t.Public != nil && *t.Public }
 
 // Grants a target can hold; see internal/targetpolicy.
 var KnownGrants = map[string]bool{"public": true, "loopback": true, "sensitive": true, "smtp": true, "gateway": true}
+
+// Hold reasons kept across restarts.
+const HoldKillSwitch = "kill_switch"
+
+var persistedHolds = map[string]bool{HoldKillSwitch: true}
+
+// EdgeDNS is the last successful resolution of the frps host.
+type EdgeDNS struct {
+	Host       string    `json:"host"`
+	Addrs      []string  `json:"addrs"`
+	ResolvedAt time.Time `json:"resolved_at"`
+}
+
+const maxEdgeAddrs = 4
 
 type ImportedFile struct {
 	Name   string `json:"name"`
@@ -101,7 +125,13 @@ type State struct {
 	// ServerDisableLog holds when disable requests from the server were
 	// recorded, for the rolling cap.
 	ServerDisableLog []time.Time `json:"server_disable_log,omitempty"`
+	// Holds are hold reasons that survive restarts, such as the kill switch.
+	Holds   []string `json:"holds,omitempty"`
+	EdgeDNS *EdgeDNS `json:"edge_dns,omitempty"`
 }
+
+// HasHold reports whether reason is persisted.
+func (st State) HasHold(reason string) bool { return slices.Contains(st.Holds, reason) }
 
 type Secrets struct {
 	Schema            int    `json:"schema"`
@@ -415,6 +445,23 @@ func validateState(st *State) error {
 	if len(st.ServerDisableLog) > MaxTargets {
 		return fmt.Errorf("%w: disable log too long", ErrInvalid)
 	}
+	seenHold := map[string]bool{}
+	for _, h := range st.Holds {
+		if !persistedHolds[h] || seenHold[h] {
+			return fmt.Errorf("%w: unknown or repeated hold", ErrInvalid)
+		}
+		seenHold[h] = true
+	}
+	if e := st.EdgeDNS; e != nil {
+		if e.Host == "" || len(e.Addrs) == 0 || len(e.Addrs) > maxEdgeAddrs {
+			return fmt.Errorf("%w: edge_dns", ErrInvalid)
+		}
+		for _, a := range e.Addrs {
+			if ip, err := netip.ParseAddr(a); err != nil || ip.Zone() != "" {
+				return fmt.Errorf("%w: edge_dns address", ErrInvalid)
+			}
+		}
+	}
 	if len(st.Targets) > MaxTargets {
 		return fmt.Errorf("%w: too many targets", ErrInvalid)
 	}
@@ -486,6 +533,12 @@ func cloneState(st State) State {
 	out := st
 	out.Targets = append([]Target(nil), st.Targets...)
 	out.ServerDisableLog = append([]time.Time(nil), st.ServerDisableLog...)
+	out.Holds = append([]string(nil), st.Holds...)
+	if st.EdgeDNS != nil {
+		e := *st.EdgeDNS
+		e.Addrs = append([]string(nil), st.EdgeDNS.Addrs...)
+		out.EdgeDNS = &e
+	}
 	if out.Targets == nil {
 		out.Targets = []Target{}
 	}
@@ -512,6 +565,10 @@ func cloneState(st State) State {
 		if r := out.Targets[i].ServerDisableRequestedAt; r != nil {
 			t := *r
 			out.Targets[i].ServerDisableRequestedAt = &t
+		}
+		if p := out.Targets[i].Public; p != nil {
+			v := *p
+			out.Targets[i].Public = &v
 		}
 	}
 	return out

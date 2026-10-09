@@ -68,6 +68,11 @@ func openOwned(path string, flag int) (*os.File, error) {
 	return f, nil
 }
 
+// OpenOwned opens a file in the store directory with the same checks as
+// the store's own files: no symlinks, regular file, owned by this user and
+// not accessible to group or others. New files are created with mode 0600.
+func OpenOwned(path string, flag int) (*os.File, error) { return openOwned(path, flag) }
+
 func readOwned(path string) ([]byte, error) {
 	f, err := openOwned(path, os.O_RDONLY)
 	if err != nil {
