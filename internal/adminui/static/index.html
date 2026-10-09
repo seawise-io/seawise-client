@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SeaWise client</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<main>
+<h1>SeaWise client</h1>
+<p id="message" role="status" aria-live="polite"></p>
+
+<form id="setup" hidden>
+<h2>Set up this client</h2>
+<p>Enter the setup code from the client's logs, or from the <code>setup-code</code> file in its data folder, and choose a password.</p>
+<label for="setup-code">Setup code</label>
+<input id="setup-code" name="code" autocomplete="off" required>
+<label for="setup-password">New password</label>
+<input id="setup-password" name="password" type="password" autocomplete="new-password" minlength="10" maxlength="72" required>
+<button type="submit">Save password</button>
+</form>
+
+<form id="login" hidden>
+<h2>Sign in</h2>
+<label for="login-password">Password</label>
+<input id="login-password" name="password" type="password" autocomplete="current-password" required>
+<button type="submit">Sign in</button>
+</form>
+
+<section id="dashboard" hidden>
+<h2>Status</h2>
+<pre id="status"></pre>
+<h2>Apps to review</h2>
+<p>These apps were set up before this version. They keep working; confirm each one to record that you expect it, or turn it off.</p>
+<ul id="review"></ul>
+<button id="logout" type="button">Sign out</button>
+</section>
+</main>
+</body>
+</html>
