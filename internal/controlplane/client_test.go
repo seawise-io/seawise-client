@@ -94,16 +94,20 @@ func kindOf(t *testing.T, err error) Kind {
 const okHeartbeat = `{"data":{"status":"ok","server_status":"online","server_time":"2026-10-08T12:00:00Z","previous_status":"online","gap_seconds":30,"next_heartbeat_ms":30000,"timeout_ms":90000}}`
 
 func TestNewRejectsUnsafeBaseURL(t *testing.T) {
-	for _, u := range []string{
+	unsafe := []string{
 		"", "http://api.seawise.io", "ftp://x", "https://user:pw@api.seawise.io",
 		"https://api.seawise.io/?q=1", "https://api.seawise.io/#f", "https://api.seawise.io/v1",
 		"http://localhost.evil.example", "https://", "http://127.0.0.1.nip.io",
-	} {
+	}
+	if !allowDockerHostHTTP {
+		unsafe = append(unsafe, "http://host.docker.internal:8080")
+	}
+	for _, u := range unsafe {
 		if _, err := New(Config{BaseURL: u, Token: func() string { return token }}); err == nil {
 			t.Errorf("accepted %q", u)
 		}
 	}
-	for _, u := range []string{"https://api.seawise.io", "https://api.seawise.io/", "http://localhost:8080", "http://127.0.0.1:8080", "http://[::1]:8080", "http://host.docker.internal:8080"} {
+	for _, u := range []string{"https://api.seawise.io", "https://api.seawise.io/", "http://localhost:8080", "http://127.0.0.1:8080", "http://[::1]:8080"} {
 		if _, err := New(Config{BaseURL: u, Token: func() string { return token }}); err != nil {
 			t.Errorf("rejected %q: %v", u, err)
 		}

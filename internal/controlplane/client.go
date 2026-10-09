@@ -184,8 +184,9 @@ func validateBaseURL(raw string) (string, error) {
 	switch u.Scheme {
 	case "https":
 	case "http":
-		switch strings.ToLower(u.Hostname()) {
-		case "localhost", "127.0.0.1", "::1", constants.DockerHostInternal:
+		switch h := strings.ToLower(u.Hostname()); {
+		case h == "localhost", h == "127.0.0.1", h == "::1":
+		case h == constants.DockerHostInternal && allowDockerHostHTTP:
 		default:
 			return "", fmt.Errorf("API URL %q must use HTTPS", raw)
 		}
