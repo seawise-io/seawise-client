@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"reflect"
+	"slices"
 	"strconv"
 	"syscall"
 	"testing"
@@ -305,5 +306,25 @@ func TestGrandfatheredNoImplicitSensitivePort(t *testing.T) {
 	as := Assess("192.168.1.1", 80, []netip.Addr{netip.MustParseAddr("192.168.1.1")}, gw, Options{})
 	if !reflect.DeepEqual(as.Required, []string{GrantGateway}) {
 		t.Fatalf("gateway grant: %+v", as)
+	}
+}
+
+func TestPublicSensitivePortNeedsBothGrants(t *testing.T) {
+	for _, port := range []int{2375, 2376, 6443, 10250, 10255, 2379, 2380} {
+		pub := Rule{Host: "203.0.114.9", Grants: []string{GrantPublic}}
+		if err := Check(pub, ap("203.0.114.9", port), nil); err == nil {
+			t.Errorf("public port %d allowed with only the public grant", port)
+		}
+		both := Rule{Host: "203.0.114.9", Grants: []string{GrantPublic, GrantSensitive}}
+		if err := Check(both, ap("203.0.114.9", port), nil); err != nil {
+			t.Errorf("public port %d refused with both grants: %v", port, err)
+		}
+		if err := Check(Rule{Host: "x.example", Grandfathered: true}, ap("203.0.114.9", port), nil); err == nil {
+			t.Errorf("grandfathered public port %d allowed without review", port)
+		}
+	}
+	as := Assess("203.0.114.9", 2375, []netip.Addr{netip.MustParseAddr("203.0.114.9")}, nil, Options{PublicAllowed: true})
+	if !reflect.DeepEqual(as.Required, []string{GrantPublic, GrantSensitive}) || !slices.Contains(as.Reasons, "Docker API") {
+		t.Fatalf("assessment does not name the port risk: %+v", as)
 	}
 }

@@ -99,12 +99,12 @@ func Evaluate(host string, ap netip.AddrPort, gateways []netip.Addr) Requirement
 			req.Required = append(req.Required, GrantSMTP)
 			req.Reasons = append(req.Reasons, "mail port")
 		}
-		return req
 	}
+	// Management API ports need their own grant on every class.
 	if name, ok := SensitivePorts[port]; ok {
 		req.Required = append(req.Required, GrantSensitive)
 		req.Reasons = append(req.Reasons, name)
-	} else if slices.Contains(gateways, addr) {
+	} else if c != Public && slices.Contains(gateways, addr) {
 		req.Required = append(req.Required, GrantGateway)
 		req.Reasons = append(req.Reasons, "network gateway")
 	}

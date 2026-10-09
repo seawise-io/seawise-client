@@ -38,6 +38,7 @@
       if (it.disabled) notes.push("turned off");
       if (it.refused) notes.push("connections refused: " + it.refused);
       else if (it.missing && it.missing.length) notes.push("connections refused until you confirm: " + it.missing.join(", "));
+      if (it.reasons && it.reasons.length) notes.push("why: " + it.reasons.join(", "));
       else if (it.grandfathered) notes.push("set up before this version, still working");
       if (it.server_disable_requested_at) notes.push("SeaWise asks to turn this app off; it keeps running until you accept");
       li.appendChild(document.createTextNode(it.name + " (" + it.host + ":" + it.port + "): " + notes.join("; ") + " "));
