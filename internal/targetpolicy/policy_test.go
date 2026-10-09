@@ -280,6 +280,8 @@ func TestClassifyTranslationForms(t *testing.T) {
 		"fd00::5efe:a9fe:a9fe":                 Forbidden, // ISATAP metadata
 		"2001:db9::200:5efe:7f00:1":            Forbidden, // ISATAP loopback
 		"2606:4700::5efe:808:808":              Public,
+		"ff30:3030:3030:3030:0:5efe:3030:3030": Forbidden, // multicast with an ISATAP-like interface ID
+		"fe80::5efe:808:808":                   Forbidden,
 	}
 	for s, want := range cases {
 		if got, _ := Classify(netip.MustParseAddr(s)); got != want {
