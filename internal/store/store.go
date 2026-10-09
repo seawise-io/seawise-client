@@ -62,7 +62,13 @@ type Target struct {
 	Source          string     `json:"source"`
 	Grandfathered   bool       `json:"grandfathered,omitempty"`
 	ConfirmedAt     *time.Time `json:"confirmed_at,omitempty"`
+	// Allowed lists the target classes the owner confirmed locally, beyond
+	// private addresses. Grandfathered targets are not limited by it.
+	Allowed []string `json:"allowed,omitempty"`
 }
+
+// Grants a target can hold; see internal/targetpolicy.
+var KnownGrants = map[string]bool{"public": true, "loopback": true, "sensitive": true, "smtp": true}
 
 type ImportedFile struct {
 	Name   string `json:"name"`
@@ -403,6 +409,13 @@ func validateState(st *State) error {
 		case t.Source != SourceV1Machine && t.Source != SourceV1FRPC && t.Source != SourceLocal:
 			return fmt.Errorf("%w: target %d: unknown source", ErrInvalid, i)
 		}
+		seen := map[string]bool{}
+		for _, g := range t.Allowed {
+			if !KnownGrants[g] || seen[g] {
+				return fmt.Errorf("%w: target %d: unknown or repeated grant", ErrInvalid, i)
+			}
+			seen[g] = true
+		}
 		ids[t.LocalID] = true
 	}
 	return nil
@@ -482,6 +495,7 @@ func cloneState(st State) State {
 			t := *c
 			out.Targets[i].ConfirmedAt = &t
 		}
+		out.Targets[i].Allowed = append([]string(nil), out.Targets[i].Allowed...)
 	}
 	return out
 }

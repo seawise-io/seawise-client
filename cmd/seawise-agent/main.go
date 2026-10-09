@@ -73,7 +73,7 @@ func main() {
 	}
 	go func() { _ = syncer.Run(ctx) }()
 
-	ui, err := startAdminUI(ctx, log, st, func(ctx context.Context) any {
+	ui, err := startAdminUI(ctx, log, st, a, func(ctx context.Context) any {
 		as, _ := a.Status(ctx)
 		return map[string]any{"agent": as, "control_plane": syncer.Status()}
 	})
@@ -91,7 +91,7 @@ func main() {
 
 // startAdminUI serves HTTPS and plain HTTP on the admin port and returns a
 // function that waits for it to stop.
-func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, status func(context.Context) any) (func(), error) {
+func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *agent.Agent, status func(context.Context) any) (func(), error) {
 	auth, err := adminui.NewAuth(adminui.AuthConfig{Store: st, PasswordFile: os.Getenv("SEAWISE_ADMIN_PASSWORD_FILE"), Logger: log})
 	if err != nil {
 		return nil, err
@@ -110,7 +110,11 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, status
 		}
 	}
 	bind := adminui.BindAddr(os.Getenv("SEAWISE_BIND_ADDR"), st.State(), st.Secrets(), adminui.InContainer())
-	srv, err := adminui.New(adminui.Config{Store: st, Auth: auth, Status: status, AllowedHosts: extra, Hostname: hostname, Logger: log})
+	srv, err := adminui.New(adminui.Config{
+		Store: st, Auth: auth, Status: status, AllowedHosts: extra, Hostname: hostname, Logger: log,
+		PublicAllowed:    os.Getenv("SEAWISE_ALLOW_PUBLIC_TARGETS") == "1",
+		OnTargetsChanged: func(ctx context.Context) { _ = a.Reconcile(ctx) },
+	})
 	if err != nil {
 		return nil, err
 	}

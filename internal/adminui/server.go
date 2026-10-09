@@ -19,6 +19,7 @@ import (
 
 	"github.com/seawise/client/internal/constants"
 	"github.com/seawise/client/internal/store"
+	"github.com/seawise/client/internal/targetpolicy"
 )
 
 const (
@@ -49,8 +50,13 @@ type Config struct {
 	Hostname     string
 	Now          func() time.Time
 	Logger       *slog.Logger
-	PeekTimeout  time.Duration
-	MaxPending   int
+	// Resolver and Gateways feed the target review; defaults use the system.
+	Resolver         targetpolicy.Resolver
+	Gateways         func() []netip.Addr
+	PublicAllowed    bool
+	OnTargetsChanged func(context.Context)
+	PeekTimeout      time.Duration
+	MaxPending       int
 }
 
 type Server struct {
@@ -71,6 +77,12 @@ func New(cfg Config) (*Server, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
+	if cfg.Resolver == nil {
+		cfg.Resolver = defaultResolver
+	}
+	if cfg.Gateways == nil {
+		cfg.Gateways = targetpolicy.Gateways
+	}
 	if cfg.Status == nil {
 		cfg.Status = func(context.Context) any { return struct{}{} }
 	}
@@ -88,6 +100,8 @@ func New(cfg Config) (*Server, error) {
 	mux.HandleFunc("GET /api/auth/status", s.handleAuthStatus)
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	mux.HandleFunc("POST /api/setup", s.handleSetup)
+	mux.Handle("GET /api/targets/review", s.requireSession(http.HandlerFunc(s.handleReviewList)))
+	mux.Handle("POST /api/targets/review", s.requireSession(http.HandlerFunc(s.handleReviewAction)))
 	mux.Handle("POST /api/auth/logout", s.requireSession(http.HandlerFunc(s.handleLogout)))
 	s.secure = mux
 	return s, nil

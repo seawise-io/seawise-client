@@ -2,10 +2,12 @@ package adminui
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -321,5 +323,70 @@ func TestSetupAndLoginOverHTTP(t *testing.T) {
 	s.SecureHandler().ServeHTTP(w, r)
 	if w.Code != 403 {
 		t.Fatalf("cross-site login %d", w.Code)
+	}
+}
+
+func TestReviewEndpoints(t *testing.T) {
+	st := newStore(t, nil)
+	now := t0
+	err := st.Update(func(s *store.State) error {
+		s.Targets = []store.Target{
+			{LocalID: "a", Name: "site", Host: "203.0.114.5", Port: 443, Grandfathered: true, ConfirmedAt: &now, Source: store.SourceV1Machine},
+			{LocalID: "b", Name: "meta", Host: "169.254.169.254", Port: 80, Grandfathered: true, ConfirmedAt: &now, Source: store.SourceV1Machine},
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newServer(t, st, &testClock{now: t0})
+	s.cfg.Gateways = func() []netip.Addr { return nil }
+	changed := 0
+	s.cfg.OnTargetsChanged = func(context.Context) { changed++ }
+	token, csrf := s.sess.create()
+	cookie := &http.Cookie{Name: SessionCookie, Value: token}
+	const host = "localhost"
+
+	r := httptest.NewRequest("GET", "/api/targets/review", nil)
+	r.Host = host
+	r.AddCookie(cookie)
+	w := httptest.NewRecorder()
+	s.SecureHandler().ServeHTTP(w, r)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"local_id":"a"`) || !strings.Contains(w.Body.String(), `"refused":"cloud metadata address"`) {
+		t.Fatalf("list %d %s", w.Code, w.Body.String())
+	}
+	action := func(body string, withCSRF bool) int {
+		r := httptest.NewRequest("POST", "/api/targets/review", strings.NewReader(body))
+		r.Host = host
+		r.Header.Set("Origin", "https://"+host)
+		r.AddCookie(cookie)
+		if withCSRF {
+			r.Header.Set("X-CSRF-Token", csrf)
+		}
+		w := httptest.NewRecorder()
+		s.SecureHandler().ServeHTTP(w, r)
+		return w.Code
+	}
+	if c := action(`{"local_id":"a","action":"confirm"}`, false); c != 403 {
+		t.Fatalf("no csrf %d", c)
+	}
+	if c := action(`{"local_id":"a","action":"confirm"}`, true); c != 200 {
+		t.Fatalf("confirm %d", c)
+	}
+	a := st.State().Targets[0]
+	if a.Grandfathered || len(a.Allowed) != 1 || a.Allowed[0] != "public" || changed != 1 {
+		t.Fatalf("confirm stored %+v", a)
+	}
+	if c := action(`{"local_id":"b","action":"confirm"}`, true); c != http.StatusConflict {
+		t.Fatalf("forbidden confirmed %d", c)
+	}
+	if c := action(`{"local_id":"b","action":"disable"}`, true); c != 200 || !st.State().Targets[1].Disabled {
+		t.Fatalf("disable %d", c)
+	}
+	if c := action(`{"local_id":"zz","action":"disable"}`, true); c != 404 {
+		t.Fatalf("unknown %d", c)
+	}
+	if c := action(`{"local_id":"a","action":"grant","grants":["smtp"]}`, true); c != 400 {
+		t.Fatalf("extra fields %d", c)
 	}
 }
