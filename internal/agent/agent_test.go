@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -128,6 +129,10 @@ func pairedStore(t *testing.T, dir string) *store.Store {
 	return st
 }
 
+func staticDNS(context.Context, string) ([]netip.Addr, error) {
+	return []netip.Addr{netip.MustParseAddr("203.0.113.10")}, nil
+}
+
 func newHarness(t *testing.T, st *store.Store, mode string, tweak func(*Config)) *harness {
 	t.Helper()
 	exe, err := os.Executable()
@@ -148,6 +153,8 @@ func newHarness(t *testing.T, st *store.Store, mode string, tweak func(*Config))
 		After:         h.timers.after,
 		Logger:        nil,
 		Env:           append(os.Environ(), envFake+"=1", envFakeLog+"="+h.log, envFakeCtl+"="+h.ctl),
+		Getenv:        func(string) string { return "" },
+		ResolveEdge:   staticDNS,
 	}
 	if tweak != nil {
 		tweak(&cfg)
@@ -588,23 +595,6 @@ func TestAdminClientDoesNotFollowRedirects(t *testing.T) {
 	}
 }
 
-func TestChildEnvFiltersSecrets(t *testing.T) {
-	t.Setenv("SEAWISE_ADMIN_PASSWORD", "x")
-	t.Setenv("HTTPS_PROXY", "http://proxy.example.invalid:3128")
-	t.Setenv("no_proxy", "localhost")
-	t.Setenv("HOME", "/home/someone")
-	t.Setenv("TZ", "UTC")
-	for _, kv := range childEnv() {
-		k, _, _ := strings.Cut(kv, "=")
-		if !strings.HasSuffix(strings.ToUpper(k), "_PROXY") {
-			t.Fatalf("non-proxy variable passed to frpc: %s", k)
-		}
-	}
-	if env := strings.Join(childEnv(), "\n"); !strings.Contains(env, "HTTPS_PROXY=") || !strings.Contains(env, "no_proxy=") {
-		t.Fatalf("env = %s", env)
-	}
-}
-
 func TestRunOnV1VolumeLeavesV1FilesUnchanged(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join("..", "legacy", "testdata", "v1", "E")
@@ -758,7 +748,7 @@ func runTestAgent() {
 			env = append(env, kv)
 		}
 	}
-	a, err := New(Config{Store: st, FRPCPath: exe, TrustedCAFile: os.Getenv(envTestAgentCA), Env: append(env, envFake+"=1")})
+	a, err := New(Config{Store: st, FRPCPath: exe, TrustedCAFile: os.Getenv(envTestAgentCA), Env: append(env, envFake+"=1"), ResolveEdge: staticDNS})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(4)

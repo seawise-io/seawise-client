@@ -10,8 +10,12 @@ import (
 )
 
 type desired struct {
+	// serverAddr is what frpc dials: the host name, or a cached address
+	// when DNS fails. tlsName is always the host name.
 	serverAddr   string
+	tlsName      string
 	serverPort   int
+	proxyURL     string
 	token        string
 	serverID     string
 	connectionID string
@@ -39,7 +43,10 @@ func (d *desired) renderCommon() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "serverAddr = \"%s\"\nserverPort = %d\n", tomlEscape(d.serverAddr), d.serverPort)
 	fmt.Fprintf(&b, "transport.tls.enable = true\ntransport.tls.serverName = \"%s\"\ntransport.tls.trustedCaFile = \"%s\"\n",
-		tomlEscape(d.serverAddr), tomlEscape(d.trustedCA))
+		tomlEscape(d.tlsName), tomlEscape(d.trustedCA))
+	if d.proxyURL != "" {
+		fmt.Fprintf(&b, "transport.proxyURL = \"%s\"\n", tomlEscape(d.proxyURL))
+	}
 	fmt.Fprintf(&b, "metadatas.token = \"%s\"\nmetadatas.server_id = \"%s\"\nmetadatas.connection_id = \"%s\"\n",
 		tomlEscape(d.token), tomlEscape(d.serverID), tomlEscape(d.connectionID))
 	fmt.Fprintf(&b, "webServer.addr = \"%s\"\nwebServer.port = %d\nwebServer.user = \"%s\"\nwebServer.password = \"%s\"\n",
