@@ -156,8 +156,36 @@
       "expect": "malformed"
     },
     {
-      "name": "payloads-differ",
+      "name": "payloads-differ-new-key",
       "input": "{\"statement\":\"eyJ0eXAiOiJzdy1yb3RhdGUrand0IiwiYWxnIjoiRWREU0EiLCJraWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIn0.eyJzZXJ2ZXJfaWQiOiIzZjJhOWMxZS01YjdkLTRlOGYtOWEwYi0xYzJkM2U0ZjVhNmIiLCJvbGRfa2lkIjoiWmphSlp3Y0hCWXJwR0RLenQxNHhiMjlLOGhidzRkV0FrcTkwb0N4ZkVZbyIsIm5ld19qd2siOnsia3R5IjoiT0tQIiwiY3J2IjoiRWQyNTUxOSIsIngiOiJLUTRBSkpKWk5mdDE5U2NFcGoyMlhTTE9JdnZfX3ZaTlh0N1VsbDQtanhVIn0sImlhdCI6MTc5MzAwMDAwMH0.zutNqbnzfEPt4HOpnIqtwfGMJc8_jK-vtbqR2xGHNexhrACVxlWZUsyIAKndOnM5CS1E8mXeMUs36LA2RGHtAQ\",\"pop\":\"eyJ0eXAiOiJzdy1yb3RhdGUtcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwia2lkIjoiVWRueGpIWkVPbE9nVm5OMzVhX2RvRE93VkxILVZrSGd4OS00RW9ZSHRfayJ9.eyJzZXJ2ZXJfaWQiOiIzZjJhOWMxZS01YjdkLTRlOGYtOWEwYi0xYzJkM2U0ZjVhNmIiLCJvbGRfa2lkIjoiWmphSlp3Y0hCWXJwR0RLenQxNHhiMjlLOGhidzRkV0FrcTkwb0N4ZkVZbyIsIm5ld19qd2siOnsia3R5IjoiT0tQIiwiY3J2IjoiRWQyNTUxOSIsIngiOiJoRmpMbEd6RUhTcGpPeEFlRVlHb0dNTHh4ajVXeFp0ZlpGVVJ6MEJDU3RRIn0sImlhdCI6MTc5MzAwMDAwMH0._MStRT6ZxScJOdFaJmcUqh9Q1--4mMldYOu6qKkXSEK6sppe4e2oRgIj-VgkQyS_AkSNnnu6bhp5hVPl-_a5Ag\"}",
+      "context": {
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "registry": [
+          {
+            "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+            "x": "qYklkTB9s4gdjWqIu88z5rNohd8lXkHeosIrjz0UeP8",
+            "status": "active",
+            "valid_from": 1790000000
+          },
+          {
+            "server_id": "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7",
+            "x": "GGjbToKsrATfH6iktzQkxuVDw4CsZ6lxPU_0Q-6e0W4",
+            "status": "active",
+            "valid_from": 1790000000
+          },
+          {
+            "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+            "x": "WCOFPXlZ0gKLoqJrCMh5IRdRF3wPTDRlyNPUZiRb-6k",
+            "status": "revoked",
+            "valid_from": 1789913600
+          }
+        ]
+      },
+      "expect": "malformed"
+    },
+    {
+      "name": "payloads-differ-iat",
+      "input": "{\"statement\":\"eyJ0eXAiOiJzdy1yb3RhdGUrand0IiwiYWxnIjoiRWREU0EiLCJraWQiOiJaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvIn0.eyJzZXJ2ZXJfaWQiOiIzZjJhOWMxZS01YjdkLTRlOGYtOWEwYi0xYzJkM2U0ZjVhNmIiLCJvbGRfa2lkIjoiWmphSlp3Y0hCWXJwR0RLenQxNHhiMjlLOGhidzRkV0FrcTkwb0N4ZkVZbyIsIm5ld19qd2siOnsia3R5IjoiT0tQIiwiY3J2IjoiRWQyNTUxOSIsIngiOiJLUTRBSkpKWk5mdDE5U2NFcGoyMlhTTE9JdnZfX3ZaTlh0N1VsbDQtanhVIn0sImlhdCI6MTc5MzAwMDAwMH0.zutNqbnzfEPt4HOpnIqtwfGMJc8_jK-vtbqR2xGHNexhrACVxlWZUsyIAKndOnM5CS1E8mXeMUs36LA2RGHtAQ\",\"pop\":\"eyJ0eXAiOiJzdy1yb3RhdGUtcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwia2lkIjoia3VCRlRuTHZNQmhpYlU1WTk0bzBLN3o5WmtOUGV5aGZfZDU1MUJHc1haTSJ9.eyJzZXJ2ZXJfaWQiOiIzZjJhOWMxZS01YjdkLTRlOGYtOWEwYi0xYzJkM2U0ZjVhNmIiLCJvbGRfa2lkIjoiWmphSlp3Y0hCWXJwR0RLenQxNHhiMjlLOGhidzRkV0FrcTkwb0N4ZkVZbyIsIm5ld19qd2siOnsia3R5IjoiT0tQIiwiY3J2IjoiRWQyNTUxOSIsIngiOiJLUTRBSkpKWk5mdDE5U2NFcGoyMlhTTE9JdnZfX3ZaTlh0N1VsbDQtanhVIn0sImlhdCI6MX0.ChC3hNW2dF5okgqXC0DQqSXJAdQbVjPL9Z_uVAkGoy6-z4bPWkhc9k5NXZwMrC0boZyqcfhzH1mtPwTPP5TWBg\"}",
       "context": {
         "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
         "registry": [

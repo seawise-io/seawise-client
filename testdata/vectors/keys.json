@@ -295,6 +295,11 @@
       "expect": "bad_key"
     },
     {
+      "name": "non-canonical-large-order-point",
+      "input": "8P_______________________________________38",
+      "expect": "bad_key"
+    },
+    {
       "name": "negative-zero-x",
       "input": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIA",
       "expect": "bad_key"

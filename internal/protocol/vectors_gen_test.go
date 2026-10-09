@@ -235,6 +235,18 @@ func notOnCurve() []byte {
 	}
 }
 
+// nonCanonicalLargeOrder returns the smallest y below 19 that decodes to a
+// point of large order, so y + p is a non-canonical encoding that only the
+// canonical check refuses.
+func nonCanonicalLargeOrder() int64 {
+	for y := int64(2); y < 19; y++ {
+		if CheckPublicKey(encodePoint(big.NewInt(0), big.NewInt(y))) == nil {
+			return y
+		}
+	}
+	panic("no large-order point with small y")
+}
+
 func nonCanonical(add int64) []byte {
 	return encodePoint(big.NewInt(0), new(big.Int).Add(fieldP, big.NewInt(add)))
 }
@@ -259,6 +271,7 @@ func genKeys() vecFile {
 	f.Cases = append(f.Cases,
 		vecCase{Name: "non-canonical-y-equals-p", Input: b64Encode(nonCanonical(0)), Expect: "bad_key"},
 		vecCase{Name: "non-canonical-y-equals-p-plus-1", Input: b64Encode(nonCanonical(1)), Expect: "bad_key"},
+		vecCase{Name: "non-canonical-large-order-point", Input: b64Encode(nonCanonical(nonCanonicalLargeOrder())), Expect: "bad_key"},
 		vecCase{Name: "negative-zero-x", Input: b64Encode(func() []byte { b := encodePoint(big.NewInt(0), big.NewInt(1)); b[31] |= 0x80; return b }()), Expect: "bad_key"},
 		vecCase{Name: "not-on-curve", Input: b64Encode(notOnCurve()), Expect: "bad_key"},
 		vecCase{Name: "short", Input: b64Encode(vecPub("device-a")[:31]), Expect: "bad_key"},
@@ -490,7 +503,8 @@ func genRotation() vecFile {
 		{Name: "statement-wrong-key", Input: pair(signRaw(vecKey("device-b"), stHdr, payload), valid.PoP), Context: ctx, Expect: "bad_signature"},
 		{Name: "pop-wrong-key", Input: pair(valid.Statement, signRaw(vecKey("device-c"), popHdr, payload)), Context: ctx, Expect: "bad_signature"},
 		{Name: "pop-signed-by-old-key", Input: pair(valid.Statement, signRaw(a, kidHeader(TypRotatePoP, vecKID("device-a")), payload)), Context: ctx, Expect: "malformed"},
-		{Name: "payloads-differ", Input: pair(valid.Statement, rot(a, vecKey("device-c"), vecServer1).PoP), Context: ctx, Expect: "malformed"},
+		{Name: "payloads-differ-new-key", Input: pair(valid.Statement, rot(a, vecKey("device-c"), vecServer1).PoP), Context: ctx, Expect: "malformed"},
+		{Name: "payloads-differ-iat", Input: pair(valid.Statement, signRaw(nk, popHdr, strings.Replace(payload, `"iat":`+vecNowStr, `"iat":1`, 1))), Context: ctx, Expect: "malformed"},
 		{Name: "old-key-revoked", Input: enc(rot(vecKey("device-old"), nk, vecServer1)), Context: ctx, Expect: "key_revoked"},
 		{Name: "old-key-unknown", Input: enc(rot(vecKey("device-c"), nk, vecServer1)), Context: ctx, Expect: "unknown_key"},
 		{Name: "wrong-server-claim", Input: enc(rot(a, nk, vecServer2)), Context: ctx, Expect: "wrong_server"},
