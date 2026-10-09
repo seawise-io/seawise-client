@@ -249,12 +249,26 @@ func (r reader) read(name string) (data []byte, ok bool, err error) {
 func decodeStrict(data []byte, v any) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(v); err != nil {
-		return fmt.Errorf("%w: %v", ErrMalformed, err)
+		return fmt.Errorf("%w: malformed JSON at offset %d", ErrMalformed, jsonOffset(err, dec))
 	}
 	if _, err := dec.Token(); err != io.EOF {
-		return fmt.Errorf("%w: trailing data", ErrMalformed)
+		return fmt.Errorf("%w: malformed JSON at offset %d: trailing data", ErrMalformed, dec.InputOffset())
 	}
 	return nil
+}
+
+// jsonOffset locates a decode error without quoting the input, which may
+// hold secrets.
+func jsonOffset(err error, dec *json.Decoder) int64 {
+	var syn *json.SyntaxError
+	var typ *json.UnmarshalTypeError
+	switch {
+	case errors.As(err, &syn):
+		return syn.Offset
+	case errors.As(err, &typ):
+		return typ.Offset
+	}
+	return dec.InputOffset()
 }
 
 func parseAccount(data []byte) (*Account, error) {
@@ -291,7 +305,7 @@ func parseMachine(data []byte, warnings *[]string) (*Machine, error) {
 	seen := map[string]bool{}
 	for i, item := range raw.Services {
 		var svc Service
-		if err := json.Unmarshal(item, &svc); err != nil {
+		if err := decodeStrict(item, &svc); err != nil {
 			*warnings = append(*warnings, fmt.Sprintf("service %d skipped: unreadable", i))
 			continue
 		}

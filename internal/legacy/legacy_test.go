@@ -568,3 +568,27 @@ func TestReadTooManyServices(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestMalformedJSONErrorDoesNotEchoInput(t *testing.T) {
+	for _, body := range []string{`{"frp_token":"s3cr3t-value"Q}`, `{"server_id":"a","frp_token":"s3cr3t-value",`, `{"server_id": ["s3cr3t-value"]}`} {
+		dir := copyFixture(t, "E")
+		if err := os.WriteFile(filepath.Join(dir, "account.json"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Read(dir)
+		if err == nil {
+			t.Fatalf("accepted %q", body)
+		}
+		msg := err.Error()
+		if strings.Contains(msg, "s3cr3t") || strings.Contains(msg, "'") || !strings.Contains(msg, "malformed JSON at offset") {
+			t.Fatalf("error %q", msg)
+		}
+	}
+}
+
+func TestFRPCErrorDoesNotEchoInput(t *testing.T) {
+	_, err := parseFRPC([]byte("[[proxies]]\nname = \"s3cr3t\\q\"\n"))
+	if err == nil || strings.Contains(err.Error(), "s3cr3t") || strings.Contains(err.Error(), `\q`) {
+		t.Fatalf("err = %v", err)
+	}
+}
