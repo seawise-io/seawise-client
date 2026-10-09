@@ -24,3 +24,7 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Test fixtures
+!internal/**/testdata/**/*.toml
+coverage.out

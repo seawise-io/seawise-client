@@ -2,9 +2,9 @@ name: Workflow Lint
 
 on:
   pull_request:
-    branches: [main, v2]
+    branches: [main, v2, v2-integration]
   push:
-    branches: [main, v2]
+    branches: [main, v2, v2-integration]
 
 permissions: {}
 
