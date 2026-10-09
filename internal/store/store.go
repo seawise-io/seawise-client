@@ -201,6 +201,10 @@ func (s *Store) Close() error {
 
 func (s *Store) Dir() string { return s.dir }
 
+// CheckDir refuses a directory that is a symlink, owned by another user or
+// accessible to group or others.
+func CheckDir(path string) error { return checkDir(path) }
+
 func (s *Store) State() State {
 	s.mu.Lock()
 	defer s.mu.Unlock()
