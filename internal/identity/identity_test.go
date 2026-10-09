@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -180,7 +181,7 @@ func TestSign(t *testing.T) {
 	lookup := func(kid string) (protocol.RegistryEntry, bool) {
 		return protocol.RegistryEntry{ServerID: testServer, PublicKey: k.PublicKey(), Status: protocol.StatusActive}, kid == k.KeyID()
 	}
-	if _, err := protocol.VerifyFRPToken(tok, testServer, lookup, 100); err != nil {
+	if _, err := protocol.VerifyFRPToken(tok, testServer, lookup, 100, nil); err != nil {
 		t.Fatalf("token from keystore key: %v", err)
 	}
 }
@@ -380,7 +381,7 @@ func TestRotation(t *testing.T) {
 	lookup := func(kid string) (protocol.RegistryEntry, bool) {
 		return protocol.RegistryEntry{ServerID: testServer, PublicKey: old.PublicKey(), Status: protocol.StatusActive}, kid == old.KeyID()
 	}
-	res, err := protocol.VerifyRotation(rot, testServer, lookup)
+	res, err := protocol.VerifyRotation(rot, protocol.RotationCheck{ServerID: testServer, Lookup: lookup})
 	if err != nil {
 		t.Fatalf("rotation does not verify: %v", err)
 	}
@@ -484,4 +485,96 @@ func TestBackends(t *testing.T) {
 		t.Fatalf("file backend: %v", err)
 	}
 	ks.Close()
+}
+
+// The server accepted a rotation but the agent crashed before committing:
+// the current key is now revoked, and the pending key must take over.
+func TestRecoverRotationAfterCrash(t *testing.T) {
+	dir := stateDir(t)
+	ks := openFile(t, dir)
+	create(t, ks)
+	if _, err := Rotate(ks, testServer); err != nil {
+		t.Fatal(err)
+	}
+	next, _ := ks.Pending()
+	nextID := next.KeyID()
+	ks.Close()
+
+	ks = openFile(t, dir)
+	accepted := func(k *Key) error {
+		if k.KeyID() != nextID {
+			return errors.New("key_revoked")
+		}
+		return nil
+	}
+	if err := RecoverRevoked(ks, accepted); err != nil {
+		t.Fatalf("recover: %v", err)
+	}
+	cur, _ := ks.Current()
+	if cur.KeyID() != nextID {
+		t.Fatal("pending key not promoted")
+	}
+	ks.Close()
+	if cur, _ := openFile(t, dir).Current(); cur.KeyID() != nextID {
+		t.Fatal("promotion not persisted")
+	}
+}
+
+func TestRecoverRevokedWithoutPending(t *testing.T) {
+	ks := openFile(t, stateDir(t))
+	old := create(t, ks)
+	if err := RecoverRevoked(ks, func(*Key) error { return nil }); !errors.Is(err, ErrRepairNeeded) {
+		t.Fatalf("got %v, want ErrRepairNeeded", err)
+	}
+	if cur, _ := ks.Current(); cur.KeyID() != old.KeyID() {
+		t.Fatal("current key changed")
+	}
+}
+
+func TestRecoverRevokedProbeRejected(t *testing.T) {
+	ks := openFile(t, stateDir(t))
+	old := create(t, ks)
+	ks.BeginRotation()
+	probeErr := errors.New("rejected")
+	if err := RecoverRevoked(ks, func(*Key) error { return probeErr }); !errors.Is(err, ErrRepairNeeded) || !errors.Is(err, probeErr) {
+		t.Fatalf("got %v", err)
+	}
+	if cur, _ := ks.Current(); cur.KeyID() != old.KeyID() {
+		t.Fatal("current key changed after a rejected probe")
+	}
+	if _, err := ks.Pending(); err != nil {
+		t.Fatal("pending key dropped after a rejected probe")
+	}
+}
+
+func TestEnsureKey(t *testing.T) {
+	ks := openFile(t, stateDir(t))
+	if _, err := EnsureKey(ks, true); !errors.Is(err, ErrKeyLost) {
+		t.Fatalf("paired without key: %v, want ErrKeyLost", err)
+	}
+	if _, err := ks.Current(); !errors.Is(err, ErrNoKey) {
+		t.Fatal("a key was created for a paired agent")
+	}
+	k, err := EnsureKey(ks, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := EnsureKey(ks, true)
+	if err != nil || again.KeyID() != k.KeyID() {
+		t.Fatalf("existing key: %v", err)
+	}
+}
+
+// A key whose seed is published in the test vectors is refused.
+func TestRefusesTestVectorKey(t *testing.T) {
+	dir := stateDir(t)
+	create(t, openFile(t, dir))
+	seed := sha256.Sum256([]byte("seawise test vector key: device-a"))
+	pub := ed25519.NewKeyFromSeed(seed[:]).Public().(ed25519.PublicKey)
+	rewrite(t, dir, func(d map[string]any) {
+		d["current"] = map[string]any{"seed": base64.StdEncoding.EncodeToString(seed[:]), "public_key": base64.RawURLEncoding.EncodeToString(pub), "created_at": "2026-09-01T12:00:00Z"}
+	})
+	if _, err := OpenFile(dir, fixedNow); !errors.Is(err, ErrTestKey) {
+		t.Fatalf("got %v, want ErrTestKey", err)
+	}
 }

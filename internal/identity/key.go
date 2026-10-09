@@ -65,6 +65,10 @@ func newKey(priv ed25519.PrivateKey, pub ed25519.PublicKey, createdAt time.Time)
 		clear(priv)
 		return nil, fmt.Errorf("%w: %v", ErrCorrupt, err)
 	}
+	if protocol.IsTestVectorKey(protocol.KeyID(pub)) {
+		clear(priv)
+		return nil, ErrTestKey
+	}
 	return &Key{d: &keyData{priv: priv, pub: slices.Clone(pub), createdAt: createdAt.UTC().Truncate(time.Second)}}, nil
 }
 
@@ -94,7 +98,7 @@ func (k Key) Sign(_ io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, erro
 // KeyID is the RFC 7638 thumbprint of the public key.
 func (k Key) KeyID() string { return protocol.KeyID(k.d.pub) }
 
-// Fingerprint is the SW-XXXX-XXXX display form.
+// Fingerprint is the SW-XXXX-XXXX-XXXX-XXXX display form.
 func (k Key) Fingerprint() string { return protocol.Fingerprint(k.d.pub) }
 
 // CreatedAt is when the key was generated, to the second.
