@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"syscall"
 )
@@ -45,6 +46,8 @@ func checkDir(path string) error {
 // openOwned opens path without following symlinks and checks the opened
 // handle, so a swap after the check cannot redirect the read.
 func openOwned(path string, flag int) (*os.File, error) {
+	// #nosec G304 -- callers pass fixed names under the store directory; the
+	// handle is checked below (no symlink, regular file, owner, mode).
 	f, err := os.OpenFile(path, flag|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0o600)
 	if errors.Is(err, syscall.ELOOP) {
 		return nil, fmt.Errorf("%w: %s is a symlink", ErrUnsafePath, path)
@@ -95,7 +98,12 @@ func lockDir(dir string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	fd := f.Fd()
+	if fd > math.MaxInt {
+		f.Close()
+		return nil, fmt.Errorf("lock %s: descriptor out of range", path)
+	}
+	if err := syscall.Flock(int(fd), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) {
 			return nil, fmt.Errorf("%w: %s", ErrLocked, dir)

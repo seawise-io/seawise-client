@@ -194,6 +194,9 @@ func New(cfg Config) (*Agent, error) {
 	if cfg.FRPCPath == "" {
 		return nil, errors.New("frpc path required")
 	}
+	if !filepath.IsAbs(cfg.FRPCPath) {
+		return nil, errors.New("frpc path must be absolute")
+	}
 	if cfg.AllowedDomains == nil {
 		cfg.AllowedDomains = constants.AllowedFRPDomains
 	}
@@ -712,6 +715,13 @@ func (a *Agent) startProcess(d *desired) error {
 		return err
 	}
 
+	if err := checkBinary(a.cfg.FRPCPath); err != nil {
+		a.status.LastError = err.Error()
+		a.scheduleRestart(time.Time{})
+		return err
+	}
+	// #nosec G204 -- binary from operator config, checked just above; the
+	// only argument is the config path inside the store directory.
 	cmd := exec.Command(a.cfg.FRPCPath, "-c", a.ConfigPath())
 	setPdeathsig(cmd)
 	cmd.Stdout = os.Stdout

@@ -1,7 +1,7 @@
 # All Go commands run inside a pinned toolchain image so results do not
 # depend on the host. Set GO_DOCKER=0 to use a local Go toolchain instead.
 
-GO_IMAGE ?= golang:1.26.6-bookworm@sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36
+GO_IMAGE ?= golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c
 GO_CACHE_VOLUME ?= seawise-gomod
 GO_DOCKER ?= 1
 PKGS ?= ./...

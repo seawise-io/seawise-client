@@ -139,6 +139,9 @@ func readPasswordFile(path string) ([]byte, error) {
 	if !fi.Mode().IsRegular() {
 		return nil, errors.New("not a regular file")
 	}
+	// #nosec G304 -- path is the operator-configured password file (a mounted
+	// secret, often a symlink); it is checked to be a regular file and read
+	// with a size cap.
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
