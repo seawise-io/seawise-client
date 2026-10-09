@@ -3,12 +3,17 @@
 | Tag | Image | Moved by |
 |---|---|---|
 | `:latest`, `:1.0`, `:1.0.x` | current client (`Dockerfile`) | a `v1.*` tag on `main` |
+| `:1.0.x-rc.n` | current client pre-release | a `v1.X.Y-pre` tag on `main` |
 | `:2.x.y`, `:2.x.y-beta.n` | client v2 (`Dockerfile.agent`) | a `v2.*` tag on `main` |
-| `:2`, `:beta` | newest v2 release, including pre-releases | a `v2.*` tag on `main` |
+| `:2` | newest v2 release (not pre-releases) | a `v2.X.Y` tag on `main` |
+| `:beta` | newest v2 release or pre-release | a `v2.*` tag on `main` |
 | `:stable` | a v2 release chosen by the maintainer | `promote-stable.yml`, with a signed manifest |
 
-A `v2.*` tag never moves `:latest` or any `:1.*` tag. v2 GitHub releases
-are never marked as the latest release.
+Tags must be strict semver (`v1.X.Y[-pre]`, `v2.X.Y[-pre]`); others fail.
+Pre-releases never move `:latest`, `:1.X` or `:2`. A `v2.*` tag never moves
+`:latest` or any `:1.*` tag, and `:2` and `:beta` never move to a lower
+version than the image they point at. v2 GitHub releases are never marked
+as the latest release.
 
 Every image is signed with cosign (keyless, GitHub OIDC) and carries an
 SPDX SBOM attestation. v2 images also carry signed SLSA provenance for
@@ -27,7 +32,10 @@ release key. The release key is an ECDSA P-256 cosign key kept offline by
 the maintainer (on a hardware token, or encrypted on removable media) and
 used only to sign this manifest. It is never stored in CI or in repository
 secrets and is separate from any key the service uses. Only its public key
-is in this repository, at `release/keys/release.pub`. Each signature is
+is in this repository, at `release/keys/release.pub`, and its SHA-256 is
+pinned in `promote-stable.yml` (`RELEASE_KEY_SHA256`), so swapping the key
+also needs a workflow change. Both only hold if changes to `main` require
+review: branch protection on `main` is required. Each signature is
 also recorded in the public Sigstore transparency log, which the workflow
 requires, so every use of the key is visible.
 

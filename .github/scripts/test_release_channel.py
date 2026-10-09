@@ -21,22 +21,30 @@ def manifest(**kw):
 
 class ClassifyTest(unittest.TestCase):
     def test_v1(self):
-        for tag in ["v1.0.12", "v1.0.13", "v1.1.0", "v1.0.13-rc.1"]:
-            self.assertEqual(rc.classify(tag)["line"], "v1", tag)
-            self.assertEqual(rc.classify(tag)["tags"], "", tag)
+        cases = {
+            "v1.0.12": ("1.0.12", "false"),
+            "v1.1.0": ("1.1.0", "false"),
+            "v1.0.13-rc.1": ("1.0.13-rc.1", "true"),
+        }
+        for tag, (version, pre) in cases.items():
+            got = rc.classify(tag)
+            self.assertEqual(got["line"], "v1", tag)
+            self.assertEqual(got["version"], version, tag)
+            self.assertEqual(got["prerelease"], pre, tag)
+            self.assertEqual(got["tags"], "", tag)
 
     def test_v2(self):
         cases = {
-            "v2.0.0": ("2.0.0", "false"),
-            "v2.0.0-beta.1": ("2.0.0-beta.1", "true"),
-            "v2.3.10-rc.2": ("2.3.10-rc.2", "true"),
+            "v2.0.0": ("2.0.0", "false", ["2.0.0", "2", "beta"]),
+            "v2.0.0-beta.1": ("2.0.0-beta.1", "true", ["2.0.0-beta.1", "beta"]),
+            "v2.3.10-rc.2": ("2.3.10-rc.2", "true", ["2.3.10-rc.2", "beta"]),
         }
-        for tag, (version, pre) in cases.items():
+        for tag, (version, pre, tags) in cases.items():
             got = rc.classify(tag)
             self.assertEqual(got["line"], "v2", tag)
             self.assertEqual(got["version"], version, tag)
             self.assertEqual(got["prerelease"], pre, tag)
-            self.assertEqual(got["tags"].split(), [version, "2", "beta"], tag)
+            self.assertEqual(got["tags"].split(), tags, tag)
 
     def test_v2_never_latest_or_v1(self):
         for tag in ["v2.0.0", "v2.0.0-beta.1", "v2.9.9"]:
@@ -44,12 +52,35 @@ class ClassifyTest(unittest.TestCase):
                 self.assertNotEqual(t, "latest")
                 self.assertFalse(t == "1" or t.startswith("1."), t)
 
+    def test_prerelease_never_moves_2(self):
+        for tag in ["v2.0.0-beta.1", "v2.1.0-rc.1"]:
+            self.assertNotIn("2", rc.classify(tag)["tags"].split(), tag)
+
     def test_rejected(self):
-        for tag in ["v2", "v2.0", "v2.0.0.1", "v2.01.0", "v2.0.0-", "v2.0.0+build",
+        for tag in ["v1.junk", "v1.", "v1.0", "v1.0.13.1", "v1.01.0", "v1.0.13-", "v1.0.13+b",
+                    "v1.0.13-rc.01",
+                    "v2", "v2.0", "v2.0.0.1", "v2.01.0", "v2.0.0-", "v2.0.0+build",
                     "v2.0.0-beta..1", "v20.0.0", "v3.0.0", "v0.9.0", "vlatest",
-                    "v2.0.0\n", "v2.0.0-beta_1", "v2.٣.0"]:
+                    "v2.0.0\n", "v2.0.0-beta_1", "v2.\u0663.0"]:
             with self.assertRaises(rc.Error, msg=tag):
                 rc.classify(tag)
+
+
+class AdvanceTest(unittest.TestCase):
+    def test_allowed(self):
+        for new, cur in [("2.0.0", "v2.0.0-beta.3"), ("2.0.0-beta.2", "v2.0.0-beta.1"),
+                         ("2.0.0-beta.10", "2.0.0-beta.9"), ("2.0.0-rc.1", "v2.0.0-beta.9"),
+                         ("2.1.0", "2.0.9"), ("2.0.0", "2.0.0"), ("2.0.0-beta.1", "1.0.12"),
+                         ("2.0.0-beta", "2.0.0-alpha.1")]:
+            rc.check_advance(new, cur)
+
+    def test_refused(self):
+        for new, cur in [("2.0.0-beta.3", "v2.0.0"), ("2.0.0-beta.1", "v2.0.0-beta.2"),
+                         ("2.0.0-beta.9", "2.0.0-beta.10"), ("2.0.9", "2.1.0"),
+                         ("2.0.0-beta.1", "2.0.0-beta.1.1"), ("2.0.0", ""), ("2.0.0", "dev"),
+                         ("2.0.0", "<no value>")]:
+            with self.assertRaises(rc.Error, msg=(new, cur)):
+                rc.check_advance(new, cur)
 
 
 class ManifestTest(unittest.TestCase):

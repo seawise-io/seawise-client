@@ -3,7 +3,9 @@
 # Requires release/stable.json on main, signed with the offline release key
 # (bundle release/stable.json.bundle, public key release/keys/release.pub),
 # naming the version and the digest already published as :<version> by
-# release.yml. See release/README.md.
+# release.yml. The public key file must also match RELEASE_KEY_SHA256 below,
+# so replacing the key takes a change to this workflow too. Branch
+# protection on main is still required. See release/README.md.
 
 name: Promote stable
 run-name: "Promote ${{ inputs.version }} to stable"
@@ -28,6 +30,9 @@ env:
   MANIFEST: release/stable.json
   BUNDLE: release/stable.json.bundle
   PUBLIC_KEY: release/keys/release.pub
+  # SHA-256 of release/keys/release.pub. Empty until the release key exists,
+  # which blocks every promotion.
+  RELEASE_KEY_SHA256: ""
 
 jobs:
   promote:
@@ -72,6 +77,11 @@ jobs:
               exit 1
             fi
           done
+          if [ -z "$RELEASE_KEY_SHA256" ]; then
+            echo "::error::RELEASE_KEY_SHA256 is not set"
+            exit 1
+          fi
+          echo "${RELEASE_KEY_SHA256}  ${PUBLIC_KEY}" | sha256sum -c --strict -
           cosign verify-blob --key "$PUBLIC_KEY" --bundle "$BUNDLE" "$MANIFEST"
           digest=$(python3 .github/scripts/release-channel.py check-manifest "$MANIFEST" \
             --version "$VERSION" --image "${REGISTRY}/${IMAGE_NAME}")

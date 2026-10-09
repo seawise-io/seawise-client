@@ -1,12 +1,14 @@
 # Release: runs only on version tag push (v*), tags must be on main.
 #
-# v1.* tags: build, test and release jobs, which publish :<semver>,
-#   :<major>.<minor> and :latest from Dockerfile.
-# v2.X.Y[-pre] tags: build-v2 and release-v2, which publish the
-#   seawise-agent image (Dockerfile.agent) as :2.X.Y[-pre], :2 and :beta
-#   only. The image is pushed by digest, scanned, signed and attested
-#   (SBOM, SLSA provenance) before any tag points at it. :stable moves only
-#   through promote-stable.yml.
+# v1.X.Y tags: test, build and release jobs publish :<semver>,
+#   :<major>.<minor> and :latest from Dockerfile. v1.X.Y-pre publishes
+#   :<semver> only.
+# v2.X.Y tags: build-v2 and release-v2 publish the seawise-agent image
+#   (Dockerfile.agent) as :2.X.Y, :2 and :beta; v2.X.Y-pre as :2.X.Y-pre
+#   and :beta only. The image is pushed by digest, scanned, signed and
+#   attested (SBOM, SLSA provenance) before any tag points at it, and :2
+#   and :beta never move to a lower version. :stable moves only through
+#   promote-stable.yml.
 # Any other v* tag fails in classify.
 # All 3rd-party actions pinned to exact commit SHAs.
 
@@ -39,8 +41,10 @@ jobs:
       prerelease: ${{ steps.tag.outputs.prerelease }}
       tags: ${{ steps.tag.outputs.tags }}
     steps:
+      # Channel rules come from main, not from the tagged commit.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
+          ref: main
           persist-credentials: false
 
       - name: Classify tag
@@ -58,6 +62,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Require tag on main
         run: |
@@ -107,8 +112,8 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=semver,pattern={{major}}.{{minor}},enable=${{ needs.classify.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ needs.classify.outputs.prerelease == 'false' }}
 
       - name: Build and push
         id: build-and-push
@@ -204,7 +209,7 @@ jobs:
           provenance: mode=max
           sbom: true
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=v${{ needs.classify.outputs.version }}
           cache-from: type=gha,scope=agent
           cache-to: type=gha,mode=max,scope=agent
 
@@ -271,6 +276,8 @@ jobs:
             cosign attest --yes --type "$type" --predicate "$out" "${REGISTRY}/${IMAGE_NAME}@${pdigest}"
           done
 
+      # A channel tag never moves to a lower version than the image it
+      # points at now (read from that image's version label).
       - name: Tag image
         env:
           DIGEST: ${{ steps.build-and-push.outputs.digest }}
@@ -280,6 +287,20 @@ jobs:
           for t in $TAGS; do
             case "$t" in
               latest|1|1.*) echo "::error::refusing to tag a v2 image :$t"; exit 1 ;;
+              2|beta)
+                if ! docker buildx imagetools inspect "${REGISTRY}/${IMAGE_NAME}:${t}" > /dev/null 2> inspect.err; then
+                  if grep -qi 'not found' inspect.err; then
+                    echo ":$t does not exist yet"
+                  else
+                    cat inspect.err
+                    exit 1
+                  fi
+                else
+                  current=$(docker buildx imagetools inspect "${REGISTRY}/${IMAGE_NAME}:${t}" \
+                    --format '{{ index (index .Image "linux/amd64").Config.Labels "org.opencontainers.image.version" }}')
+                  python3 .github/scripts/release-channel.py check-advance --new "$VERSION" --current "$current"
+                fi
+                ;;
             esac
             args+=(-t "${REGISTRY}/${IMAGE_NAME}:${t}")
           done
@@ -301,7 +322,7 @@ jobs:
           prerelease: ${{ needs.classify.outputs.prerelease == 'true' }}
           make_latest: "false"
           body: |
-            Client v2 image `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build-v2.outputs.digest }}`, published as `:${{ needs.classify.outputs.version }}`, `:2` and `:beta`.
+            Client v2 image `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build-v2.outputs.digest }}`, published under the tags: ${{ needs.classify.outputs.tags }}.
 
             Verify:
             ```
