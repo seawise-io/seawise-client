@@ -120,6 +120,7 @@ func TestStoreUpdateFailureAtEachStep(t *testing.T) {
 				t.Fatal("failed update changed memory or disk")
 			}
 
+			s.Close()
 			reopened, err := Open(dir, clock)
 			if err != nil {
 				t.Fatalf("reopen after failure at %s: %v", step, err)
@@ -144,7 +145,7 @@ func TestImportCrashBetweenSecretsAndState(t *testing.T) {
 		}
 		return nil
 	}
-	_, err := Open(dir, clock)
+	err := openClose(dir, clock)
 	failpoint = old
 	if err == nil {
 		t.Fatal("expected error")
@@ -166,7 +167,7 @@ func TestImportCrashBetweenSecretsAndState(t *testing.T) {
 
 func TestStaleTempFilesRemovedOnOpen(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := Open(dir, clock); err != nil {
+	if err := openClose(dir, clock); err != nil {
 		t.Fatal(err)
 	}
 	v2 := filepath.Join(dir, SubDir)
@@ -176,7 +177,7 @@ func TestStaleTempFilesRemovedOnOpen(t *testing.T) {
 	}
 	keep := filepath.Join(v2, "frpc.toml")
 	os.WriteFile(keep, []byte("x"), 0o600)
-	if _, err := Open(dir, clock); err != nil {
+	if err := openClose(dir, clock); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(stale); err == nil {

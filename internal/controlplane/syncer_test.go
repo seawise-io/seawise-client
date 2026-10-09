@@ -62,8 +62,12 @@ func pairedStore(t *testing.T) (*store.Store, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.UpdateSecrets(func(s *store.Secrets) error { s.FRPToken = token; return nil }); err != nil {
+		t.Fatal(err)
+	}
 	err = st.Update(func(s *store.State) error {
-		s.Account = &store.Account{ServerID: serverID, FRPServerAddr: "frp-1.seawise.dev", FRPServerPort: 7000, FRPUseTLS: true}
+		s.Account = &store.Account{ServerID: serverID, FRPServerAddr: "frp-1.seawise.dev", FRPServerPort: 7000}
 		s.Targets = []store.Target{
 			{LocalID: "a", Name: "jellyfin", Host: "192.168.1.20", Port: 8096, ServerServiceID: sidA, Subdomain: "calm-otter", Source: store.SourceLocal},
 			{LocalID: "b", Name: "plex", Host: "192.168.1.21", Port: 32400, ServerServiceID: sidB, Subdomain: "brave-seal", Source: store.SourceLocal},
@@ -71,9 +75,6 @@ func pairedStore(t *testing.T) (*store.Store, string) {
 		return nil
 	})
 	if err != nil {
-		t.Fatal(err)
-	}
-	if err := st.UpdateSecrets(func(s *store.Secrets) error { s.FRPToken = token; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	return st, dir
@@ -251,6 +252,7 @@ func TestSyncerUnpairedDoesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer st.Close()
 	s := newSyncer(t, f, st, &fakeAgent{}, &clock{now: t0})
 	s.Step(context.Background())
 	if len(f.requests()) != 0 {

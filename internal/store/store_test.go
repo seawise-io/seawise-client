@@ -18,6 +18,14 @@ var fixedNow = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
 
 func clock() time.Time { return fixedNow }
 
+func openClose(dir string, now func() time.Time) error {
+	s, err := Open(dir, now)
+	if err != nil {
+		return err
+	}
+	return s.Close()
+}
+
 func copyV1Fixture(t *testing.T, group string) string {
 	t.Helper()
 	src := filepath.Join("..", "legacy", "testdata", "v1", group)
@@ -214,7 +222,7 @@ func TestFreshInstall(t *testing.T) {
 
 func TestFilesAndPermissions(t *testing.T) {
 	dir := copyV1Fixture(t, "E")
-	if _, err := Open(dir, clock); err != nil {
+	if err := openClose(dir, clock); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(filepath.Join(dir, SubDir))
@@ -251,6 +259,7 @@ func TestReopenDoesNotReimport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.Close()
 	later := func() time.Time { return fixedNow.Add(time.Hour) }
 	s2, err := Open(dir, later)
 	if err != nil {
@@ -326,6 +335,7 @@ func TestSecretsUpdate(t *testing.T) {
 	if err := s.UpdateSecrets(func(sec *Secrets) error { sec.FRPToken = "t2"; return nil }); err != nil {
 		t.Fatal(err)
 	}
+	s.Close()
 	s2, err := Open(dir, clock)
 	if err != nil {
 		t.Fatal(err)
@@ -335,22 +345,152 @@ func TestSecretsUpdate(t *testing.T) {
 	}
 }
 
-func TestLooseSecretsPermissionsTightened(t *testing.T) {
+func TestLooseFileModesRefused(t *testing.T) {
+	for _, name := range []string{StateFile, SecretsFile} {
+		for _, mode := range []os.FileMode{0o644, 0o640, 0o604} {
+			dir := t.TempDir()
+			if err := openClose(dir, clock); err != nil {
+				t.Fatal(err)
+			}
+			p := filepath.Join(dir, SubDir, name)
+			if err := os.Chmod(p, mode); err != nil {
+				t.Fatal(err)
+			}
+			if err := openClose(dir, clock); !errors.Is(err, ErrUnsafePath) {
+				t.Fatalf("%s %v: err = %v", name, mode, err)
+			}
+			if info, _ := os.Stat(p); info.Mode().Perm() != mode {
+				t.Fatalf("%s mode changed by a refused open", name)
+			}
+		}
+	}
+}
+
+func TestLooseStoreDirRefused(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := Open(dir, clock); err != nil {
+	if err := openClose(dir, clock); err != nil {
 		t.Fatal(err)
 	}
-	p := filepath.Join(dir, SubDir, SecretsFile)
-	if err := os.Chmod(p, 0o644); err != nil {
+	if err := os.Chmod(filepath.Join(dir, SubDir), 0o750); err != nil {
 		t.Fatal(err)
 	}
+	if err := openClose(dir, clock); !errors.Is(err, ErrUnsafePath) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestForeignOwnerRefused(t *testing.T) {
+	dir := t.TempDir()
+	if err := openClose(dir, clock); err != nil {
+		t.Fatal(err)
+	}
+	old := euid
+	euid = func() int { return os.Geteuid() + 1 }
+	defer func() { euid = old }()
+	if err := openClose(dir, clock); !errors.Is(err, ErrUnsafePath) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestSecondOpenRefusedWhileLocked(t *testing.T) {
+	dir := t.TempDir()
 	s, err := Open(dir, clock)
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, _ := os.Stat(p)
-	if info.Mode().Perm() != 0o600 || len(s.Warnings) != 1 {
-		t.Fatalf("mode %v warnings %v", info.Mode().Perm(), s.Warnings)
+	if _, err := Open(dir, clock); !errors.Is(err, ErrLocked) {
+		t.Fatalf("err = %v", err)
+	}
+	s.Close()
+	if err := openClose(dir, clock); err != nil {
+		t.Fatalf("after close: %v", err)
+	}
+}
+
+func TestLockIsTakenBeforeImport(t *testing.T) {
+	dir := copyV1Fixture(t, "E")
+	s, err := Open(dir, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	os.Remove(filepath.Join(dir, SubDir, StateFile))
+	if _, err := Open(dir, clock); !errors.Is(err, ErrLocked) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, SubDir, StateFile)); err == nil {
+		t.Fatal("second opener imported while locked")
+	}
+}
+
+func TestSymlinkedLockRefused(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, SubDir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(t.TempDir(), "elsewhere"), filepath.Join(dir, SubDir, LockFile)); err != nil {
+		t.Fatal(err)
+	}
+	if err := openClose(dir, clock); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestAccountWithoutTokenIsInvalid(t *testing.T) {
+	dir := copyV1Fixture(t, "E")
+	s, err := Open(dir, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateSecrets(func(sec *Secrets) error { sec.FRPToken = ""; return nil }); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("clearing token with account: err = %v", err)
+	}
+	s.Close()
+
+	b, _ := json.Marshal(Secrets{Schema: SchemaVersion})
+	if err := os.WriteFile(filepath.Join(dir, SubDir, SecretsFile), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := openClose(dir, clock); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("open: err = %v", err)
+	}
+
+	fresh, err := Open(t.TempDir(), clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fresh.Close()
+	err = fresh.Update(func(st *State) error { st.Account = &Account{ServerID: "x"}; return nil })
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("account without token accepted: %v", err)
+	}
+}
+
+func TestImportRecordsV1TLSFlag(t *testing.T) {
+	for g, want := range map[string]bool{"A": false, "E": true} {
+		s, err := Open(copyV1Fixture(t, g), clock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := s.State().Account.ImportedFRPUseTLS; got != want {
+			t.Fatalf("group %s: imported_frp_use_tls = %v", g, got)
+		}
+		s.Close()
+	}
+}
+
+func TestCorruptStateErrorDoesNotEchoInput(t *testing.T) {
+	for _, f := range []string{StateFile, SecretsFile} {
+		dir := t.TempDir()
+		if err := openClose(dir, clock); err != nil {
+			t.Fatal(err)
+		}
+		body := `{"schema":1,"machine_id":"s3cr3t-value"Q`
+		os.WriteFile(filepath.Join(dir, SubDir, f), []byte(body), 0o600)
+		err := openClose(dir, clock)
+		if err == nil || strings.Contains(err.Error(), "s3cr3t") || strings.Contains(err.Error(), "'") || !strings.Contains(err.Error(), "offset") {
+			t.Fatalf("%s: err = %v", f, err)
+		}
 	}
 }
 
@@ -359,14 +499,14 @@ func TestSymlinkedStoreDirRefused(t *testing.T) {
 	if err := os.Symlink(t.TempDir(), filepath.Join(dir, SubDir)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Open(dir, clock); !errors.Is(err, ErrUnsafePath) {
+	if err := openClose(dir, clock); !errors.Is(err, ErrUnsafePath) {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestSymlinkedStateFileRefused(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := Open(dir, clock); err != nil {
+	if err := openClose(dir, clock); err != nil {
 		t.Fatal(err)
 	}
 	p := filepath.Join(dir, SubDir, StateFile)
@@ -377,7 +517,7 @@ func TestSymlinkedStateFileRefused(t *testing.T) {
 	if err := os.Symlink(other, p); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Open(dir, clock); !errors.Is(err, ErrUnsafePath) {
+	if err := openClose(dir, clock); !errors.Is(err, ErrUnsafePath) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -385,14 +525,14 @@ func TestSymlinkedStateFileRefused(t *testing.T) {
 func TestCorruptStateRefused(t *testing.T) {
 	for _, body := range []string{`{"schema":1,`, `{}`, `{"schema":"1"}`, `{"schema":1,"machine_id":"m","targets":[]} x`, `{"schema":1,"targets":[]}`} {
 		dir := t.TempDir()
-		if _, err := Open(dir, clock); err != nil {
+		if err := openClose(dir, clock); err != nil {
 			t.Fatal(err)
 		}
 		p := filepath.Join(dir, SubDir, StateFile)
 		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Open(dir, clock); err == nil {
+		if err := openClose(dir, clock); err == nil {
 			t.Fatalf("accepted corrupt state %q", body)
 		}
 		if b, _ := os.ReadFile(p); string(b) != body {
@@ -406,23 +546,25 @@ func TestV1ImportFailureWritesNothing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "account.json"), []byte(`{"server_id":`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Open(dir, clock); err == nil {
+	if err := openClose(dir, clock); err == nil {
 		t.Fatal("expected error")
 	}
-	if _, err := os.Stat(filepath.Join(dir, SubDir)); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("v2 dir created on failed import: %v", err)
+	for _, f := range []string{StateFile, SecretsFile} {
+		if _, err := os.Stat(filepath.Join(dir, SubDir, f)); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("%s written on failed import: %v", f, err)
+		}
 	}
 }
 
 func TestNewerSchemaRefusedReadOnly(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := Open(dir, clock); err != nil {
+	if err := openClose(dir, clock); err != nil {
 		t.Fatal(err)
 	}
 	p := filepath.Join(dir, SubDir, StateFile)
 	body := `{"schema":99,"machine_id":"m","targets":[],"future":true}`
 	os.WriteFile(p, []byte(body), 0o600)
-	if _, err := Open(dir, clock); !errors.Is(err, ErrNewerSchema) {
+	if err := openClose(dir, clock); !errors.Is(err, ErrNewerSchema) {
 		t.Fatalf("err = %v", err)
 	}
 	if b, _ := os.ReadFile(p); string(b) != body {
@@ -439,7 +581,7 @@ func withSchema(t *testing.T, version int, ms []func(map[string]any) error) {
 
 func TestMigrationsRunInOrder(t *testing.T) {
 	dir := copyV1Fixture(t, "E")
-	if _, err := Open(dir, clock); err != nil {
+	if err := openClose(dir, clock); err != nil {
 		t.Fatal(err)
 	}
 	var order []int
@@ -473,7 +615,7 @@ func TestMigrationsRunInOrder(t *testing.T) {
 
 func TestFailedMigrationLeavesFileUntouched(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := Open(dir, clock); err != nil {
+	if err := openClose(dir, clock); err != nil {
 		t.Fatal(err)
 	}
 	p := filepath.Join(dir, SubDir, StateFile)
@@ -482,7 +624,7 @@ func TestFailedMigrationLeavesFileUntouched(t *testing.T) {
 		func(doc map[string]any) error { doc["machine_name"] = "half"; return nil },
 		func(doc map[string]any) error { return errors.New("boom") },
 	})
-	if _, err := Open(dir, clock); err == nil {
+	if err := openClose(dir, clock); err == nil {
 		t.Fatal("expected error")
 	}
 	after, _ := os.ReadFile(p)

@@ -74,7 +74,7 @@ func parseFRPC(data []byte) (*FRPCConfig, error) {
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrMalformed, err)
+		return nil, fmt.Errorf("%w: unreadable", ErrMalformed)
 	}
 	prefix := cfg.ServerID + "-"
 	for i := range cfg.Proxies {
@@ -122,7 +122,7 @@ func (c *FRPCConfig) set(section string, p *Proxy, key, raw string) error {
 			}
 			host, portStr, err := net.SplitHostPort(addr)
 			if err != nil {
-				return err
+				return fmt.Errorf("bad localAddr")
 			}
 			p.LocalIP = host
 			return port(portStr, &p.LocalPort)
@@ -138,7 +138,7 @@ func (c *FRPCConfig) set(section string, p *Proxy, key, raw string) error {
 func port(raw string, dst *int) error {
 	n, err := strconv.Atoi(raw)
 	if err != nil {
-		return err
+		return fmt.Errorf("bad port")
 	}
 	if n < 0 || n > 65535 {
 		return fmt.Errorf("port %d out of range", n)
@@ -197,7 +197,7 @@ func str(raw string, dst *string) error {
 			b.WriteRune(rune(v))
 			i += n
 		default:
-			return fmt.Errorf("unknown escape \\%c", body[i])
+			return fmt.Errorf("unknown escape at byte %d", i)
 		}
 	}
 	*dst = b.String()

@@ -16,7 +16,7 @@ GOFLAGS_REPRO := -trimpath -buildvcs=false
 LDFLAGS := -s -w -buildid= -X github.com/seawise/client/internal/constants.Version=$(VERSION)
 
 ifeq ($(GO_DOCKER),1)
-RUN := docker run --rm \
+RUN := docker run --rm --init \
 	--user $(UID):$(GID) \
 	-v "$(CURDIR)":/src -w /src \
 	-v $(GO_CACHE_VOLUME):/cache \

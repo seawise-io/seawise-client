@@ -1,5 +1,5 @@
-# Build stage — use latest 1.26 patch for security fixes
-FROM golang:1.26-alpine AS builder
+# Build stage: pinned by digest; bump with go.mod's toolchain version
+FROM golang:1.26.6-alpine@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS builder
 
 WORKDIR /app
 

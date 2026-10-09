@@ -28,6 +28,7 @@ func newStore(t *testing.T, upgraded *time.Time) *store.Store {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { st.Close() })
 	if err := st.Update(func(s *store.State) error { s.UpgradedAt = upgraded; return nil }); err != nil {
 		t.Fatal(err)
 	}

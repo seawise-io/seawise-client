@@ -10,7 +10,6 @@ import (
 type desired struct {
 	serverAddr   string
 	serverPort   int
-	useTLS       bool
 	token        string
 	serverID     string
 	connectionID string
@@ -31,12 +30,8 @@ func tomlEscape(s string) string {
 func (d *desired) renderCommon() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "serverAddr = \"%s\"\nserverPort = %d\n", tomlEscape(d.serverAddr), d.serverPort)
-	if d.useTLS {
-		fmt.Fprintf(&b, "transport.tls.enable = true\ntransport.tls.serverName = \"%s\"\n", tomlEscape(d.serverAddr))
-		if d.trustedCA != "" {
-			fmt.Fprintf(&b, "transport.tls.trustedCaFile = \"%s\"\n", tomlEscape(d.trustedCA))
-		}
-	}
+	fmt.Fprintf(&b, "transport.tls.enable = true\ntransport.tls.serverName = \"%s\"\ntransport.tls.trustedCaFile = \"%s\"\n",
+		tomlEscape(d.serverAddr), tomlEscape(d.trustedCA))
 	fmt.Fprintf(&b, "metadatas.token = \"%s\"\nmetadatas.server_id = \"%s\"\nmetadatas.connection_id = \"%s\"\n",
 		tomlEscape(d.token), tomlEscape(d.serverID), tomlEscape(d.connectionID))
 	fmt.Fprintf(&b, "webServer.addr = \"%s\"\nwebServer.port = %d\nwebServer.user = \"%s\"\nwebServer.password = \"%s\"\n",
