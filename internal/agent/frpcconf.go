@@ -58,7 +58,8 @@ func (d *desired) renderProxies() string {
 }
 
 // admit returns the targets that may be tunnelled: enabled, registered,
-// confirmed locally (or grandfathered), and, where the address is known
+// confirmed locally (or grandfathered), not public on the server unless the
+// owner made them public here, and, where the address is known
 // without DNS, accepted by the target policy. Names are checked again on
 // every connection by the forwarder.
 func admit(targets []store.Target, gateways []netip.Addr) ([]store.Target, []RefusedApp) {
@@ -70,6 +71,10 @@ func admit(targets []store.Target, gateways []netip.Addr) ([]store.Target, []Ref
 		}
 		if !t.Grandfathered && t.ConfirmedAt == nil {
 			refused = append(refused, RefusedApp{LocalID: t.LocalID, Reason: "not confirmed on this machine"})
+			continue
+		}
+		if t.ServerPublic && !t.IsPublicLocally() {
+			refused = append(refused, RefusedApp{LocalID: t.LocalID, Reason: "public on SeaWise but private on this machine"})
 			continue
 		}
 		if addr, ok := literal(t.Host); ok {

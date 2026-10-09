@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"syscall"
@@ -98,6 +99,8 @@ const (
 const (
 	HoldUser    = "user"
 	HoldRemoval = "removal"
+	// HoldKillSwitch is kept in the store, so it survives restarts.
+	HoldKillSwitch = store.HoldKillSwitch
 )
 
 type intent struct {
@@ -199,6 +202,10 @@ func New(cfg Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	holds := map[string]bool{}
+	for _, h := range cfg.Store.State().Holds {
+		holds[h] = true
+	}
 	fwdCfg := cfg.Forward
 	fwdCfg.Gateways = cfg.Gateways
 	if fwdCfg.Logger == nil {
@@ -214,7 +221,7 @@ func New(cfg Config) (*Agent, error) {
 		adminUser:    user,
 		adminPass:    pass,
 		connectionID: connID,
-		holds:        map[string]bool{},
+		holds:        holds,
 		fwd:          forwarder.New(fwdCfg),
 	}, nil
 }
@@ -286,6 +293,31 @@ func (a *Agent) Hold(ctx context.Context, reason string) error {
 func (a *Agent) Release(ctx context.Context, reason string) error {
 	_, err := a.send(ctx, intentRelease, reason)
 	return err
+}
+
+// SetKillSwitch drops or restores every tunnel. Turning it on holds the
+// tunnels even if the store cannot be written; turning it off needs the
+// store first, so a restart cannot bring tunnels back unasked.
+func (a *Agent) SetKillSwitch(ctx context.Context, on bool) error {
+	err := a.cfg.Store.Update(func(st *store.State) error {
+		st.Holds = slices.DeleteFunc(st.Holds, func(h string) bool { return h == HoldKillSwitch })
+		if on {
+			st.Holds = append(st.Holds, HoldKillSwitch)
+		}
+		return nil
+	})
+	if err != nil && !errors.Is(err, store.ErrNotDurable) {
+		if on {
+			return errors.Join(fmt.Errorf("persist kill switch: %w", err), a.Hold(ctx, HoldKillSwitch))
+		}
+		return fmt.Errorf("persist kill switch: %w", err)
+	}
+	if on {
+		a.log.Warn("kill switch on: all tunnels dropped")
+		return a.Hold(ctx, HoldKillSwitch)
+	}
+	a.log.Info("kill switch off")
+	return a.Release(ctx, HoldKillSwitch)
 }
 
 func (a *Agent) Status(ctx context.Context) (Status, error) {
@@ -398,13 +430,11 @@ func (a *Agent) reconcile() error {
 	d, err := a.desired()
 	if err != nil {
 		a.status.LastError = err.Error()
-		a.stopProcess()
-		a.fwd.Sync(nil)
+		a.dropAll()
 		return err
 	}
 	if d == nil {
-		a.stopProcess()
-		a.fwd.Sync(nil)
+		a.dropAll()
 		return nil
 	}
 	if a.proc == nil {
@@ -431,6 +461,17 @@ func (a *Agent) reconcile() error {
 		}
 	}
 	return nil
+}
+
+// dropAll stops frpc, closes every forwarder listener and connection, and
+// removes frpc.toml so no proxy list is left on disk.
+func (a *Agent) dropAll() {
+	a.stopProcess()
+	a.fwd.Sync(nil)
+	if err := os.Remove(a.ConfigPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+		a.log.Warn("remove frpc config", "error", err)
+	}
+	a.writtenCommon, a.writtenProxy, a.status.ConfigSHA256 = "", "", ""
 }
 
 func (a *Agent) writeConfig(d *desired) (commonChanged, proxiesChanged bool, err error) {
