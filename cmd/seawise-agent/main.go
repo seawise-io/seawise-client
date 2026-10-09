@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -24,7 +25,22 @@ import (
 	"github.com/seawise/client/internal/targetpolicy"
 )
 
+const usage = `seawise-agent: next version of the SeaWise client (in development).
+
+The published image still runs "seawise serve". The target policy,
+forwarder, HTTPS admin UI and setup code described in
+cmd/seawise-agent/README.md apply only to seawise-agent.
+
+Configuration is through environment variables; see that README.
+`
+
 func main() {
+	for _, a := range os.Args[1:] {
+		if a == "-h" || a == "--help" || a == "help" {
+			fmt.Print(usage)
+			return
+		}
+	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	slog.SetDefault(log)
 
@@ -122,9 +138,9 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *age
 		return nil, err
 	}
 	port := constants.DefaultWebPort
-	if v := os.Getenv("SEAWISE_WEB_PORT"); v != "" {
+	if v := os.Getenv("SEAWISE_PORT"); v != "" {
 		if port, err = strconv.Atoi(v); err != nil || port < 1 || port > 65535 {
-			return nil, errors.New("invalid SEAWISE_WEB_PORT")
+			return nil, errors.New("invalid SEAWISE_PORT")
 		}
 	}
 	bind, notice := adminui.BindAddr(os.Getenv("SEAWISE_BIND_ADDR"), st.State(), st.Secrets(), adminui.InContainer())
