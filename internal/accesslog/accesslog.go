@@ -38,7 +38,14 @@ const (
 	pruneEvery           = time.Hour
 	chunkSize            = 64 << 10
 	maxField             = 128
+	// A page stops after scanning this many lines or bytes, valid or not,
+	// and returns a cursor to continue.
+	maxScanLines = 5000
+	maxScanBytes = 4 << 20
 )
+
+// removeFile is replaced in tests.
+var removeFile = os.Remove
 
 const (
 	ResultOK          = "ok"
@@ -80,8 +87,9 @@ type Config struct {
 }
 
 type Status struct {
-	Dropped     uint64 `json:"dropped"`
-	WriteErrors uint64 `json:"write_errors"`
+	Dropped      uint64 `json:"dropped"`
+	WriteErrors  uint64 `json:"write_errors"`
+	DeleteErrors uint64 `json:"delete_errors"`
 }
 
 type Page struct {
@@ -100,8 +108,9 @@ type Log struct {
 	mu     sync.RWMutex
 	closed bool
 
-	dropped   atomic.Uint64
-	writeErrs atomic.Uint64
+	dropped    atomic.Uint64
+	writeErrs  atomic.Uint64
+	deleteErrs atomic.Uint64
 
 	// Owned by the writer goroutine.
 	cur      *os.File
@@ -170,7 +179,7 @@ func (l *Log) Flush() { l.do(func() {}) }
 func (l *Log) Prune() { l.do(l.prune) }
 
 func (l *Log) Status() Status {
-	return Status{Dropped: l.dropped.Load(), WriteErrors: l.writeErrs.Load()}
+	return Status{Dropped: l.dropped.Load(), WriteErrors: l.writeErrs.Load(), DeleteErrors: l.deleteErrs.Load()}
 }
 
 // Close writes what is queued and stops the writer.
@@ -330,18 +339,25 @@ func (l *Log) prune() {
 		if l.cur != nil && f.start == l.curStart {
 			continue
 		}
-		l.remove(f)
-		others -= f.size
+		if l.remove(f) {
+			others -= f.size
+		}
 	}
 }
 
-func (l *Log) remove(f logFile) {
+// remove deletes f and reports whether it is gone. Failures are counted in
+// Status and logged, since they defeat retention and the size cap.
+func (l *Log) remove(f logFile) bool {
 	if l.cur != nil && f.start == l.curStart {
 		l.closeCurrent()
 	}
-	if err := os.Remove(f.path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		l.log.Warn("access log delete failed", "error", err)
+	err := removeFile(f.path)
+	if err == nil || errors.Is(err, os.ErrNotExist) {
+		return true
 	}
+	n := l.deleteErrs.Add(1)
+	l.log.Error("access log file could not be deleted; retention and size cap not enforced", "file", filepath.Base(f.path), "error", err, "failures", n)
+	return false
 }
 
 type logFile struct {
@@ -496,12 +512,13 @@ func (l *Log) Page(cursor string, limit int) (Page, error) {
 		}
 	}
 	out := Page{Entries: []Entry{}}
+	budget := scanBudget{lines: maxScanLines, bytes: maxScanBytes}
 	for ; i >= 0; i, off = i-1, -1 {
-		pos, err := readBack(files[i].path, off, limit-len(out.Entries), &out.Entries)
+		pos, err := readBack(files[i].path, off, limit-len(out.Entries), &out.Entries, &budget)
 		if err != nil {
 			continue
 		}
-		if len(out.Entries) >= limit {
+		if len(out.Entries) >= limit || budget.spent() {
 			if pos > 0 || i > 0 {
 				out.Next = fmt.Sprintf("%d:%d", files[i].start, pos)
 			}
@@ -524,10 +541,18 @@ func parseCursor(c string) (int64, int64, error) {
 	return start, off, nil
 }
 
+type scanBudget struct {
+	lines int
+	bytes int64
+}
+
+func (b *scanBudget) spent() bool { return b.lines <= 0 || b.bytes <= 0 }
+
 // readBack appends up to n entries from path, reading lines backward from
 // off (-1 for the end of the file), and returns the offset of the last line
-// consumed. Lines that are too long or invalid are skipped.
-func readBack(path string, off int64, n int, out *[]Entry) (int64, error) {
+// consumed. Lines that are too long or invalid are skipped but count
+// against budget.
+func readBack(path string, off int64, n int, out *[]Entry, budget *scanBudget) (int64, error) {
 	f, err := store.OpenOwned(path, os.O_RDONLY)
 	if err != nil {
 		return 0, err
@@ -549,7 +574,7 @@ func readBack(path string, off int64, n int, out *[]Entry) (int64, error) {
 		}
 		pos = nl + 1
 	}
-	for added := 0; pos > 0 && added < n; {
+	for added := 0; pos > 0 && added < n && !budget.spent(); {
 		end := pos - 1
 		nl, err := r.lastNewline(end)
 		if err != nil {
@@ -566,6 +591,8 @@ func readBack(path string, off int64, n int, out *[]Entry) (int64, error) {
 				added++
 			}
 		}
+		budget.lines--
+		budget.bytes -= pos - start
 		pos = start
 	}
 	return pos, nil
