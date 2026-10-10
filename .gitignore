@@ -31,3 +31,6 @@ coverage.out
 
 # Test downloads
 .cache/
+
+# Accessibility check tooling
+tools/a11y/node_modules/
