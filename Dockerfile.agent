@@ -1,5 +1,5 @@
-# Client v2 image: runs seawise-agent. Published only under the :2, :2.x.y,
-# :beta and :stable tags; the v1 image is built from Dockerfile.
+# Client v2 image: runs seawise-agent. Published only under the :2.x.y, :2,
+# :beta and :stable tags (never :latest); the v1 image is built from Dockerfile.
 #
 # By default the container starts as root only to switch to PUID/PGID
 # (default 1000:1000), so installs upgraded from the v1 image keep their
@@ -8,7 +8,7 @@
 # read-only. Recommended: start it as the user directly, which needs no
 # capabilities at all:
 #   docker run --read-only --cap-drop ALL --security-opt no-new-privileges \
-#     --user 1000:1000 -v ./config:/config -p 8082:8082 <image>
+#     --user 1000:1000 -v ./config:/config -p 127.0.0.1:8082:8082 <image>
 # Without --user, keep CHOWN, SETUID and SETGID.
 
 ARG BUILDPLATFORM=linux/amd64
@@ -62,9 +62,10 @@ RUN apk add --no-cache ca-certificates su-exec && \
     mkdir -p /config && chown 1000:1000 /config
 
 COPY --from=builder /seawise-agent /app/seawise-agent
-COPY --from=frp-downloader /frpc /app/frpc
+# The frp tarball's files are owned by its build user; /app stays root's.
+COPY --from=frp-downloader --chown=0:0 /frpc /app/frpc
 # frp is Apache 2.0 licensed; ship its LICENSE
-COPY --from=frp-downloader /frp-LICENSE /app/licenses/frp-LICENSE
+COPY --from=frp-downloader --chown=0:0 /frp-LICENSE /app/licenses/frp-LICENSE
 COPY entrypoint-agent.sh /app/entrypoint.sh
 RUN chmod 0755 /app/entrypoint.sh /app/seawise-agent /app/frpc
 
