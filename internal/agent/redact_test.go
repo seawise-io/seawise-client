@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"math/rand/v2"
 	"net/netip"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -48,18 +50,43 @@ func TestRedactWriterLongLineKeepsSecretsMasked(t *testing.T) {
 func TestRedactWriterEncodedAndShortSecrets(t *testing.T) {
 	var out bytes.Buffer
 	w := newRedactWriter(&out, proxySecrets("http://bob:p%40ss%2Fw0rd@proxy.lan:3128")...)
-	w.Write([]byte("a p@ss/w0rd b p%40ss%2Fw0rd c\n"))
-	if got := out.String(); got != "a [redacted] b [redacted] c\n" {
+	w.Write([]byte("a p@ss/w0rd b p%40ss%2Fw0rd c user bob\n"))
+	if got := out.String(); got != "a [redacted] b [redacted] c user [redacted]\n" {
 		t.Fatalf("output = %q", got)
 	}
 	if s := proxySecrets("http://proxy.lan:3128"); len(s) != 0 {
 		t.Fatalf("secrets without userinfo = %q", s)
 	}
-	out.Reset()
-	w = newRedactWriter(&out, "ab", "")
-	w.Write([]byte("abc\n"))
-	if out.String() != "abc\n" {
-		t.Fatalf("short secrets mangled output: %q", out.String())
+}
+
+func TestRedactWriterShortSecretsWholeToken(t *testing.T) {
+	var out bytes.Buffer
+	w := newRedactWriter(&out, proxySecrets("http://u:ab@proxy.lan:3128")...)
+	w.Write([]byte("abc ab cab u:ab@p user=u ub\n"))
+	w.Flush()
+	if got := out.String(); got != "abc [redacted] cab [redacted]:[redacted]@p user=[redacted] ub\n" {
+		t.Fatalf("output = %q", got)
+	}
+}
+
+func TestRedactWriterEscapedForms(t *testing.T) {
+	secret := "pa\"ss\\w\nord"
+	var out bytes.Buffer
+	w := newRedactWriter(&out, secret)
+	quoted := strconv.Quote(secret)
+	js, _ := json.Marshal(secret)
+	for _, chunk := range []string{"raw " + secret[:4], secret[4:] + " end\n", "q " + quoted + "\n", "j " + string(js) + "\n"} {
+		w.Write([]byte(chunk))
+	}
+	w.Flush()
+	got := out.String()
+	for _, part := range []string{"pa\"ss", "ss\\w", `pa\"ss`, "ord"} {
+		if strings.Contains(got, part) {
+			t.Fatalf("output leaks %q: %q", part, got)
+		}
+	}
+	if strings.Count(got, "[redacted]") != 3 || !strings.HasPrefix(got, "raw [redacted] end\n") {
+		t.Fatalf("output = %q", got)
 	}
 }
 
@@ -100,7 +127,7 @@ func TestFRPCOutputRedacted(t *testing.T) {
 	}
 	h.stop()
 	got := out.String()
-	for _, secret := range []string{"Pr0xyPass", "synthetic-token", strings.Trim(pass, `"`)} {
+	for _, secret := range []string{"Pr0xyPass", "alice", "synthetic-token", strings.Trim(pass, `"`)} {
 		if secret == "" {
 			t.Fatal("secret missing from the config")
 		}
@@ -111,7 +138,7 @@ func TestFRPCOutputRedacted(t *testing.T) {
 			t.Fatalf("agent log leaks %q:\n%s", secret, logs.String())
 		}
 	}
-	if strings.Count(got, "[redacted]") != 4 || !strings.Contains(got, "proxy.lan:3128") || !strings.Contains(got, "trailing [redacted]") {
+	if strings.Count(got, "[redacted]") != 5 || !strings.Contains(got, "proxy.lan:3128") || !strings.Contains(got, "trailing [redacted]") {
 		t.Fatalf("frpc output = %q", got)
 	}
 }
@@ -135,5 +162,28 @@ func TestEdgeResolveBounded(t *testing.T) {
 	}
 	if got := confValue(t, h.agent.ConfigPath(), "serverAddr"); got != `"frp-1.seawise.dev"` {
 		t.Fatalf("serverAddr = %s", got)
+	}
+}
+
+func TestRedactWriterRandomSplits(t *testing.T) {
+	secrets := []string{"multi\nline-secret", "tok-123456", "pw"}
+	text := strings.Repeat("start tok-123456 pw x multi\nline-secret end\nab pw: "+strings.Repeat("z", 300)+"\n", 60)
+	rng := rand.New(rand.NewPCG(1, 2))
+	for i := 0; i < 200; i++ {
+		var out bytes.Buffer
+		w := newRedactWriter(&out, secrets...)
+		for rest := text; rest != ""; {
+			n := min(len(rest), 1+rng.IntN(40))
+			w.Write([]byte(rest[:n]))
+			rest = rest[n:]
+		}
+		w.Flush()
+		got := out.String()
+		if strings.Contains(got, "tok-1") || strings.Contains(got, "line-secret") || strings.Contains(got, " pw ") || strings.Contains(got, "pw:") {
+			t.Fatalf("split %d leaks a secret", i)
+		}
+		if strings.Count(got, "\n") != strings.Count(text, "\n")-60 {
+			t.Fatalf("split %d lost or added lines", i)
+		}
 	}
 }
