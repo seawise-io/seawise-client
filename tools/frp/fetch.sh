@@ -16,6 +16,9 @@ case "$(uname -m)" in
   aarch64 | arm64) arch=arm64; sum=$(arg FRP_SHA256_ARM64) ;;
   *) echo "fetch.sh: unsupported machine $(uname -m)" >&2; exit 1 ;;
 esac
+case "$sum" in
+  *[!0-9a-f]*) sum="" ;;
+esac
 if [ -z "$version" ] || [ ${#sum} -ne 64 ]; then
   echo "fetch.sh: frp pin not found in $dockerfile" >&2
   exit 1
