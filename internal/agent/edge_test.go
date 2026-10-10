@@ -85,8 +85,27 @@ func TestUnsupportedProxySchemeRefused(t *testing.T) {
 func TestFRPCGetsNoEnvironment(t *testing.T) {
 	t.Setenv("SEAWISE_ADMIN_PASSWORD", "x")
 	t.Setenv("HTTPS_PROXY", "http://proxy.example.invalid:3128")
-	if env := childEnv(); len(env) != 1 || env[0] != "GOMEMLIMIT="+frpcMemoryLimit {
+	if env := childEnv(""); len(env) != 1 || env[0] != "GOMEMLIMIT="+DefaultFRPCMemoryLimit {
 		t.Fatalf("frpc environment = %v", env)
+	}
+	if env := childEnv("96MiB"); len(env) != 1 || env[0] != "GOMEMLIMIT=96MiB" {
+		t.Fatalf("frpc environment with an override = %v", env)
+	}
+}
+
+func TestFRPCMemoryLimitValidated(t *testing.T) {
+	for _, v := range []string{"off", "64MiB", "1GiB", "50000000", "512KiB"} {
+		if err := ValidMemoryLimit(v); err != nil {
+			t.Errorf("%q: %v", v, err)
+		}
+	}
+	for _, v := range []string{"64M", "-1", "64 MiB", "MiB", "64MiB\nX=1", "1e9"} {
+		if ValidMemoryLimit(v) == nil {
+			t.Errorf("%q accepted", v)
+		}
+	}
+	if _, err := New(Config{Store: pairedStore(t, t.TempDir()), FRPCPath: "/bin/true", FRPCMemoryLimit: "lots"}); err == nil {
+		t.Fatal("invalid frpc memory limit accepted")
 	}
 }
 
