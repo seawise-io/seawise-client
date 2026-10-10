@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Fail if a Go module dependency has a licence outside the allow-list.
 
-Input: `go list -m -json all` on stdin (modules must be downloaded).
+Input: `go list -m -json all` on stdin (modules must be downloaded), or
+`--npm <package-lock.json>` for an installed npm tool (`npm ci` first).
+Packages are classified by their licence file, not by declared metadata.
 Policy: .github/licences.json. Anything outside "allowed" needs a
 "decision" entry: {"module": ..., "license": ..., "reason": ...}.
 """
@@ -10,12 +12,13 @@ import pathlib
 import re
 import sys
 
+# Order matters: MPL 2.0 mentions the GPL family as secondary licences.
 SIGNATURES = (
+    ("MPL-2.0", ("mozilla public license", "2.0")),
     ("AGPL-3.0", ("gnu affero general public license",)),
     ("SSPL-1.0", ("server side public license",)),
     ("LGPL", ("gnu lesser general public license",)),
     ("GPL", ("gnu general public license",)),
-    ("MPL-2.0", ("mozilla public license", "2.0")),
     ("Apache-2.0", ("apache license", "version 2.0")),
     ("MIT", ("permission is hereby granted, free of charge",)),
     ("ISC", ("permission to use, copy, modify, and/or distribute this software for any purpose",)),
@@ -54,6 +57,17 @@ def modules(stream):
         yield obj
 
 
+def npm_modules(lock_path):
+    lock_path = pathlib.Path(lock_path)
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    for key, meta in lock.get("packages", {}).items():
+        if not key:
+            continue
+        name = key.rsplit("node_modules/", 1)[-1]
+        d = lock_path.parent / key
+        yield {"Path": name, "Version": meta.get("version"), "Dir": str(d) if d.is_dir() else ""}
+
+
 def check(policy, mods):
     allowed = set(policy["allowed"])
     decided = {(d["module"], d["license"]) for d in policy.get("decision", [])}
@@ -63,7 +77,7 @@ def check(policy, mods):
             continue
         path = m.get("Path")
         if not m.get("Dir"):
-            errors.append(f"{path}: not downloaded; run go mod download first")
+            errors.append(f"{path}: not downloaded; run go mod download or npm ci first")
             continue
         spdx = licence_of(m["Dir"]) or "unknown"
         if spdx not in allowed and (path, spdx) not in decided:
@@ -74,13 +88,16 @@ def check(policy, mods):
 def main():
     root = pathlib.Path(__file__).resolve().parent.parent
     policy = json.loads((root / "licences.json").read_text(encoding="utf-8"))
-    mods = list(modules(sys.stdin))
+    if len(sys.argv) == 3 and sys.argv[1] == "--npm":
+        mods = list(npm_modules(sys.argv[2]))
+    else:
+        mods = list(modules(sys.stdin))
     errors = check(policy, mods)
     for e in errors:
         print(f"::error::{e}")
     if errors:
         sys.exit(1)
-    print(f"licences OK: {sum(1 for m in mods if not m.get('Main'))} modules")
+    print(f"licences OK: {sum(1 for m in mods if not m.get('Main'))} packages")
 
 
 if __name__ == "__main__":

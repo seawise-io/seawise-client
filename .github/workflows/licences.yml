@@ -6,6 +6,8 @@ on:
     paths:
       - "go.mod"
       - "go.sum"
+      - "tools/a11y/package.json"
+      - "tools/a11y/package-lock.json"
       - ".github/licences.json"
       - ".github/scripts/check-licences.py"
       - ".github/workflows/licences.yml"
@@ -14,6 +16,8 @@ on:
     paths:
       - "go.mod"
       - "go.sum"
+      - "tools/a11y/package.json"
+      - "tools/a11y/package-lock.json"
       - ".github/licences.json"
       - ".github/scripts/check-licences.py"
       - ".github/workflows/licences.yml"
@@ -42,3 +46,9 @@ jobs:
           go mod download
           go list -deps -test -f '{{with .Module}}{{if not .Main}}{"Path":"{{.Path}}","Version":"{{.Version}}","Dir":"{{.Dir}}"}{{end}}{{end}}' ./... \
             | sort -u | python3 .github/scripts/check-licences.py
+
+      - name: Check accessibility tool licences
+        working-directory: tools/a11y
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          python3 ../../.github/scripts/check-licences.py --npm package-lock.json
