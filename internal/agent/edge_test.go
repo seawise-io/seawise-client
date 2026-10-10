@@ -85,7 +85,7 @@ func TestUnsupportedProxySchemeRefused(t *testing.T) {
 func TestFRPCGetsNoEnvironment(t *testing.T) {
 	t.Setenv("SEAWISE_ADMIN_PASSWORD", "x")
 	t.Setenv("HTTPS_PROXY", "http://proxy.example.invalid:3128")
-	if env := childEnv(); len(env) != 0 {
+	if env := childEnv(); len(env) != 1 || env[0] != "GOMEMLIMIT="+frpcMemoryLimit {
 		t.Fatalf("frpc environment = %v", env)
 	}
 }

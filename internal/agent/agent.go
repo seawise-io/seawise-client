@@ -73,7 +73,7 @@ type Config struct {
 	// Output receives frpc's stdout and stderr with secrets masked; nil
 	// is os.Stdout.
 	Output io.Writer
-	// Env is the frpc environment; nil gives frpc an empty one. Proxy
+	// Env is the frpc environment; nil gives frpc only its memory limit. Proxy
 	// settings reach frpc through its config, never its environment.
 	Env []string
 	// Getenv supplies the proxy variables; nil reads the process
@@ -836,9 +836,14 @@ func (a *Agent) startPoll() {
 	}()
 }
 
+// frpcMemoryLimit is frpc's soft memory limit. Below about 40 MiB the
+// garbage collector costs throughput under load.
+const frpcMemoryLimit = "48MiB"
+
 // frpc is a static binary given absolute paths, an explicit CA file and
-// its proxy in the config, so it needs nothing from the environment.
-func childEnv() []string { return []string{} }
+// its proxy in the config; from the environment it only gets its memory
+// limit.
+func childEnv() []string { return []string{"GOMEMLIMIT=" + frpcMemoryLimit} }
 
 func freeLoopbackPort() (int, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
