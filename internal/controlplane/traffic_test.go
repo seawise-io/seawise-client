@@ -15,12 +15,14 @@ import (
 )
 
 // Idle control traffic per device, in bytes per 30-day month, both
-// directions, on the wire. MonthlyControlBudget fails the build;
-// MonthlyControlTarget is the goal, reached once the server's heartbeat
-// interval allows it (the test logs the interval needed).
+// directions, on the wire. MonthlyControlBudget fails the build at the
+// default heartbeat. MonthlyControlTarget must hold once the server asks
+// for heartbeats every TargetBeat, so the target stays one server setting
+// away.
 const (
 	MonthlyControlBudget = 100_000_000
 	MonthlyControlTarget = 50_000_000
+	TargetBeat           = 60 * time.Second
 )
 
 const (
@@ -183,10 +185,18 @@ func TestControlTrafficBudget(t *testing.T) {
 	for estimate(needed) > MonthlyControlTarget && needed < MaxHeartbeat {
 		needed += 5 * time.Second
 	}
-	t.Logf("per heartbeat %d B, per list (%d apps) %d B, new connection %d B; at a %v heartbeat with a list every %d: %.1f MB/month (budget %.0f MB, target %.0f MB, reached at a %v heartbeat)",
-		hb, trafficApps, list, handshake, DefaultBeat, DefaultListEvery, float64(total)/1e6,
-		float64(MonthlyControlBudget)/1e6, float64(MonthlyControlTarget)/1e6, needed)
+	t.Logf("per heartbeat %d B, per list (%d apps) %d B, new connection %d B; at a %v heartbeat with a list every %d: %.1f MB/month (budget %.0f MB); %.1f MB/month at a %v heartbeat (target %.0f MB, reached at %v)",
+		hb, trafficApps, list, handshake, DefaultBeat, DefaultListEvery, float64(total)/1e6, float64(MonthlyControlBudget)/1e6,
+		float64(estimate(TargetBeat))/1e6, TargetBeat, float64(MonthlyControlTarget)/1e6, needed)
 	if total > MonthlyControlBudget {
 		t.Fatalf("idle control traffic %.1f MB/month over budget %.0f MB", float64(total)/1e6, float64(MonthlyControlBudget)/1e6)
+	}
+	if at := estimate(TargetBeat); at > MonthlyControlTarget {
+		t.Fatalf("idle control traffic %.1f MB/month at a %v heartbeat, over target %.0f MB", float64(at)/1e6, TargetBeat, float64(MonthlyControlTarget)/1e6)
+	}
+	// The client follows a server that asks for the target interval.
+	parsed, err := parseHeartbeat([]byte(fmt.Sprintf(`{"status":"ok","next_heartbeat_ms":%d}`, TargetBeat.Milliseconds())), nil)
+	if err != nil || parsed.NextHeartbeat != TargetBeat {
+		t.Fatalf("server interval %v gives %+v, %v", TargetBeat, parsed, err)
 	}
 }
