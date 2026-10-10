@@ -182,7 +182,25 @@ async function reflow(state) {
   if (r.sw > r.w) fail(state, `page scrolls horizontally at ${r.w} px (content ${r.sw} px wide: ${r.wide.join(", ")})`);
 }
 
+// Names and text built by the script must never show missing data.
+async function names(state) {
+  const bad = await evaluate(`(() => {
+    const out = [];
+    for (const e of document.querySelectorAll('main *')) {
+      if (!e.getClientRects().length) continue;
+      const label = e.getAttribute('aria-label');
+      if (label !== null && (label !== label.trim() || /\\b(undefined|null|NaN)\\b/.test(label))) out.push(label);
+      for (const n of e.childNodes) {
+        if (n.nodeType === 3 && (/\\b(undefined|null|NaN)\\b/.test(n.data) || /^ \\(/.test(n.data))) out.push(n.data);
+      }
+    }
+    return out;
+  })()`);
+  for (const t of bad) fail(state, `text with missing data: ${JSON.stringify(t)}`);
+}
+
 async function checkState(state) {
+  await names(state);
   for (const w of WIDTHS) {
     await width(w);
     const s = `${state} @${w}px`;

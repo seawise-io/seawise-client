@@ -29,7 +29,7 @@
     var b = document.createElement("button");
     b.type = "button";
     b.textContent = label;
-    b.setAttribute("aria-label", label + " " + name);
+    b.setAttribute("aria-label", name ? label + " " + name : label);
     b.dataset.localId = localID;
     b.dataset.action = action;
     b.addEventListener("click", function () {
@@ -49,6 +49,8 @@
     ul.textContent = "";
     (items || []).forEach(function (it) {
       var li = document.createElement("li");
+      var where = it.host + ":" + it.port;
+      var name = it.name || "App at " + where;
       var notes = [];
       if (it.disabled) notes.push("turned off");
       if (it.refused) notes.push("connections refused: " + it.refused);
@@ -57,15 +59,15 @@
       else if (it.grandfathered) notes.push("set up before this version, still working");
       if (it.server_disable_requested_at) notes.push("SeaWise asks to turn this app off; it keeps running until you accept");
       if (it.server_public && !it.public) notes.push("public on SeaWise but private on this machine, so it is not shared until you make it public here");
-      li.appendChild(document.createTextNode(it.name + " (" + it.host + ":" + it.port + "): " + notes.join("; ") + " "));
-      if (!it.refused && (it.grandfathered || (it.missing && it.missing.length))) li.appendChild(button("Confirm", it.local_id, "confirm", it.name));
+      li.appendChild(document.createTextNode((it.name ? it.name + " (" + where + ")" : name) + ": " + notes.join("; ") + " "));
+      if (!it.refused && (it.grandfathered || (it.missing && it.missing.length))) li.appendChild(button("Confirm", it.local_id, "confirm", name));
       if (it.server_disable_requested_at) {
-        li.appendChild(button("Turn off as asked", it.local_id, "accept_server_disable", it.name));
-        li.appendChild(button("Keep running", it.local_id, "dismiss_server_disable", it.name));
+        li.appendChild(button("Turn off as asked", it.local_id, "accept_server_disable", name));
+        li.appendChild(button("Keep running", it.local_id, "dismiss_server_disable", name));
       }
-      if (it.server_public && !it.public) li.appendChild(button("Make public", it.local_id, "make_public", it.name));
-      if (it.public) li.appendChild(button("Make private", it.local_id, "make_private", it.name));
-      li.appendChild(it.disabled ? button("Turn on", it.local_id, "enable", it.name) : button("Turn off", it.local_id, "disable", it.name));
+      if (it.server_public && !it.public) li.appendChild(button("Make public", it.local_id, "make_public", name));
+      if (it.public) li.appendChild(button("Make private", it.local_id, "make_private", name));
+      li.appendChild(it.disabled ? button("Turn on", it.local_id, "enable", name) : button("Turn off", it.local_id, "disable", name));
       ul.appendChild(li);
     });
     if (keep) {

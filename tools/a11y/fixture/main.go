@@ -125,6 +125,7 @@ func seed(st *store.Store, now time.Time) error {
 			{LocalID: "notes", Name: "Notes", Host: "192.168.1.30", Port: 3000, Subdomain: "notes", Source: store.SourceLocal, ConfirmedAt: &confirmed, Disabled: true},
 			{LocalID: "photos", Name: "Photos", Host: "192.168.1.31", Port: 2342, Subdomain: "photos", Source: store.SourceLocal, ConfirmedAt: &confirmed, ServerDisableRequestedAt: &now},
 			{LocalID: "wiki", Name: "Wiki", Host: "192.168.1.32", Port: 8080, Subdomain: "wiki", Source: store.SourceLocal, ConfirmedAt: &confirmed, ServerPublic: true},
+			{LocalID: "unnamed", Host: "192.168.1.34", Port: 8443, Subdomain: "unnamed", Source: store.SourceLocal, Grandfathered: true},
 			{LocalID: "blog", Name: "Blog", Host: "192.168.1.33", Port: 2368, Subdomain: "blog", Source: store.SourceLocal, ConfirmedAt: &confirmed, Public: &yes, ServerPublic: true},
 		}
 		return nil
