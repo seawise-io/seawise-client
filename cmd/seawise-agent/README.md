@@ -61,14 +61,19 @@ newest first.
   lower-case forms) apply to calls to SeaWise and to frpc. frpc gets the
   proxy in its config (`HTTPS_PROXY` first, then `HTTP_PROXY`) and supports
   `http://`, `socks5://` and `ntlm://` proxies; any other scheme stops the
-  tunnels with an error instead of connecting directly.
+  tunnels with an error instead of connecting directly. Loopback addresses
+  and connections to your apps never use a proxy. The proxy user name and
+  password, like the tunnel token, are masked in frpc's log output.
 - **DNS fallback.** Without a proxy, the client resolves the tunnel server
   before starting frpc and remembers the result. If DNS fails later, it
   connects to the last address it resolved within the past 7 days, still
   verifying the server's certificate against its host name, and switches
   back to the host name once DNS works again.
-- **Memory.** A soft memory limit of 64 MiB applies unless `GOMEMLIMIT` is
-  set.
+- **Memory.** A soft memory limit of 64 MiB applies to the agent unless
+  `GOMEMLIMIT` is set, and 48 MiB to frpc unless `SEAWISE_FRPC_GOMEMLIMIT`
+  is set (same format as `GOMEMLIMIT`, for example `96MiB` or `off`; an
+  invalid value stops the agent at start). CI checks resident memory of
+  both, idle and under load, with the frp release the image ships.
 
 ## Update notices
 

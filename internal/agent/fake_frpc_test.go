@@ -45,6 +45,8 @@ func fakeLog(event string) {
 type fakeConf struct {
 	port       int
 	user, pass string
+	token      string
+	proxyURL   string
 	proxies    []string
 }
 
@@ -69,6 +71,10 @@ func readFakeConf(path string) fakeConf {
 			c.user = uq
 		case "webServer.password":
 			c.pass = uq
+		case "metadatas.token":
+			c.token = uq
+		case "transport.proxyURL":
+			c.proxyURL = uq
 		case "name":
 			c.proxies = append(c.proxies, uq)
 		}
@@ -99,6 +105,12 @@ func fakeFRPC() {
 		os.Exit(1)
 	}
 	conf := readFakeConf(path)
+	if strings.TrimSpace(string(mode)) == "chatty" {
+		// Prints its secrets the way a careless log line would.
+		fmt.Printf("login token=%s admin=%s:%s\n", conf.token, conf.user, conf.pass)
+		fmt.Fprintf(os.Stderr, "dial via proxy %s failed\n", conf.proxyURL)
+		fmt.Print("trailing ", conf.token)
+	}
 	ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(conf.port)))
 	if err != nil {
 		fakeLog("exit")

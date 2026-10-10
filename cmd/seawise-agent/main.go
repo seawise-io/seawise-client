@@ -80,11 +80,12 @@ func main() {
 	}
 
 	cfg := agent.Config{
-		Store:         st,
-		FRPCPath:      envOr("SEAWISE_FRPC_PATH", "/app/frpc"),
-		TrustedCAFile: envOr("SEAWISE_TRUSTED_CA_FILE", agent.DefaultTrustedCA),
-		Logger:        log,
-		Gateways:      targetpolicy.Gateways(),
+		Store:           st,
+		FRPCPath:        envOr("SEAWISE_FRPC_PATH", "/app/frpc"),
+		FRPCMemoryLimit: os.Getenv("SEAWISE_FRPC_GOMEMLIMIT"),
+		TrustedCAFile:   envOr("SEAWISE_TRUSTED_CA_FILE", agent.DefaultTrustedCA),
+		Logger:          log,
+		Gateways:        targetpolicy.Gateways(),
 	}
 	cfg.Forward.Record = accessLog.Record
 	if v := os.Getenv("SEAWISE_FRPC_ADMIN_PORT"); v != "" {

@@ -9,12 +9,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"sort"
@@ -69,7 +71,12 @@ type Config struct {
 	PollInterval   time.Duration
 	After          func(time.Duration) <-chan time.Time
 	Logger         *slog.Logger
-	// Env is the frpc environment; nil gives frpc an empty one. Proxy
+	// Output receives frpc's stdout and stderr with secrets masked; nil
+	// is os.Stdout.
+	Output io.Writer
+	// FRPCMemoryLimit is frpc's GOMEMLIMIT; empty is DefaultFRPCMemoryLimit.
+	FRPCMemoryLimit string
+	// Env is the frpc environment; nil gives frpc only its memory limit. Proxy
 	// settings reach frpc through its config, never its environment.
 	Env []string
 	// Getenv supplies the proxy variables; nil reads the process
@@ -197,6 +204,11 @@ func New(cfg Config) (*Agent, error) {
 	if !filepath.IsAbs(cfg.FRPCPath) {
 		return nil, errors.New("frpc path must be absolute")
 	}
+	if cfg.FRPCMemoryLimit != "" {
+		if err := ValidMemoryLimit(cfg.FRPCMemoryLimit); err != nil {
+			return nil, fmt.Errorf("frpc memory limit: %w", err)
+		}
+	}
 	if cfg.AllowedDomains == nil {
 		cfg.AllowedDomains = constants.AllowedFRPDomains
 	}
@@ -223,6 +235,9 @@ func New(cfg Config) (*Agent, error) {
 	}
 	if cfg.Getenv == nil {
 		cfg.Getenv = os.Getenv
+	}
+	if cfg.Output == nil {
+		cfg.Output = os.Stdout
 	}
 	if cfg.ResolveEdge == nil {
 		cfg.ResolveEdge = func(ctx context.Context, host string) ([]netip.Addr, error) {
@@ -724,11 +739,11 @@ func (a *Agent) startProcess(d *desired) error {
 	// only argument is the config path inside the store directory.
 	cmd := exec.Command(a.cfg.FRPCPath, "-c", a.ConfigPath())
 	setPdeathsig(cmd)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	out := newRedactWriter(a.cfg.Output, append(proxySecrets(d.proxyURL), d.token, d.adminPass)...)
+	cmd.Stdout, cmd.Stderr = out, out
 	cmd.Env = a.cfg.Env
 	if cmd.Env == nil {
-		cmd.Env = childEnv()
+		cmd.Env = childEnv(a.cfg.FRPCMemoryLimit)
 	}
 	if err := cmd.Start(); err != nil {
 		a.status.LastError = err.Error()
@@ -745,6 +760,7 @@ func (a *Agent) startProcess(d *desired) error {
 	}
 	go func() {
 		err := cmd.Wait()
+		out.Flush()
 		close(p.done)
 		select {
 		case a.exits <- exitEvent{pid: p.pid, err: err}:
@@ -828,9 +844,30 @@ func (a *Agent) startPoll() {
 	}()
 }
 
+// DefaultFRPCMemoryLimit is frpc's soft memory limit unless the operator
+// sets one. Below about 40 MiB the garbage collector costs throughput
+// under load.
+const DefaultFRPCMemoryLimit = "48MiB"
+
+var memoryLimitRE = regexp.MustCompile(`^(off|[0-9]+(B|KiB|MiB|GiB|TiB)?)$`)
+
+// ValidMemoryLimit accepts the GOMEMLIMIT forms the Go runtime reads.
+func ValidMemoryLimit(v string) error {
+	if !memoryLimitRE.MatchString(v) {
+		return fmt.Errorf("invalid memory limit %q: use a number with B, KiB, MiB, GiB or TiB, or off", v)
+	}
+	return nil
+}
+
 // frpc is a static binary given absolute paths, an explicit CA file and
-// its proxy in the config, so it needs nothing from the environment.
-func childEnv() []string { return []string{} }
+// its proxy in the config; from the environment it only gets its memory
+// limit.
+func childEnv(limit string) []string {
+	if limit == "" {
+		limit = DefaultFRPCMemoryLimit
+	}
+	return []string{"GOMEMLIMIT=" + limit}
+}
 
 func freeLoopbackPort() (int, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

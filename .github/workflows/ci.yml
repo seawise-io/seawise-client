@@ -35,5 +35,8 @@ jobs:
       - name: Vet
         run: make vet
 
+      - name: Fetch frpc and frps for the memory budget
+        run: make frp
+
       - name: Run tests with race detector
         run: make race
