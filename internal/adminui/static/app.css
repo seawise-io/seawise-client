@@ -1,10 +1,15 @@
-body { font-family: system-ui, sans-serif; margin: 0; color: #111; background: #fff; }
+body { font-family: system-ui, sans-serif; margin: 0; color: #111; background: #fff; overflow-wrap: break-word; }
 main { max-width: 42rem; margin: 2rem auto; padding: 0 1rem; }
 label { display: block; margin-top: 1rem; }
 input { display: block; width: 100%; padding: .5rem; font-size: 1rem; box-sizing: border-box; }
-button { margin-top: 1rem; padding: .5rem 1rem; font-size: 1rem; }
-pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; }
+button { margin: 1rem .5rem 0 0; padding: .5rem 1rem; font-size: 1rem; }
+pre { background: #f4f4f4; padding: 1rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 li { margin: .5rem 0; }
 #message:not(:empty) { padding: .5rem; border: 1px solid #888; }
 table { border-collapse: collapse; width: 100%; font-size: .875rem; }
 th, td { text-align: left; padding: .25rem .5rem; border-bottom: 1px solid #ddd; }
+.hint { margin: .25rem 0 0; font-size: .875rem; color: #444; }
+.scroll { overflow-x: auto; }
+li button { margin-top: .5rem; }
+:focus-visible { outline: 3px solid #1a56db; outline-offset: 2px; }
+h2:focus:not(:focus-visible) { outline: none; }
