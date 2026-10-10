@@ -12,13 +12,16 @@ import pathlib
 import re
 import sys
 
-# Order matters: MPL 2.0 mentions the GPL family as secondary licences.
+# Copyleft is checked first, so a GPL-family file that mentions another
+# licence is never let through as that licence. MPL 2.0 defines "Secondary
+# License" by naming the GPL family; that one clause is dropped before
+# matching, and only in a file that is itself MPL 2.0.
 SIGNATURES = (
-    ("MPL-2.0", ("mozilla public license", "2.0")),
     ("AGPL-3.0", ("gnu affero general public license",)),
     ("SSPL-1.0", ("server side public license",)),
     ("LGPL", ("gnu lesser general public license",)),
     ("GPL", ("gnu general public license",)),
+    ("MPL-2.0", ("mozilla public license", "version 2.0")),
     ("Apache-2.0", ("apache license", "version 2.0")),
     ("MIT", ("permission is hereby granted, free of charge",)),
     ("ISC", ("permission to use, copy, modify, and/or distribute this software for any purpose",)),
@@ -26,11 +29,15 @@ SIGNATURES = (
     ("BSD-3-Clause", ("redistribution and use in source and binary forms", "names of its contributors")),
     ("BSD-2-Clause", ("redistribution and use in source and binary forms",)),
 )
+MPL_PREAMBLE = re.compile(r"^\W*mozilla public license,? version 2\.0\b")
+MPL_SECONDARY = re.compile(r"\W*secondary license\W* means either the gnu general public license.*?versions of those licenses\.")
 LICENCE_FILE = re.compile(r"^(licen[cs]e|copying)(\.(md|txt))?$", re.I)
 
 
 def classify(text):
     t = " ".join(text.lower().split())
+    if MPL_PREAMBLE.match(t):
+        t = MPL_SECONDARY.sub(" ", t, count=1)
     for spdx, needles in SIGNATURES:
         if all(n in t for n in needles):
             return spdx

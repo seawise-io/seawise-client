@@ -17,7 +17,7 @@ TEXTS = {
     "AGPL-3.0": "GNU AFFERO GENERAL PUBLIC LICENSE Version 3",
     "LGPL": "GNU LESSER GENERAL PUBLIC LICENSE Version 3, 29 June 2007 ... GNU General Public License",
     # MPL 2.0 names the GPL family as secondary licences.
-    "MPL-2.0": "Mozilla Public License, version 2.0 ... 1.12. \"Secondary License\" means either the GNU General "
+    "MPL-2.0": "Mozilla Public License Version 2.0 ... 1.12. \"Secondary License\" means either the GNU General "
                "Public License, Version 2.0, the GNU Lesser General Public License, Version 2.1, the GNU Affero "
                "General Public License, Version 3.0, or any later versions of those licenses.",
 }
@@ -26,6 +26,15 @@ POLICY = {"allowed": ["MIT", "Apache-2.0", "BSD-3-Clause", "BSD-2-Clause"],
 
 
 class LicenceTest(unittest.TestCase):
+    def test_copyleft_naming_mpl_is_not_mpl(self):
+        for text, want in (
+            ("GNU AFFERO GENERAL PUBLIC LICENSE Version 3 ... code under the Mozilla Public License 2.0 may be combined", "AGPL-3.0"),
+            ("GNU GENERAL PUBLIC LICENSE Version 2 ... see also the Mozilla Public License, version 2.0", "GPL"),
+            (TEXTS["MPL-2.0"], "MPL-2.0"),
+            (TEXTS["MPL-2.0"].replace("License Version", "License, version"), "MPL-2.0"),
+        ):
+            self.assertEqual(lic.classify(text), want, text[:40])
+
     def test_classify(self):
         for spdx, text in TEXTS.items():
             self.assertEqual(lic.classify(text), spdx)
