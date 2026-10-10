@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -69,6 +70,9 @@ type Config struct {
 	PollInterval   time.Duration
 	After          func(time.Duration) <-chan time.Time
 	Logger         *slog.Logger
+	// Output receives frpc's stdout and stderr with secrets masked; nil
+	// is os.Stdout.
+	Output io.Writer
 	// Env is the frpc environment; nil gives frpc an empty one. Proxy
 	// settings reach frpc through its config, never its environment.
 	Env []string
@@ -223,6 +227,9 @@ func New(cfg Config) (*Agent, error) {
 	}
 	if cfg.Getenv == nil {
 		cfg.Getenv = os.Getenv
+	}
+	if cfg.Output == nil {
+		cfg.Output = os.Stdout
 	}
 	if cfg.ResolveEdge == nil {
 		cfg.ResolveEdge = func(ctx context.Context, host string) ([]netip.Addr, error) {
@@ -724,8 +731,8 @@ func (a *Agent) startProcess(d *desired) error {
 	// only argument is the config path inside the store directory.
 	cmd := exec.Command(a.cfg.FRPCPath, "-c", a.ConfigPath())
 	setPdeathsig(cmd)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	out := newRedactWriter(a.cfg.Output, append(proxySecrets(d.proxyURL), d.token, d.adminPass)...)
+	cmd.Stdout, cmd.Stderr = out, out
 	cmd.Env = a.cfg.Env
 	if cmd.Env == nil {
 		cmd.Env = childEnv()
@@ -745,6 +752,7 @@ func (a *Agent) startProcess(d *desired) error {
 	}
 	go func() {
 		err := cmd.Wait()
+		out.Flush()
 		close(p.done)
 		select {
 		case a.exits <- exitEvent{pid: p.pid, err: err}:
