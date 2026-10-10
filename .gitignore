@@ -28,3 +28,6 @@ Thumbs.db
 # Test fixtures
 !internal/**/testdata/**/*.toml
 coverage.out
+
+# Test downloads
+.cache/

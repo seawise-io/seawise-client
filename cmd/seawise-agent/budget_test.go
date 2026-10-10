@@ -49,19 +49,8 @@ func TestMemoryBudget(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("reads /proc")
 	}
-	// The gate must not pass silently: without a toolchain to build the
-	// agent, the test fails. Use -short to leave it out on purpose.
-	goBin, err := exec.LookPath("go")
-	if err != nil {
-		t.Fatalf("Go toolchain needed to build the agent for the memory budget: %v", err)
-	}
 	tmp := t.TempDir()
-	bin := filepath.Join(tmp, "seawise-agent")
-	build := exec.Command(goBin, "build", "-trimpath", "-tags", "seawise_tuftest", "-o", bin, ".")
-	build.Env = append(os.Environ(), "CGO_ENABLED=0")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build: %v\n%s", err, out)
-	}
+	bin := buildAgent(t, tmp)
 	frpc := filepath.Join(tmp, "frpc")
 	if err := os.WriteFile(frpc, []byte("#!/bin/sh\nexec sleep 3600\n"), 0o700); err != nil {
 		t.Fatal(err)
@@ -123,6 +112,24 @@ func TestMemoryBudget(t *testing.T) {
 	if moved == 0 {
 		t.Error("no data moved through the forwarder")
 	}
+}
+
+// buildAgent builds the agent as released, plus the test update root.
+func buildAgent(t *testing.T, dir string) string {
+	t.Helper()
+	// The gate must not pass silently: without a toolchain to build the
+	// agent, the test fails. Use -short to leave it out on purpose.
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatalf("Go toolchain needed to build the agent for the memory budget: %v", err)
+	}
+	bin := filepath.Join(dir, "seawise-agent")
+	build := exec.Command(goBin, "build", "-trimpath", "-tags", "seawise_tuftest", "-o", bin, ".")
+	build.Env = append(os.Environ(), "CGO_ENABLED=0")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	return bin
 }
 
 // updateRepo serves a signed test update repository over HTTPS and returns

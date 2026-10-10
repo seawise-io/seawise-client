@@ -9,6 +9,9 @@ IMAGE_TAG ?= seawise-client:local
 AGENT_IMAGE_TAG ?= seawise-agent:local
 VERSION ?= dev
 CMDS ?= seawise seawise-agent
+# frpc and frps for the memory budget test, from `make frp`; a path
+# inside the repository.
+FRP_DIR ?= .cache/frp
 
 UID := $(shell id -u)
 GID := $(shell id -g)
@@ -17,18 +20,20 @@ GOFLAGS_REPRO := -trimpath -buildvcs=false
 LDFLAGS := -s -w -buildid= -X github.com/seawise/client/internal/constants.Version=$(VERSION)
 
 ifeq ($(GO_DOCKER),1)
+FRP_ENV := $(if $(wildcard $(FRP_DIR)/frpc),-e SEAWISE_TEST_FRP_DIR=/src/$(FRP_DIR))
 RUN := docker run --rm --init \
 	--user $(UID):$(GID) \
 	-v "$(CURDIR)":/src -w /src \
 	-v $(GO_CACHE_VOLUME):/cache \
 	-e GOMODCACHE=/cache/mod -e GOCACHE=/cache/build -e HOME=/tmp \
 	-e GOTOOLCHAIN=local -e GOFLAGS=-mod=readonly \
+	-e CI $(FRP_ENV) \
 	$(GO_IMAGE)
 else
-RUN :=
+RUN := $(if $(wildcard $(FRP_DIR)/frpc),env SEAWISE_TEST_FRP_DIR=$(CURDIR)/$(FRP_DIR))
 endif
 
-.PHONY: all test race vet fmt fmt-fix cover build repro image image-agent cache-init cache-clean
+.PHONY: all test race vet fmt fmt-fix cover build repro image image-agent cache-init cache-clean frp
 
 all: fmt vet race
 
@@ -37,6 +42,10 @@ ifeq ($(GO_DOCKER),1)
 	@docker volume inspect $(GO_CACHE_VOLUME) >/dev/null 2>&1 || docker volume create $(GO_CACHE_VOLUME) >/dev/null
 	@docker run --rm -v $(GO_CACHE_VOLUME):/cache $(GO_IMAGE) sh -c 'mkdir -p /cache/mod /cache/build && chown -R $(UID):$(GID) /cache'
 endif
+
+# Downloads the frp release pinned in Dockerfile.agent, checksum verified.
+frp:
+	./tools/frp/fetch.sh $(FRP_DIR)
 
 test: cache-init
 	$(RUN) go test -count=1 $(PKGS)
