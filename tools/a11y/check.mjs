@@ -172,17 +172,23 @@ async function keyboard(state) {
 }
 
 async function reflow(state) {
-  const r = await evaluate(`({ sw: document.documentElement.scrollWidth, w: window.innerWidth })`);
-  if (r.sw > r.w) fail(state, `page scrolls horizontally at ${r.w} px (content ${r.sw} px wide)`);
+  const r = await evaluate(`(() => {
+    const w = window.innerWidth;
+    const wide = Array.from(document.querySelectorAll('body *'))
+      .filter(e => !(e.parentElement && e.parentElement.closest('.scroll')) && (e.getBoundingClientRect().right + window.scrollX > w || (e.scrollWidth > e.clientWidth && !e.classList.contains('scroll') && getComputedStyle(e).overflowX === 'visible')))
+      .map(${DESCRIBE}).slice(0, 5);
+    return { sw: document.documentElement.scrollWidth, w, wide };
+  })()`);
+  if (r.sw > r.w) fail(state, `page scrolls horizontally at ${r.w} px (content ${r.sw} px wide: ${r.wide.join(", ")})`);
 }
 
 async function checkState(state) {
   for (const w of WIDTHS) {
     await width(w);
     const s = `${state} @${w}px`;
+    if (w === 320) await reflow(s);
     await axe(s);
     await keyboard(s);
-    if (w === 320) await reflow(s);
   }
   await width(WIDTHS[0]);
   console.log(`checked ${state}`);
