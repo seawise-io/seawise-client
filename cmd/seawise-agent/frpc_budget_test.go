@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,6 +33,7 @@ import (
 const (
 	frpcIdleBudgetKiB = 24 << 10
 	frpcBusyBudgetKiB = 64 << 10
+	busyRounds        = 3
 	// planIdleKiB is the device budget for both processes; logged only.
 	planIdleKiB = 30 << 10
 
@@ -126,12 +128,22 @@ func TestFRPCMemoryBudget(t *testing.T) {
 	frpcIdle := maxRSS(t, frpcPID, 2*time.Second)
 	agentIdle := procKiB(t, cmd.Process.Pid, "VmRSS")
 
-	moved := visit(t, visitor, connsPerApp, busyDuration)
-	frpcPeak := procKiB(t, frpcPID, "VmHWM")
+	// Busy peaks are the median of several rounds, each with the peak
+	// counters reset, so one noisy round on a shared runner does not fail.
+	var moved int64
+	var frpcPeaks, agentPeaks []int64
+	for range busyRounds {
+		resetPeak(t, frpcPID)
+		resetPeak(t, cmd.Process.Pid)
+		moved += visit(t, visitor, connsPerApp, busyDuration)
+		frpcPeaks = append(frpcPeaks, procKiB(t, frpcPID, "VmHWM"))
+		agentPeaks = append(agentPeaks, procKiB(t, cmd.Process.Pid, "VmHWM"))
+	}
 	if now := childPID(t, cmd.Process.Pid); now != frpcPID {
 		t.Fatalf("frpc restarted during the measurement (pid %d, then %d)", frpcPID, now)
 	}
-	agentPeak := procKiB(t, cmd.Process.Pid, "VmHWM")
+	frpcPeak, agentPeak := median(frpcPeaks), median(agentPeaks)
+	t.Logf("busy peaks per round: frpc %v KiB, agent %v KiB", frpcPeaks, agentPeaks)
 	t.Logf("frpc idle RSS %.1f MiB (budget %d MiB), busy peak %.1f MiB (budget %d MiB); agent idle %.1f MiB, busy peak %.1f MiB; both idle %.1f MiB (device budget %d MiB); %d visitors moved %.0f MiB",
 		mib(frpcIdle), frpcIdleBudgetKiB>>10, mib(frpcPeak), frpcBusyBudgetKiB>>10, mib(agentIdle), mib(agentPeak),
 		mib(frpcIdle+agentIdle), planIdleKiB>>10, budgetApps*connsPerApp, float64(moved)/(1<<20))
@@ -150,6 +162,20 @@ func TestFRPCMemoryBudget(t *testing.T) {
 }
 
 func mib(kib int64) float64 { return float64(kib) / 1024 }
+
+func median(v []int64) int64 {
+	s := slices.Clone(v)
+	slices.Sort(s)
+	return s[len(s)/2]
+}
+
+// resetPeak clears the process's peak resident memory (VmHWM).
+func resetPeak(t *testing.T, pid int) {
+	t.Helper()
+	if err := os.WriteFile(fmt.Sprintf("/proc/%d/clear_refs", pid), []byte("5"), 0); err != nil {
+		t.Fatalf("reset peak memory of %d: %v", pid, err)
+	}
+}
 
 // writeTLS writes a CA and a certificate for the tunnel server host, and
 // returns the CA file the agent hands to frpc.
