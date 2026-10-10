@@ -41,6 +41,18 @@ jobs:
       - name: Run tests with race detector
         run: make race
 
+  packaging:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+
+      - name: Run the agent image as each packaging template does
+        run: make test-packaging
+
   a11y:
     runs-on: ubuntu-latest
     permissions:

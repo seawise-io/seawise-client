@@ -33,7 +33,7 @@ else
 RUN := $(if $(wildcard $(FRP_DIR)/frpc),env SEAWISE_TEST_FRP_DIR=$(CURDIR)/$(FRP_DIR))
 endif
 
-.PHONY: all test race vet fmt fmt-fix cover build repro image image-agent cache-init cache-clean frp
+.PHONY: all test race vet fmt fmt-fix cover build repro image image-agent test-packaging cache-init cache-clean frp
 
 all: fmt vet race
 
@@ -81,6 +81,10 @@ image:
 
 image-agent:
 	docker build -f Dockerfile.agent --build-arg VERSION=$(VERSION) -t $(AGENT_IMAGE_TAG) .
+
+# Runs the agent image as each packaging template does.
+test-packaging: image-agent
+	python3 packaging/test-templates.py $(AGENT_IMAGE_TAG)
 
 cache-clean:
 	-docker volume rm $(GO_CACHE_VOLUME)
