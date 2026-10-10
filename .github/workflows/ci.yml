@@ -1,6 +1,5 @@
-# CI — runs on every push to main and pull requests.
-# Tests only — no Docker build, no image push.
-# All 3rd-party actions pinned to exact commit SHAs.
+# CI: tests only, no image push. Go runs in the toolchain image pinned in
+# the Makefile, the same one used locally. Actions pinned to commit SHAs.
 
 name: CI
 
@@ -9,10 +8,14 @@ on:
     branches:
       - main
       - v2
+      - v2-integration
   pull_request:
     branches:
       - main
       - v2
+      - v2-integration
+
+permissions: {}
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -21,19 +24,56 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26'
-
       - name: Check formatting
-        run: test -z "$(gofmt -l .)" || (echo "Run 'gofmt -w .' to fix formatting" && gofmt -l . && exit 1)
+        run: make fmt
 
       - name: Vet
-        run: go vet ./...
+        run: make vet
+
+      - name: Fetch frpc and frps for the memory budget
+        run: make frp
 
       - name: Run tests with race detector
-        run: go test -race -v ./...
+        run: make race
+
+  packaging:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+
+      - name: Run the agent image as each packaging template does
+        run: make test-packaging
+
+  a11y:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26.9'
+
+      - name: Install the accessibility checker
+        working-directory: tools/a11y
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      # Chrome is preinstalled on the runner; its sandbox needs user
+      # namespaces the runner does not allow. The page is a local fixture.
+      - name: Check the admin UI (WCAG 2.2 AA, keyboard, focus, reflow)
+        env:
+          CHROME_BIN: google-chrome
+          A11Y_NO_SANDBOX: "1"
+        run: tools/a11y/run.sh
