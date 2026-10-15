@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<Maintainer>
+  <Profile>Seawise.io lets you share your self-hosted apps with family, friends or clients, without port forwarding.</Profile>
+  <Icon>https://raw.githubusercontent.com/seawise-io/seawise-client/main/.github/assets/icon.png</Icon>
+  <WebPage>https://seawise.io</WebPage>
+</Maintainer>

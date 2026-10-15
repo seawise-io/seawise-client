@@ -32,6 +32,7 @@ docker run -d --name seawise \
   --network host \
   -e SEAWISE_HOST_NETWORK=true \
   -v seawise-data:/config \
+  --log-opt max-size=10m --log-opt max-file=3 \
   ghcr.io/seawise-io/seawise-client:latest
 ```
 
@@ -42,10 +43,13 @@ docker run -d --name seawise \
   --restart unless-stopped \
   -p 8082:8082 \
   -v seawise-data:/config \
+  --log-opt max-size=10m --log-opt max-file=3 \
   ghcr.io/seawise-io/seawise-client:latest
 ```
 
 Docker Compose: use the [`docker-compose.yml`](docker-compose.yml) in this repo.
+
+The `--log-opt` flags cap Docker's copy of the client's logs at 30 MB.
 
 Then open [http://localhost:8082](http://localhost:8082), or `http://your-server-ip:8082` from another computer on your network.
 
@@ -112,6 +116,10 @@ services:
       SEAWISE_HOST_NETWORK: "true"
     volumes:
       - seawise-data:/config
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
 
 volumes:
   seawise-data:

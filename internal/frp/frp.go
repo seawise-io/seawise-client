@@ -104,7 +104,7 @@ metadatas.server_id = "{{ tomlEscape .ServerID }}"
 metadatas.connection_id = "{{ tomlEscape .ConnectionID }}"
 
 log.to = "console"
-log.level = "info"
+log.level = "warn"
 
 {{ range .Services }}
 [[proxies]]

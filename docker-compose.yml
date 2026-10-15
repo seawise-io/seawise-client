@@ -10,6 +10,10 @@ services:
       SEAWISE_HOST_NETWORK: "true"
     volumes:
       - seawise-data:/config
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
 
 volumes:
   seawise-data:
