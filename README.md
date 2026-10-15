@@ -128,6 +128,21 @@ On Docker Desktop, replace `network_mode` and `environment` with `ports: ["8082:
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
+## What the Client Sends
+
+To Seawise.io:
+
+- The server name you choose when connecting.
+- Each app's name, host and port, when you add it.
+- Every 30 seconds: whether the tunnel is connected, how many apps there are and the client version.
+- Whether each app is up or down.
+
+To the tunnel server: the tunnel login, which includes the FRP version, operating system, CPU type and the machine's hostname, and then the traffic for the apps you've shared.
+
+To GitHub: a check for new releases, which powers the update banner.
+
+It never sends your apps' content or files, its logs, the web UI password, or anything about apps you haven't added. It doesn't scan your network.
+
 ## Environment Variables
 
 | Variable | Default | Description |
