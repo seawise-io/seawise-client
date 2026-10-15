@@ -2,7 +2,7 @@ name: Licences
 
 on:
   push:
-    branches: [main, v2]
+    branches: [main]
     paths:
       - "go.mod"
       - "go.sum"
@@ -12,7 +12,7 @@ on:
       - ".github/scripts/check-licences.py"
       - ".github/workflows/licences.yml"
   pull_request:
-    branches: [main, v2]
+    branches: [main]
     paths:
       - "go.mod"
       - "go.sum"
@@ -21,8 +21,14 @@ on:
       - ".github/licences.json"
       - ".github/scripts/check-licences.py"
       - ".github/workflows/licences.yml"
+  workflow_dispatch:
+  workflow_call:
 
 permissions: {}
+
+concurrency:
+  group: licences-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   licences:

@@ -7,19 +7,17 @@ on:
   push:
     branches:
       - main
-      - v2
-      - v2-integration
   pull_request:
     branches:
       - main
-      - v2
-      - v2-integration
+  workflow_dispatch:
+  workflow_call:
 
 permissions: {}
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test:

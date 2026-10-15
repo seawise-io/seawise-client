@@ -2,11 +2,17 @@ name: Workflow Lint
 
 on:
   pull_request:
-    branches: [main, v2, v2-integration]
+    branches: [main]
   push:
-    branches: [main, v2, v2-integration]
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
 
 permissions: {}
+
+concurrency:
+  group: workflow-lint-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   lint:
