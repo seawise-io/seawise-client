@@ -19,7 +19,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: seawise-io/seawise-client
   # Docker Hub mirror of the same image; skipped until the secrets exist.
-  DOCKERHUB_IMAGE: docker.io/seawiseio/seawise-client
+  DOCKERHUB_IMAGE: docker.io/seawiseinc/seawise-client
 
 jobs:
   test:
@@ -147,7 +147,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: seawiseio/seawise-client
+          repository: seawiseinc/seawise-client
           short-description: Share self-hosted apps with family and friends. No port forwarding. Client for Seawise.io
           enable-url-completion: true
 

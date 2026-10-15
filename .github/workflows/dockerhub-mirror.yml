@@ -1,0 +1,68 @@
+# Copies an already-released GHCR image to Docker Hub (same digest, no rebuild).
+# Use it for the newest release only: it also moves the major, minor and latest tags.
+
+name: Docker Hub mirror
+run-name: "Mirror ${{ inputs.version }} to Docker Hub"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Released version to copy, without the v (e.g. 1.0.13)"
+        required: true
+        type: string
+
+env:
+  SOURCE: ghcr.io/seawise-io/seawise-client
+  TARGET: docker.io/seawiseinc/seawise-client
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write # Keyless cosign signing via GitHub OIDC
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Validate version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version must look like 1.2.3"; exit 1; }
+          echo "MINOR=${VERSION%.*}" >> "$GITHUB_ENV"
+          echo "MAJOR=${VERSION%%.*}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Copy image
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          docker buildx imagetools create \
+            -t "$TARGET:$VERSION" -t "$TARGET:$MINOR" -t "$TARGET:$MAJOR" -t "$TARGET:latest" \
+            "$SOURCE:$VERSION"
+          echo "DIGEST=$(docker buildx imagetools inspect "$TARGET:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)" >> "$GITHUB_ENV"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign image with cosign (keyless)
+        run: cosign sign --yes "$TARGET@$DIGEST"
+
+      - name: Sync README to Docker Hub
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: seawiseinc/seawise-client
+          short-description: Share self-hosted apps with family and friends. No port forwarding. Client for Seawise.io
+          enable-url-completion: true
