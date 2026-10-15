@@ -58,6 +58,9 @@ jobs:
 
       - name: Extract metadata
         id: meta
+        env:
+          # Multi-arch images: GHCR reads the description from the index annotations.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: |
@@ -66,6 +69,16 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=Seawise.io Client
+            org.opencontainers.image.url=https://seawise.io
+            org.opencontainers.image.documentation=https://docs.seawise.io
+            org.opencontainers.image.vendor=Seawise.io
+          annotations: |
+            org.opencontainers.image.title=Seawise.io Client
+            org.opencontainers.image.url=https://seawise.io
+            org.opencontainers.image.documentation=https://docs.seawise.io
+            org.opencontainers.image.vendor=Seawise.io
 
       - name: Build and push
         id: build-and-push
@@ -76,6 +89,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           build-args: |
             VERSION=${{ github.ref_name }}
           cache-from: type=gha

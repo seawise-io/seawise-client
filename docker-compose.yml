@@ -1,0 +1,15 @@
+# Linux. On Docker Desktop (macOS, Windows), remove network_mode and
+# environment and add: ports: ["8082:8082"]
+services:
+  seawise:
+    image: ghcr.io/seawise-io/seawise-client:latest
+    container_name: seawise
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      SEAWISE_HOST_NETWORK: "true"
+    volumes:
+      - seawise-data:/config
+
+volumes:
+  seawise-data:

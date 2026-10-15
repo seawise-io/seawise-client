@@ -1,0 +1,31 @@
+name: Bug report
+description: Something in the client isn't working
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Client version
+      description: Shown in the web UI footer, or `docker inspect ghcr.io/seawise-io/seawise-client:latest`
+    validations:
+      required: true
+  - type: dropdown
+    id: host
+    attributes:
+      label: Where is it running?
+      options: [Linux (Docker), Docker Desktop (macOS), Docker Desktop (Windows), Unraid, Synology, TrueNAS, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Output of `docker logs seawise --tail 100`. Remove anything private first.
+      render: text

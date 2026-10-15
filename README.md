@@ -12,9 +12,15 @@
 
 # Seawise.io Client
 
-Open the apps running on your machine from any browser, and share them with people through portals. Run one Docker container, connect it to your [Seawise.io](https://seawise.io) account, and pick which apps to make reachable. Nothing for the people you share with to install.
+Share your self-hosted apps with family, friends or clients. Jellyfin, Plex, Seerr, Immich, Home Assistant or anything else with a web page.
 
-Works behind CGNAT, double NAT and firewalls. No port forwarding, no VPN, no DNS setup.
+Run one Docker container, connect it to your [Seawise.io](https://seawise.io) account, and pick which apps to make reachable. Visitors sign in with Google, GitHub or an email link and only see the apps you share with them. Nothing for them to install.
+
+Works behind CGNAT, double NAT and firewalls. No port forwarding, no VPN, no domain or DNS setup.
+
+<p align="center">
+  <img src=".github/assets/servers.png" alt="Your apps in the Seawise.io web app" width="800">
+</p>
 
 ## Quick Start
 
@@ -39,15 +45,31 @@ docker run -d --name seawise \
   ghcr.io/seawise-io/seawise-client:latest
 ```
 
-Open [http://localhost:8082](http://localhost:8082).
+Docker Compose: use the [`docker-compose.yml`](docker-compose.yml) in this repo.
+
+Then open [http://localhost:8082](http://localhost:8082), or `http://your-server-ip:8082` from another computer on your network.
 
 ## Setup
 
-1. Set a password for the web UI. This has to happen within 5 minutes of the container starting. If the window passes, run `docker restart seawise` to open it again.
+1. Set a password for the web UI right away. This has to happen within 5 minutes of the container starting. If the window passes, run `docker restart seawise` to open it again.
 2. Click **Connect to Seawise.io** and approve the connection in your browser.
 3. Add apps by name, host and port.
 
 Each app gets its own address on `seawise.dev`. Apps are private: only you can open them after signing in, until you add them to a portal and invite people.
+
+## What People Use It For
+
+| App | Guide |
+|-----|-------|
+| Jellyfin | [Share Jellyfin with family](https://seawise.io/guides/share-jellyfin-with-family) |
+| Seerr (Jellyseerr, Overseerr) | [Let friends request movies](https://seawise.io/guides/seerr-requests-from-anywhere) |
+| Sonarr, Radarr, Prowlarr | [Your *arr stack from anywhere](https://seawise.io/guides/share-arr-stack) |
+| Plex | [Plex in the browser](https://seawise.io/guides/share-plex-in-browser) |
+| Immich | [Share Immich with family](https://seawise.io/guides/share-immich-with-family) |
+| Home Assistant | [Home Assistant from anywhere](https://seawise.io/guides/home-assistant-remote-access) |
+| Open WebUI, ComfyUI | [Share your local AI](https://seawise.io/guides/open-webui-share-with-friends) |
+
+More in the [guides](https://seawise.io/guides), including CGNAT, sharing with clients and per-person access.
 
 ## Adding Apps
 
@@ -59,6 +81,23 @@ Each app gets its own address on `seawise.dev`. Apps are private: only you can o
 | On another device on your network | Its IP, e.g. `192.168.1.50` |
 
 Link-local addresses (`169.254.0.0/16`, `fe80::/10`), including cloud metadata endpoints, can't be added.
+
+## FAQ
+
+**Do I need port forwarding, a public IP or a domain?**
+No. The client connects out to Seawise.io, so nothing on your router changes. It works behind CGNAT.
+
+**Is it safe to share Jellyfin or Immich this way?**
+Apps are private by default. Visitors sign in before they reach anything, and you choose who can open each app. Nothing on your network is opened to the internet.
+
+**Do the people I share with need an account or an app?**
+They sign in with Google, GitHub or an email link in any browser. Nothing to install.
+
+**How is this different from Cloudflare Tunnel, Tailscale or ngrok?**
+See [the comparison](https://seawise.io/compare). In short: no domain needed, sign-in for guests is built in, and you get portals, one page per group of people with the apps you share.
+
+**What does it cost?**
+The free plan covers one server, 30 apps and one portal. See [pricing](https://seawise.io/pricing).
 
 ## Docker Compose
 
@@ -86,6 +125,8 @@ On Docker Desktop, replace `network_mode` and `environment` with `ports: ["8082:
 - **This client decides what is reachable.** Apps are added and changed only here. The Seawise.io website and servers can't add apps or change where they point.
 - **Verified tunnel.** The client only connects to `*.seawise.dev` and checks the server's TLS certificate.
 - **Protected web UI.** Password required, stored as a bcrypt hash, with a growing delay after failed attempts. The first-run password window closes after 5 minutes.
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Environment Variables
 
@@ -135,6 +176,7 @@ The web UI shows a banner when a new version is available.
 - [Portals and sharing](https://docs.seawise.io/dashboards)
 - [Client configuration](https://docs.seawise.io/client/configuration)
 - [Security](https://docs.seawise.io/security)
+- [Guides](https://seawise.io/guides)
 
 ## License
 
