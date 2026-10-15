@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and help
+    url: https://github.com/seawise-io/seawise-client/discussions
+    about: Ask setup questions and share how you use Seawise.io
+  - name: Guides
+    url: https://seawise.io/guides
+    about: Step-by-step guides for Jellyfin, Seerr, Immich, Home Assistant and more
+  - name: Account or billing help
+    url: https://seawise.io/help
+    about: Help with your Seawise.io account

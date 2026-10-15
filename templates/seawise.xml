@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Seawise</Name>
+  <Repository>ghcr.io/seawise-io/seawise-client:latest</Repository>
+  <Registry>https://github.com/seawise-io/seawise-client/pkgs/container/seawise-client</Registry>
+  <Network>host</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/seawise-io/seawise-client/issues</Support>
+  <Project>https://seawise.io</Project>
+  <ReadMe>https://github.com/seawise-io/seawise-client#readme</ReadMe>
+  <Overview>Share your self-hosted apps (Jellyfin, Plex, Immich, Home Assistant and more) with family and friends, without port forwarding. The client connects out to Seawise.io, so nothing on your network is opened. Requires a free Seawise.io account. After the first start, open the web UI and set a password within 5 minutes.</Overview>
+  <Category>Network:Proxy Network:Web Tools:Utilities</Category>
+  <WebUI>http://[IP]:[PORT:8082]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/seawise-io/seawise-client/main/templates/seawise.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/seawise-io/seawise-client/main/.github/assets/icon.png</Icon>
+  <Requires>A free Seawise.io account. Set the web UI password within 5 minutes of the first start.</Requires>
+  <License>MIT</License>
+  <Screenshot>https://raw.githubusercontent.com/seawise-io/seawise-client/main/.github/assets/screenshots/1-servers.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/seawise-io/seawise-client/main/.github/assets/screenshots/2-add-apps.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/seawise-io/seawise-client/main/.github/assets/screenshots/3-portals.png</Screenshot>
+  <Config Name="WebUI Port" Target="SEAWISE_PORT" Default="8082" Description="Web UI port" Type="Variable" Display="always" Required="true" Mask="false">8082</Config>
+  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/seawise" Mode="rw" Description="Client settings and pairing" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/seawise</Config>
+  <Config Name="Host network mode" Target="SEAWISE_HOST_NETWORK" Default="true" Description="Leave true while Network is host. Set to false if you switch to bridge." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Description="User ID" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Description="Group ID" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+</Container>
