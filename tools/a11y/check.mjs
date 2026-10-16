@@ -2,7 +2,7 @@
 // rules), keyboard reachability, visible focus, and reflow at 320 px, in
 // every state of the page. Drives Chrome over --remote-debugging-pipe.
 //
-// usage: node check.mjs <url> <setup-code-file>
+// usage: node check.mjs <url> <closed-setup-url>
 // env:   CHROME_BIN (default google-chrome), A11Y_NO_SANDBOX=1 where the
 //        browser sandbox is unavailable.
 
@@ -13,9 +13,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import https from "node:https";
 
-const [url, codeFile] = process.argv.slice(2);
-if (!url || !codeFile) {
-  console.error("usage: node check.mjs <url> <setup-code-file>");
+const [url, closedUrl] = process.argv.slice(2);
+if (!url || !closedUrl) {
+  console.error("usage: node check.mjs <url> <closed-setup-url>");
   process.exit(2);
 }
 const require = createRequire(import.meta.url);
@@ -264,9 +264,7 @@ async function main() {
   await checkState("setup");
 
   // Set up with the keyboard only.
-  await focus("setup-code");
-  await type(readFileSync(codeFile, "utf8").trim());
-  await press("Tab");
+  await focus("setup-password");
   await type(PASSWORD);
   await press("Enter");
   await waitFor(`${visible("dashboard")} && document.querySelectorAll('#review li').length > 0 && document.querySelectorAll('#access-rows tr').length > 0`, "the dashboard");
@@ -308,6 +306,14 @@ async function main() {
   await press("Enter");
   await waitFor(`document.getElementById('message').textContent !== ''`, "the sign-in error");
   await checkState("sign in, error shown");
+
+  // No password and the first-run window has passed.
+  const closedLoaded = once("Page.loadEventFired", session);
+  await cdp("Page.navigate", { url: closedUrl });
+  await closedLoaded;
+  await evaluate(axeSource);
+  await waitFor(visible("closed"), "the setup timed out notice");
+  await checkState("setup timed out");
 
   for (const e of cspErrors) fail("page", `script error: ${e}`);
 }

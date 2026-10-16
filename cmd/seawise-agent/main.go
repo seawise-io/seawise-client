@@ -32,7 +32,7 @@ const usage = `seawise-agent: next version of the SeaWise client (in development
 
 The :latest and :1.x images run "seawise serve"; this agent is published
 only as :2, :2.x.y, :beta and :stable. The target policy, forwarder,
-HTTPS admin UI and setup code described in cmd/seawise-agent/README.md
+HTTPS admin UI and first-run window described in cmd/seawise-agent/README.md
 apply only to seawise-agent.
 
 Configuration is through environment variables; see that README.
@@ -172,7 +172,7 @@ func startUpdateCheck(ctx context.Context, log *slog.Logger, st *store.Store) fu
 // startAdminUI serves HTTPS and plain HTTP on the admin port and returns a
 // function that waits for it to stop.
 func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *agent.Agent, al *accesslog.Log, status func(context.Context) any) (func(), error) {
-	auth, err := adminui.NewAuth(adminui.AuthConfig{Store: st, PasswordFile: os.Getenv("SEAWISE_ADMIN_PASSWORD_FILE"), Logger: log})
+	auth, err := adminui.NewAuth(adminui.AuthConfig{Store: st, Logger: log})
 	if err != nil {
 		return nil, err
 	}
@@ -213,8 +213,14 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *age
 	}
 	log.Info("admin UI listening", "address", ln.Addr().String(), "https", true, "cert_sha256", cert.Fingerprint, "cert_new", cert.Regenerated)
 	if auth.SetupRequired() {
-		log.Warn("first run: open the admin UI over HTTPS and enter the setup code from the setup-code file",
-			"file", auth.CodePath(), "port", port, "cert_sha256", cert.Fingerprint)
+		log.Warn("No password set. Open the admin UI over HTTPS and set one within 5 minutes.",
+			"port", port, "cert_sha256", cert.Fingerprint)
+		t := time.AfterFunc(time.Until(auth.SetupDeadline()), func() {
+			if auth.SetupRequired() {
+				log.Warn("Setup window closed. Restart the client to set a password.")
+			}
+		})
+		context.AfterFunc(ctx, func() { t.Stop() })
 	}
 	done := make(chan struct{})
 	go func() {

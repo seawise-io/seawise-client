@@ -9,7 +9,7 @@
   // heading so keyboard and screen reader users are not left on a hidden
   // element.
   function show(id) {
-    ["setup", "login", "dashboard"].forEach(function (x) { $(x).hidden = x !== id; });
+    ["setup", "closed", "login", "dashboard"].forEach(function (x) { $(x).hidden = x !== id; });
     if (view && view !== id) $(id).querySelector("h2").focus();
     view = id;
   }
@@ -140,7 +140,7 @@
     call("GET", "/api/auth/status").then(function (r) {
       var s = r.body || {};
       csrf = s.csrf || "";
-      if (s.setup_required) { show("setup"); return; }
+      if (s.setup_required) { show(s.setup_timed_out ? "closed" : "setup"); return; }
       if (!s.authenticated) { show("login"); return; }
       show("dashboard");
       call("GET", "/api/status").then(function (r) {
@@ -155,7 +155,7 @@
   document.addEventListener("DOMContentLoaded", function () {
     $("setup").addEventListener("submit", function (e) {
       e.preventDefault();
-      call("POST", "/api/setup", { code: $("setup-code").value, password: $("setup-password").value }).then(function (r) {
+      call("POST", "/api/setup", { password: $("setup-password").value }).then(function (r) {
         say(r.ok ? "Password saved." : (r.body.error || "Setup failed."));
         refresh();
       });
