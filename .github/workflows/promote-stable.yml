@@ -1,0 +1,111 @@
+# Promote a published v2 release to :stable. Dispatch only, from main.
+#
+# Requires release/stable.json on main, signed with the offline release key
+# (bundle release/stable.json.bundle, public key release/keys/release.pub),
+# naming the version and the digest already published as :<version> by
+# release.yml. The public key file must also match RELEASE_KEY_SHA256 below,
+# so replacing the key takes a change to this workflow too. Branch
+# protection on main is still required. See release/README.md.
+
+name: Promote stable
+run-name: "Promote ${{ inputs.version }} to stable"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Published v2 version to promote, for example 2.1.0"
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: promote-stable
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: seawise-io/seawise-client
+  MANIFEST: release/stable.json
+  BUNDLE: release/stable.json.bundle
+  PUBLIC_KEY: release/keys/release.pub
+  # SHA-256 of release/keys/release.pub. Empty until the release key exists,
+  # which blocks every promotion.
+  RELEASE_KEY_SHA256: ""
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Require main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Promotion runs only from main"
+          exit 1
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify signed manifest
+        id: manifest
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          for f in "$MANIFEST" "$BUNDLE" "$PUBLIC_KEY"; do
+            if [ ! -s "$f" ]; then
+              echo "::error::$f is missing"
+              exit 1
+            fi
+          done
+          if [ -z "$RELEASE_KEY_SHA256" ]; then
+            echo "::error::RELEASE_KEY_SHA256 is not set"
+            exit 1
+          fi
+          echo "${RELEASE_KEY_SHA256}  ${PUBLIC_KEY}" | sha256sum -c --strict -
+          cosign verify-blob --key "$PUBLIC_KEY" --bundle "$BUNDLE" "$MANIFEST"
+          digest=$(python3 .github/scripts/release-channel.py check-manifest "$MANIFEST" \
+            --version "$VERSION" --image "${REGISTRY}/${IMAGE_NAME}")
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Verify published image
+        env:
+          VERSION: ${{ inputs.version }}
+          DIGEST: ${{ steps.manifest.outputs.digest }}
+        run: |
+          set -euo pipefail
+          current=$(docker buildx imagetools inspect "${REGISTRY}/${IMAGE_NAME}:${VERSION}" --format '{{json .Manifest}}' | jq -r .digest)
+          if [ "$current" != "$DIGEST" ]; then
+            echo "::error:::${VERSION} is ${current}, manifest names ${DIGEST}"
+            exit 1
+          fi
+          cosign verify "${REGISTRY}/${IMAGE_NAME}@${DIGEST}" \
+            --certificate-identity "https://github.com/seawise-io/seawise-client/.github/workflows/release.yml@refs/tags/v${VERSION}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+
+      - name: Move stable
+        env:
+          VERSION: ${{ inputs.version }}
+          DIGEST: ${{ steps.manifest.outputs.digest }}
+        run: |
+          docker buildx imagetools create -t "${REGISTRY}/${IMAGE_NAME}:stable" "${REGISTRY}/${IMAGE_NAME}@${DIGEST}"
+          echo "stable is now ${VERSION} (${DIGEST})" >> "$GITHUB_STEP_SUMMARY"

@@ -136,6 +136,10 @@ The web UI shows a banner when a new version is available.
 - [Client configuration](https://docs.seawise.io/client/configuration)
 - [Security](https://docs.seawise.io/security)
 
+## Next client version
+
+[`seawise-agent`](cmd/seawise-agent/README.md) is in development in this repository. The image does not run it yet; this README describes the client the image runs today.
+
 ## License
 
 MIT. Tunnels use [FRP](https://github.com/fatedier/frp) (Apache 2.0); its license ships in the image at `/app/licenses/frp-LICENSE`.

@@ -1,0 +1,22 @@
+# Home Assistant add-on stub. Not functional as is: needs a repository.yaml,
+# add-on icons and docs before it can be added as a custom repository.
+name: SeaWise
+version: beta
+slug: seawise
+description: Share apps on your network through SeaWise, without opening ports (client v2 beta)
+url: https://github.com/seawise-io/seawise-client
+arch: [amd64, aarch64, armv7]
+image: ghcr.io/seawise-io/seawise-client
+init: false
+startup: services
+boot: auto
+webui: https://[HOST]:[PORT:8082]/
+ports:
+  8082/tcp: 8082
+ports_description:
+  8082/tcp: HTTPS admin UI
+map: []
+environment:
+  SEAWISE_DATA_DIR: /data
+  PUID: "1000"
+  PGID: "1000"

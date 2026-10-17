@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>seawise</Name>
+  <Repository>ghcr.io/seawise-io/seawise-client:beta</Repository>
+  <Registry>https://github.com/seawise-io/seawise-client/pkgs/container/seawise-client</Registry>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/seawise-io/seawise-client/issues</Support>
+  <Project>https://seawise.io</Project>
+  <Overview>Share apps on your server through SeaWise, without opening ports. Client v2 beta.</Overview>
+  <Category>Network:Proxy Tools:</Category>
+  <WebUI>https://[IP]:[PORT:8082]/</WebUI>
+  <TemplateURL/>
+  <Icon/>
+  <ExtraParams>--restart unless-stopped --read-only --cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID --security-opt no-new-privileges</ExtraParams>
+  <Config Name="Admin UI" Target="8082" Default="8082" Mode="tcp" Description="HTTPS admin UI" Type="Port" Display="always" Required="true" Mask="false">8082</Config>
+  <Config Name="Data" Target="/config" Default="/mnt/user/appdata/seawise" Mode="rw" Description="Client state" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/seawise</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Description="User ID" Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Description="Group ID" Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+</Container>

@@ -1,0 +1,17 @@
+# Docker Compose. Runs as the given user from the start, so no capabilities
+# are needed. Create the data folder owned by that user first:
+#   mkdir -p config && sudo chown 1000:1000 config
+services:
+  seawise:
+    image: ghcr.io/seawise-io/seawise-client:beta
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # Loopback only. Published on all interfaces, Docker's own firewall
+    # rules bypass host firewalls such as ufw.
+    ports:
+      - "127.0.0.1:8082:8082"
+    volumes:
+      - ./config:/config
