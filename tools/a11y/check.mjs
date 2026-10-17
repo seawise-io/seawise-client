@@ -264,6 +264,13 @@ async function main() {
   await checkState("setup");
 
   // Set up with the keyboard only.
+  // Within the character limit but over the byte limit.
+  await focus("setup-password");
+  await type("\u00e9".repeat(40));
+  await press("Enter");
+  await waitFor(`document.getElementById('message').textContent.includes('72 bytes')`, "the byte limit message");
+  await checkState("setup, password too long");
+  await evaluate(`document.getElementById('setup-password').value = ''`);
   await focus("setup-password");
   await type(PASSWORD);
   await press("Enter");

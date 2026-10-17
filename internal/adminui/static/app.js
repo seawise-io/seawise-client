@@ -155,6 +155,9 @@
   document.addEventListener("DOMContentLoaded", function () {
     $("setup").addEventListener("submit", function (e) {
       e.preventDefault();
+      // The server limit is in bytes; accented letters and symbols take 2 to 4.
+      var bytes = new TextEncoder().encode($("setup-password").value).length;
+      if (bytes < 10 || bytes > 72) { say("Password must be 10 to 72 bytes. Accented letters and symbols count as 2 to 4."); return; }
       call("POST", "/api/setup", { password: $("setup-password").value }).then(function (r) {
         say(r.ok ? "Password saved." : (r.body.error || "Setup failed."));
         refresh();

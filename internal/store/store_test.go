@@ -466,6 +466,24 @@ func TestAccountWithoutTokenIsInvalid(t *testing.T) {
 	}
 }
 
+func TestMissingSecretsIsInvalid(t *testing.T) {
+	for _, group := range []string{"", "E"} {
+		dir := t.TempDir()
+		if group != "" {
+			dir = copyV1Fixture(t, group)
+		}
+		if err := openClose(dir, clock); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(filepath.Join(dir, SubDir, SecretsFile)); err != nil {
+			t.Fatal(err)
+		}
+		if err := openClose(dir, clock); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("group %q: state without secrets opened: %v", group, err)
+		}
+	}
+}
+
 func TestImportRecordsV1TLSFlag(t *testing.T) {
 	for g, want := range map[string]bool{"A": false, "E": true} {
 		s, err := Open(copyV1Fixture(t, g), clock)

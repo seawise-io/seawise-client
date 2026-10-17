@@ -29,7 +29,7 @@ const (
 	loginLocalMax       = 30
 	maxTrackedIPs       = 1024
 	maxConcurrentHash   = 2
-	hashWait            = 5 * time.Second
+	defaultHashWait     = 5 * time.Second
 )
 
 var (
@@ -41,7 +41,6 @@ var (
 	ErrWrongLogin   = errors.New("wrong password")
 )
 
-// setupClosedMessage is the answer once the first-run window has passed.
 const setupClosedMessage = "Setup timed out for security. Restart the client to set a password."
 
 type AuthConfig struct {
@@ -51,14 +50,15 @@ type AuthConfig struct {
 	BcryptCost int
 }
 
-// Auth holds the admin password state, the first-run setup window and the
+// Auth holds the admin password state, the first-run window and the
 // attempt limiters.
 type Auth struct {
 	cfg AuthConfig
 	log *slog.Logger
-	// deadline ends the first-run window: without a password, setup is
-	// accepted only before it, and only a restart opens a new window.
-	deadline time.Time
+	// Both clocks must agree the window is open; the wall clock covers suspend.
+	deadline     time.Time
+	wallDeadline time.Time
+	hashWait     time.Duration
 
 	mu         sync.Mutex
 	configured bool
@@ -77,8 +77,7 @@ type ipFails struct {
 	last  time.Time
 }
 
-// NewAuth keeps a stored password, or opens the first-run window of
-// constants.FirstRunSetupWindow from now.
+// NewAuth keeps a stored password or opens the first-run window.
 func NewAuth(cfg AuthConfig) (*Auth, error) {
 	if cfg.Store == nil {
 		return nil, errors.New("store required")
@@ -96,25 +95,40 @@ func NewAuth(cfg AuthConfig) (*Auth, error) {
 	if err != nil {
 		return nil, err
 	}
+	start := cfg.Now()
 	return &Auth{cfg: cfg, log: cfg.Logger.With("component", "auth"),
-		deadline:   cfg.Now().Add(constants.FirstRunSetupWindow),
-		configured: cfg.Store.Secrets().AdminPasswordHash != "",
-		loginIP:    map[string]*ipFails{}, setupByIP: map[string][]time.Time{}, dummy: dummy,
+		deadline:     start.Add(constants.FirstRunSetupWindow),
+		wallDeadline: start.Round(0).Add(constants.FirstRunSetupWindow),
+		hashWait:     defaultHashWait,
+		configured:   cfg.Store.Secrets().AdminPasswordHash != "",
+		loginIP:      map[string]*ipFails{}, setupByIP: map[string][]time.Time{}, dummy: dummy,
 		hashSlots: make(chan struct{}, maxConcurrentHash), compare: bcrypt.CompareHashAndPassword}, nil
 }
 
 func validPassword(s string) bool { return len(s) >= MinPasswordLen && len(s) <= MaxPasswordLen }
 
-func (a *Auth) storePassword(pw []byte) error {
-	hash, err := bcrypt.GenerateFromPassword(pw, a.cfg.BcryptCost)
-	if err != nil {
-		return err
+// FirstRunWindowText is the first-run window as shown to people.
+func FirstRunWindowText() string {
+	m := int(constants.FirstRunSetupWindow / time.Minute)
+	if m == 1 {
+		return "1 minute"
 	}
-	err = a.cfg.Store.UpdateSecrets(func(s *store.Secrets) error { s.AdminPasswordHash = string(hash); return nil })
-	if err != nil && !errors.Is(err, store.ErrNotDurable) {
-		return err
+	return strconv.Itoa(m) + " minutes"
+}
+
+func (a *Auth) savePassword(hash []byte) error {
+	err := a.cfg.Store.UpdateSecrets(func(s *store.Secrets) error { s.AdminPasswordHash = string(hash); return nil })
+	if errors.Is(err, store.ErrNotDurable) {
+		a.log.Warn("admin password saved but may not survive a power loss", "error", err)
+		return nil
 	}
-	return nil
+	return err
+}
+
+// windowClosed is called with mu held.
+func (a *Auth) windowClosed() bool {
+	now := a.cfg.Now()
+	return !now.Before(a.deadline) || !now.Round(0).Before(a.wallDeadline)
 }
 
 // SetupRequired reports that no admin password exists yet.
@@ -129,7 +143,7 @@ func (a *Auth) SetupRequired() bool {
 func (a *Auth) SetupClosed() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return !a.configured && !a.cfg.Now().Before(a.deadline)
+	return !a.configured && a.windowClosed()
 }
 
 // SetupDeadline is when the first-run window closes.
@@ -140,8 +154,7 @@ func isLoopbackIP(ip string) bool {
 	return err == nil && a.Unmap().IsLoopback()
 }
 
-// limiterKey groups IPv6 peers by /64, since one host usually controls a
-// whole /64; IPv4 and loopback are keyed by address.
+// limiterKey groups IPv6 peers by /64, which one host usually controls.
 func limiterKey(ip string) string {
 	a, err := netip.ParseAddr(ip)
 	if err != nil {
@@ -155,10 +168,8 @@ func limiterKey(ip string) string {
 	return a.String()
 }
 
-// Setup sets the first password, only while the first-run window is open.
-// Failures are limited per address and by a larger global budget that
-// does not apply to loopback, so a LAN peer cannot lock the owner out of
-// setting up on the machine itself.
+// Setup sets the first password while the first-run window is open.
+// Loopback is outside the global budget so the LAN cannot lock the owner out.
 func (a *Auth) Setup(peer, password string) error {
 	ip := limiterKey(peer)
 	loopback := isLoopbackIP(peer)
@@ -167,10 +178,10 @@ func (a *Auth) Setup(peer, password string) error {
 	if a.configured {
 		return ErrSetupDone
 	}
-	now := a.cfg.Now()
-	if !now.Before(a.deadline) {
+	if a.windowClosed() {
 		return ErrSetupClosed
 	}
+	now := a.cfg.Now()
 	a.setupFails = recent(a.setupFails, now, setupLimitWindow)
 	mine := recent(a.setupByIP[ip], now, setupLimitWindow)
 	if len(mine) == 0 {
@@ -185,12 +196,17 @@ func (a *Auth) Setup(peer, password string) error {
 		if !loopback {
 			a.setupFails = append(a.setupFails, now)
 		}
-		if len(a.setupByIP) < maxTrackedIPs || a.setupByIP[ip] != nil || loopback {
-			a.setupByIP[ip] = append(mine, now)
-		}
+		a.trackSetupFail(ip, mine, now, loopback)
 		return ErrBadPassword
 	}
-	if err := a.storePassword([]byte(password)); err != nil {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), a.cfg.BcryptCost)
+	if err != nil {
+		return err
+	}
+	if a.windowClosed() {
+		return ErrSetupClosed
+	}
+	if err := a.savePassword(hash); err != nil {
 		return err
 	}
 	a.configured = true
@@ -199,10 +215,41 @@ func (a *Auth) Setup(peer, password string) error {
 	return nil
 }
 
-// Login checks the password. The attempt is counted before the password
-// check runs, so parallel guesses from one address cannot all reach it;
-// password checks run at most maxConcurrentHash at a time. The global
-// budget does not apply to loopback.
+// trackSetupFail is called with mu held; only loopback evicts, so the LAN cannot push the owner out.
+func (a *Auth) trackSetupFail(ip string, mine []time.Time, now time.Time, loopback bool) {
+	if a.setupByIP[ip] == nil && len(a.setupByIP) >= maxTrackedIPs {
+		for k, v := range a.setupByIP {
+			if len(v) == 0 || now.Sub(v[len(v)-1]) >= setupLimitWindow {
+				delete(a.setupByIP, k)
+			}
+		}
+		if len(a.setupByIP) >= maxTrackedIPs {
+			if !loopback {
+				return
+			}
+			evictOldestSetup(a.setupByIP)
+		}
+	}
+	a.setupByIP[ip] = append(mine, now)
+}
+
+func evictOldestSetup(m map[string][]time.Time) {
+	var oldest string
+	var t time.Time
+	for k, v := range m {
+		if len(v) == 0 {
+			oldest = k
+			break
+		}
+		if last := v[len(v)-1]; t.IsZero() || last.Before(t) {
+			oldest, t = k, last
+		}
+	}
+	delete(m, oldest)
+}
+
+// Login checks the password. Attempts are counted before the check so
+// parallel guesses from one address cannot all reach it.
 func (a *Auth) Login(peer, password string) (time.Duration, error) {
 	ip := limiterKey(peer)
 	loopback := isLoopbackIP(peer)
@@ -251,21 +298,21 @@ func (a *Auth) Login(peer, password string) (time.Duration, error) {
 		f = &ipFails{}
 		a.loginIP[ip] = f
 	}
-	prev := *f
 	f.count++
 	f.last = now
 	*budget = append(*budget, now)
 	a.mu.Unlock()
 
-	// unreserve gives the attempt back; success also clears the address.
+	// Decrement rather than restore, so concurrent attempts stay counted.
 	unreserve := func(success bool) {
 		a.mu.Lock()
 		defer a.mu.Unlock()
 		if cur := a.loginIP[ip]; cur != nil {
-			if success || prev.count == 0 {
+			if cur.count > 0 {
+				cur.count--
+			}
+			if success || cur.count == 0 {
 				delete(a.loginIP, ip)
-			} else {
-				*cur = prev
 			}
 		}
 		b := *budget
@@ -278,7 +325,7 @@ func (a *Auth) Login(peer, password string) (time.Duration, error) {
 	}
 	select {
 	case a.hashSlots <- struct{}{}:
-	case <-time.After(hashWait):
+	case <-time.After(a.hashWait):
 		unreserve(false)
 		return loginBaseDelay, ErrRateLimited
 	}

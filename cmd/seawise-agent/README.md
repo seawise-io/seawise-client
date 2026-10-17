@@ -35,6 +35,8 @@ its own state in `<data folder>/v2`.
   closed until the client is restarted. Anyone who can reach the admin
   port during those 5 minutes can set the password, so set it right after
   the first start. Installs that already have a password are not affected.
+  A 1.x password is imported once, on the first start of 2.x; changing the
+  old password file after that has no effect.
 - **Listening address.** In a container the UI listens on all interfaces.
   Elsewhere it listens on `127.0.0.1` unless `SEAWISE_BIND_ADDR` is set.
 - **Public apps need a local toggle.** If SeaWise reports an app as public

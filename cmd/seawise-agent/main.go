@@ -213,7 +213,7 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *age
 	}
 	log.Info("admin UI listening", "address", ln.Addr().String(), "https", true, "cert_sha256", cert.Fingerprint, "cert_new", cert.Regenerated)
 	if auth.SetupRequired() {
-		log.Warn("No password set. Open the admin UI over HTTPS and set one within 5 minutes.",
+		log.Warn("No password set. Open the admin UI over HTTPS and set one within "+adminui.FirstRunWindowText()+".",
 			"port", port, "cert_sha256", cert.Fingerprint)
 		t := time.AfterFunc(time.Until(auth.SetupDeadline()), func() {
 			if auth.SetupRequired() {

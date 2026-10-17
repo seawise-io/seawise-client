@@ -302,6 +302,8 @@ func (s *Store) load() (bool, error) {
 	b, err := readOwned(filepath.Join(s.dir, SecretsFile))
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
+		// Both files are written together; a missing one must not reopen first-run setup.
+		return false, fmt.Errorf("%w: %s missing", ErrInvalid, SecretsFile)
 	case err != nil:
 		return false, err
 	default:
