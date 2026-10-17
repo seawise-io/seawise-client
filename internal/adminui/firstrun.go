@@ -41,7 +41,7 @@ func detectContainer(root string, getenv func(string) string) bool {
 // Containers listen on all interfaces so a published port reaches the UI;
 // everything else listens on loopback. An upgraded native install that
 // used to listen on all interfaces gets a notice explaining how to keep
-// LAN access. Setup always needs the one-time code.
+// LAN access.
 func BindAddr(explicit string, st store.State, sec store.Secrets, container bool) (addr, notice string) {
 	switch {
 	case explicit != "":

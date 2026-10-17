@@ -11,6 +11,9 @@ services:
     environment:
       PUID: "568"
       PGID: "568"
+    # Anyone on the LAN who reaches this port in the first 5 minutes after
+    # start can set the admin password. If the NAS is on other networks too,
+    # publish on its LAN IP only, e.g. "192.168.1.10:8082:8082".
     ports:
       - "8082:8082"
     volumes:

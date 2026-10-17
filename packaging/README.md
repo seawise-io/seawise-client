@@ -53,13 +53,12 @@ folder are left alone.
 - Keep the default bridge network. With host networking the admin UI
   listens on every host interface and the agent can reach services bound to
   the host's loopback.
-- The templates hold no secrets. To set the admin password up front, mount
-  a file and point `SEAWISE_ADMIN_PASSWORD_FILE` at it rather than putting
-  the password in the environment.
+- The templates hold no secrets. The admin password is set in the admin
+  UI and stored in the data folder.
 
 The admin UI is HTTPS on port 8082 with a self-signed certificate. On first
-start, read the setup code from `v2/setup-code` in the data folder (or set
-`SEAWISE_ADMIN_PASSWORD_FILE`).
+start, open it and set the admin password within 5 minutes; after that,
+restart the container to set it.
 
 ## Tests
 

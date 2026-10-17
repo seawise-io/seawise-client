@@ -1,6 +1,4 @@
-// Package adminui serves the agent's local admin UI. HTTPS and plain HTTP
-// share one port; plain HTTP only answers loopback health checks, redirects
-// to HTTPS during the upgrade window, or shows a notice.
+// Package adminui serves the agent's local admin UI over HTTPS, sharing its port with a minimal plain HTTP handler.
 package adminui
 
 import (
@@ -56,8 +54,7 @@ type Config struct {
 	Gateways         func() []netip.Addr
 	PublicAllowed    bool
 	OnTargetsChanged func(context.Context)
-	// AccessLog backs the access log page; KillSwitch drops or restores
-	// all tunnels.
+	// KillSwitch drops or restores all tunnels.
 	AccessLog     AccessLog
 	KillSwitch    KillSwitchFunc
 	PeekTimeout   time.Duration
@@ -213,8 +210,7 @@ func sameOrigin(r *http.Request) bool {
 
 type ctxKey struct{}
 
-// requireSession needs a valid session cookie and, for unsafe methods, the
-// session's CSRF token in X-CSRF-Token.
+// requireSession needs a session cookie, plus X-CSRF-Token on unsafe methods.
 func (s *Server) requireSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sess, ok := s.sess.lookup(sessionToken(r))
@@ -266,8 +262,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	s.serveFile(w, "index.html", "text/html; charset=utf-8")
 }
 
-// handleStatic serves only the embedded assets named here; the request path
-// selects a case but never reaches the file name.
+// handleStatic maps known names to assets so the request path never reaches a file name.
 func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	switch r.PathValue("file") {
 	case "app.js":
@@ -279,8 +274,7 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// serveFile writes an embedded asset. Callers pass constant names, and the
-// headers middleware sets nosniff and a script-src 'self' CSP.
+// serveFile writes an embedded asset; callers pass constant names.
 func (s *Server) serveFile(w http.ResponseWriter, name, ct string) {
 	b, err := staticFS.ReadFile("static/" + name)
 	if err != nil {

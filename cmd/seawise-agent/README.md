@@ -30,10 +30,13 @@ its own state in `<data folder>/v2`.
   certificate whose fingerprint is logged at start. Plain HTTP redirects to
   HTTPS for 90 days after an upgrade, then shows a notice. `/healthz` stays
   plain HTTP for local health checks.
-- **First run.** Setting the first password needs the one-time code in
-  `<data folder>/v2/setup-code` (readable only by the client's user; the
-  log names the file but never shows the code), or a password supplied with
-  `SEAWISE_ADMIN_PASSWORD_FILE`.
+- **First run.** As in 1.0.12, the admin password can be set in the admin
+  UI only within 5 minutes of the client starting. After that, setup stays
+  closed until the client is restarted. Anyone who can reach the admin
+  port during those 5 minutes can set the password, so set it right after
+  the first start. Installs that already have a password are not affected.
+  A 1.x password is imported once, on the first start of 2.x; changing the
+  old password file after that has no effect.
 - **Listening address.** In a container the UI listens on all interfaces.
   Elsewhere it listens on `127.0.0.1` unless `SEAWISE_BIND_ADDR` is set.
 - **Public apps need a local toggle.** If SeaWise reports an app as public
@@ -142,7 +145,6 @@ stay on the current client.
 | `SEAWISE_DATA_DIR` | Data folder (default `/config` in the image, `~/.seawise` elsewhere) |
 | `SEAWISE_PORT` | Admin UI port (default `8082`) |
 | `SEAWISE_BIND_ADDR` | Admin UI listening address |
-| `SEAWISE_ADMIN_PASSWORD_FILE` | File holding the admin password |
 | `SEAWISE_ALLOWED_HOSTS` | Extra host names allowed to reach the admin UI |
 | `SEAWISE_ALLOW_PUBLIC_TARGETS` | `1` lets new apps use public addresses (each still needs confirmation) |
 | `SEAWISE_NAT64_PREFIXES` | Extra NAT64 prefixes used on this network, comma separated |

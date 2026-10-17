@@ -1,6 +1,8 @@
 // Command fixture serves the agent's admin UI on loopback with sample
 // data in every state the UI can show, for the accessibility check. It is
-// a test tool and is not part of any release image.
+// A second UI, on its own port, shows the state after the first-run
+// window closed without a password. It is a test tool and is not part of
+// any release image.
 package main
 
 import (
@@ -13,6 +15,7 @@ import (
 	"net/netip"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"syscall"
@@ -20,6 +23,7 @@ import (
 
 	"github.com/seawise/client/internal/accesslog"
 	"github.com/seawise/client/internal/adminui"
+	"github.com/seawise/client/internal/constants"
 	"github.com/seawise/client/internal/store"
 	"github.com/seawise/client/internal/updatecheck"
 )
@@ -27,7 +31,7 @@ import (
 func main() {
 	dir := flag.String("dir", "", "empty data folder for the fixture")
 	port := flag.Int("port", 0, "loopback port (0 picks one)")
-	ready := flag.String("ready", "", "file that receives the URL and setup code path once serving")
+	ready := flag.String("ready", "", "file that receives the two URLs once serving")
 	flag.Parse()
 	if *dir == "" || *ready == "" {
 		fmt.Fprintln(os.Stderr, "usage: fixture -dir <folder> -ready <file> [-port n]")
@@ -102,12 +106,65 @@ func run(ctx context.Context, log *slog.Logger, dir string, port int, ready stri
 	if err != nil {
 		return err
 	}
-	info := fmt.Sprintf("https://%s/\n%s\n", ln.Addr(), auth.CodePath())
+	closedURL, serveClosed, err := closedUI(ctx, log, filepath.Join(dir, "closed"), now)
+	if err != nil {
+		ln.Close()
+		return err
+	}
+	go func() {
+		if err := serveClosed(); err != nil && !errors.Is(err, context.Canceled) {
+			log.Error("fixture, closed setup UI", "error", err)
+		}
+	}()
+	info := fmt.Sprintf("https://%s/\n%s\n", ln.Addr(), closedURL)
 	if err := os.WriteFile(ready, []byte(info), 0o600); err != nil {
 		ln.Close()
 		return err
 	}
 	return srv.Serve(ctx, ln, cert.Cert)
+}
+
+// closedUI serves a UI with no password whose first-run window has passed.
+func closedUI(ctx context.Context, log *slog.Logger, dir string, now time.Time) (string, func() error, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", nil, err
+	}
+	st, err := store.Open(dir, time.Now)
+	if err != nil {
+		return "", nil, err
+	}
+	started := now.Add(-constants.FirstRunSetupWindow - time.Minute)
+	var once sync.Once
+	clock := func() time.Time {
+		t := time.Now()
+		once.Do(func() { t = started })
+		return t
+	}
+	auth, err := adminui.NewAuth(adminui.AuthConfig{Store: st, Logger: log, BcryptCost: 4, Now: clock})
+	if err != nil {
+		st.Close()
+		return "", nil, err
+	}
+	names, ips := adminui.LocalNames("", nil)
+	cert, err := adminui.EnsureCert(st.Dir(), names, ips, now)
+	if err != nil {
+		st.Close()
+		return "", nil, err
+	}
+	srv, err := adminui.New(adminui.Config{Store: st, Auth: auth, Logger: log, Status: func(context.Context) any { return map[string]any{} }})
+	if err != nil {
+		st.Close()
+		return "", nil, err
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		st.Close()
+		return "", nil, err
+	}
+	return "https://" + ln.Addr().String() + "/", func() error {
+		defer st.Close()
+		return srv.Serve(ctx, ln, cert.Cert)
+	}, nil
 }
 
 func seed(st *store.Store, now time.Time) error {

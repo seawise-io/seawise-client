@@ -14,14 +14,17 @@
 
 <form id="setup" hidden>
 <h2 tabindex="-1">Set up this client</h2>
-<p>Enter the setup code from the <code>v2/setup-code</code> file in the client's data folder (the client's log shows its path), and choose a password.</p>
-<label for="setup-code">Setup code</label>
-<input id="setup-code" name="code" autocomplete="off" required>
+<p>Choose a password for this admin page. For security, a password can only be set within 5 minutes of the client starting.</p>
 <label for="setup-password">New password</label>
-<input id="setup-password" name="password" type="password" autocomplete="new-password" minlength="10" maxlength="72" required aria-describedby="setup-password-hint">
-<p id="setup-password-hint" class="hint">10 to 72 characters.</p>
+<input id="setup-password" name="password" type="password" autocomplete="new-password" maxlength="72" required aria-describedby="setup-password-hint">
+<p id="setup-password-hint" class="hint">10 to 72 bytes. Most letters count as 1; accented letters and symbols count as 2 to 4.</p>
 <button type="submit">Save password</button>
 </form>
+
+<section id="closed" hidden>
+<h2 tabindex="-1">Setup timed out</h2>
+<p>For security, a password can only be set within 5 minutes of the client starting. Restart the client, then open this page again and set a password.</p>
+</section>
 
 <form id="login" hidden>
 <h2 tabindex="-1">Sign in</h2>
