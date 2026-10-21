@@ -65,15 +65,15 @@ func TestKillSwitchSurvivesRestart(t *testing.T) {
 	eventually(t, "frpc ready", func() bool { return h.status().Running })
 }
 
-func TestServerPublicRefusedWithoutLocalToggle(t *testing.T) {
+func TestServerPublicTunnelledWithoutLocalToggle(t *testing.T) {
 	st := pairedStore(t, t.TempDir())
 	on, off := true, false
 	err := st.Update(func(s *store.State) error {
 		s.Targets = append(s.Targets,
-			store.Target{LocalID: "p1", Name: "srvpublic", Host: "192.168.1.40", Port: 80, Subdomain: "p1", Source: store.SourceLocal, ConfirmedAt: &confirmed, ServerPublic: true},
-			store.Target{LocalID: "p2", Name: "localprivate", Host: "192.168.1.41", Port: 80, Subdomain: "p2", Source: store.SourceLocal, ConfirmedAt: &confirmed, ServerPublic: true, Public: &off},
-			store.Target{LocalID: "p3", Name: "bothpublic", Host: "192.168.1.42", Port: 80, Subdomain: "p3", Source: store.SourceLocal, ConfirmedAt: &confirmed, ServerPublic: true, Public: &on},
-			store.Target{LocalID: "p4", Name: "localonly", Host: "192.168.1.43", Port: 80, Subdomain: "p4", Source: store.SourceLocal, ConfirmedAt: &confirmed, Public: &on},
+			store.Target{LocalID: "p1", Name: "srvpublic", Host: "192.168.1.40", Port: 80, Subdomain: "p1", Source: store.SourceLocal, ServerPublic: true},
+			store.Target{LocalID: "p2", Name: "localprivate", Host: "192.168.1.41", Port: 80, Subdomain: "p2", Source: store.SourceLocal, ServerPublic: true, Public: &off},
+			store.Target{LocalID: "p3", Name: "bothpublic", Host: "192.168.1.42", Port: 80, Subdomain: "p3", Source: store.SourceLocal, ServerPublic: true, Public: &on},
+			store.Target{LocalID: "p4", Name: "localonly", Host: "192.168.1.43", Port: 80, Subdomain: "p4", Source: store.SourceLocal, Public: &on},
 		)
 		return nil
 	})
@@ -84,21 +84,12 @@ func TestServerPublicRefusedWithoutLocalToggle(t *testing.T) {
 	eventually(t, "frpc ready", func() bool { return h.status().Running })
 	b, _ := os.ReadFile(h.agent.ConfigPath())
 	conf := string(b)
-	for _, bad := range []string{"srvpublic", "localprivate"} {
-		if strings.Contains(conf, bad) {
-			t.Errorf("%s rendered against the local toggle:\n%s", bad, conf)
+	for _, name := range []string{"srvpublic", "localprivate", "bothpublic", "localonly", "jellyfin"} {
+		if !strings.Contains(conf, name) {
+			t.Errorf("%s missing:\n%s", name, conf)
 		}
 	}
-	for _, good := range []string{"bothpublic", "localonly", "jellyfin"} {
-		if !strings.Contains(conf, good) {
-			t.Errorf("%s missing:\n%s", good, conf)
-		}
-	}
-	refused := map[string]string{}
-	for _, r := range h.status().Refused {
-		refused[r.LocalID] = r.Reason
-	}
-	if !strings.Contains(refused["p1"], "private on this machine") || !strings.Contains(refused["p2"], "private on this machine") {
-		t.Fatalf("refusals = %v", refused)
+	if r := h.status().Refused; len(r) != 0 {
+		t.Fatalf("refusals = %v", r)
 	}
 }

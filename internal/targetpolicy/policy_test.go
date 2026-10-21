@@ -52,6 +52,8 @@ func ap(s string, port int) netip.AddrPort {
 	return netip.AddrPortFrom(netip.MustParseAddr(s), uint16(port))
 }
 
+// Only forbidden addresses are refused; every other class is reachable, as
+// with 1.x, and only described for the review list.
 func TestCheckClasses(t *testing.T) {
 	gw := []netip.Addr{netip.MustParseAddr("192.168.1.1")}
 	cases := []struct {
@@ -61,23 +63,16 @@ func TestCheckClasses(t *testing.T) {
 		ok   bool
 	}{
 		{"private", Rule{Host: "nas.lan"}, ap("192.168.1.20", 8096), true},
-		{"metadata even grandfathered", Rule{Host: "169.254.169.254", Grandfathered: true}, ap("169.254.169.254", 80), false},
-		{"link-local even grandfathered", Rule{Host: "x", Grandfathered: true}, ap("169.254.10.10", 80), false},
-		{"public without grant", Rule{Host: "example.com"}, ap("93.184.216.34", 443), false},
-		{"public with grant", Rule{Host: "example.com", Grants: []string{GrantPublic}}, ap("93.184.216.34", 443), true},
-		{"public smtp needs smtp", Rule{Host: "mail.example", Grants: []string{GrantPublic}}, ap("93.184.216.34", 25), false},
-		{"public smtp granted", Rule{Host: "mail.example", Grants: []string{GrantPublic, GrantSMTP}}, ap("93.184.216.34", 587), true},
-		{"grandfathered public", Rule{Host: "example.com", Grandfathered: true}, ap("93.184.216.34", 443), true},
-		{"docker api", Rule{Host: "nas.lan"}, ap("192.168.1.20", 2375), false},
-		{"docker api granted", Rule{Host: "nas.lan", Grants: []string{GrantSensitive}}, ap("192.168.1.20", 2375), true},
-		{"router", Rule{Host: "192.168.1.1"}, ap("192.168.1.1", 80), false},
-		{"router granted", Rule{Host: "192.168.1.1", Grants: []string{GrantGateway}}, ap("192.168.1.1", 80), true},
-		{"intended loopback needs grant", Rule{Host: "localhost"}, ap("127.0.0.1", 3000), false},
-		{"intended loopback granted", Rule{Host: "localhost", Grants: []string{GrantLoopback}}, ap("127.0.0.1", 3000), true},
-		{"literal loopback granted", Rule{Host: "127.0.0.1", Grants: []string{GrantLoopback}}, ap("127.0.0.1", 3000), true},
-		{"name rebinding to loopback", Rule{Host: "app.example", Grants: []string{GrantLoopback, GrantPublic}}, ap("127.0.0.1", 3000), false},
-		{"grandfathered name to loopback", Rule{Host: "nas.lan", Grandfathered: true}, ap("127.0.0.1", 3000), false},
-		{"loopback docker api", Rule{Host: "localhost", Grants: []string{GrantLoopback}}, ap("127.0.0.1", 2375), false},
+		{"metadata", Rule{Host: "169.254.169.254"}, ap("169.254.169.254", 80), false},
+		{"link-local", Rule{Host: "x"}, ap("169.254.10.10", 80), false},
+		{"multicast", Rule{Host: "x"}, ap("224.0.0.1", 80), false},
+		{"public", Rule{Host: "example.com"}, ap("93.184.216.34", 443), true},
+		{"public smtp", Rule{Host: "mail.example"}, ap("93.184.216.34", 25), true},
+		{"docker api", Rule{Host: "nas.lan"}, ap("192.168.1.20", 2375), true},
+		{"router", Rule{Host: "192.168.1.1"}, ap("192.168.1.1", 80), true},
+		{"loopback", Rule{Host: "localhost"}, ap("127.0.0.1", 3000), true},
+		{"name resolving to loopback", Rule{Host: "app.example"}, ap("127.0.0.1", 3000), true},
+		{"loopback docker api", Rule{Host: "localhost"}, ap("127.0.0.1", 2375), true},
 	}
 	for _, c := range cases {
 		err := Check(c.rule, c.addr, gw)
@@ -99,35 +94,33 @@ func TestAssessNewApps(t *testing.T) {
 		}
 		return out
 	}
-	as := Assess("nas.lan", 8096, addrs("192.168.1.20"), gw, Options{})
+	as := Assess("nas.lan", 8096, addrs("192.168.1.20"), gw)
 	if as.Refused != "" || len(as.Required) != 0 {
 		t.Fatalf("private: %+v", as)
 	}
-	as = Assess("example.com", 443, addrs("93.184.216.34"), gw, Options{})
-	if as.Refused == "" {
-		t.Fatalf("public allowed by default: %+v", as)
-	}
-	as = Assess("example.com", 443, addrs("93.184.216.34"), gw, Options{PublicAllowed: true})
+	as = Assess("example.com", 443, addrs("93.184.216.34"), gw)
 	if as.Refused != "" || !reflect.DeepEqual(as.Required, []string{GrantPublic}) {
-		t.Fatalf("public opt-in: %+v", as)
+		t.Fatalf("public is described, not refused: %+v", as)
 	}
-	as = Assess("mixed.lan", 80, addrs("192.168.1.20", "169.254.169.254"), gw, Options{PublicAllowed: true})
+	as = Assess("mixed.lan", 80, addrs("192.168.1.20", "169.254.169.254"), gw)
 	if as.Refused == "" {
 		t.Fatalf("one forbidden address must refuse: %+v", as)
 	}
-	as = Assess("nas.lan", 80, nil, gw, Options{})
-	if as.Refused == "" {
+	if as := Assess("nas.lan", 80, nil, gw); as.Refused == "" {
 		t.Fatal("unresolved accepted")
 	}
-	as = Assess("localhost", 2375, addrs("127.0.0.1", "::1"), gw, Options{})
+	if as := Assess("nas.lan", 0, addrs("192.168.1.20"), gw); as.Refused == "" {
+		t.Fatal("invalid port accepted")
+	}
+	as = Assess("localhost", 2375, addrs("127.0.0.1", "::1"), gw)
 	if as.Refused != "" || !reflect.DeepEqual(as.Required, []string{GrantLoopback, GrantSensitive}) {
 		t.Fatalf("loopback docker: %+v", as)
 	}
 }
 
-// TestDialerRebinding dials through the Control hook: the check runs on the
-// address actually connected to, whatever the name resolved to.
-func TestDialerRebinding(t *testing.T) {
+// TestDialer dials through the Control hook: the check runs on the address
+// actually connected to, whatever the name resolved to.
+func TestDialer(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -145,25 +138,14 @@ func TestDialerRebinding(t *testing.T) {
 	port := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-
-	ok := Dialer(&net.Dialer{Timeout: time.Second}, Rule{Host: "localhost", Grants: []string{GrantLoopback}}, nil)
-	c, err := ok.DialContext(ctx, "tcp", "localhost:"+port)
-	if err != nil {
-		t.Fatalf("intended loopback refused: %v", err)
+	for _, host := range []string{"localhost", "app.example"} {
+		c, err := Dialer(&net.Dialer{Timeout: time.Second}, Rule{Host: host}, nil).DialContext(ctx, "tcp", "127.0.0.1:"+port)
+		if err != nil {
+			t.Fatalf("%s: loopback refused: %v", host, err)
+		}
+		c.Close()
 	}
-	c.Close()
-
-	// A target named something else that resolves to loopback is refused at
-	// connect time, even with every grant.
-	rebound := Dialer(nil, Rule{Host: "app.example", Grants: []string{GrantLoopback, GrantPublic, GrantSensitive}}, nil)
-	if _, err := rebound.DialContext(ctx, "tcp", "127.0.0.1:"+port); !errors.Is(err, ErrRefused) {
-		t.Fatalf("rebinding not refused: %v", err)
-	}
-	gf := Dialer(nil, Rule{Host: "nas.lan", Grandfathered: true}, nil)
-	if _, err := gf.DialContext(ctx, "tcp", "127.0.0.1:"+port); !errors.Is(err, ErrRefused) {
-		t.Fatalf("grandfathered rebinding not refused: %v", err)
-	}
-	meta := Dialer(nil, Rule{Host: "nas.lan", Grandfathered: true}, nil)
+	meta := Dialer(nil, Rule{Host: "nas.lan"}, nil)
 	if _, err := meta.DialContext(ctx, "tcp", "169.254.169.254:80"); !errors.Is(err, ErrRefused) {
 		t.Fatalf("metadata not refused before connect: %v", err)
 	}
@@ -182,7 +164,7 @@ func TestDialerKeepsBaseControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer ln.Close()
-	d = Dialer(base, Rule{Host: "127.0.0.1", Grants: []string{GrantLoopback}}, nil)
+	d = Dialer(base, Rule{Host: "127.0.0.1"}, nil)
 	c, err := d.DialContext(ctx, "tcp", ln.Addr().String())
 	if err != nil || called != 1 {
 		t.Fatalf("base control not chained: %v %d", err, called)
@@ -190,69 +172,44 @@ func TestDialerKeepsBaseControl(t *testing.T) {
 	c.Close()
 }
 
-func TestGrandfatheredReview(t *testing.T) {
+// The review list is informational: it names what an app reaches, apps that
+// are turned off and refused addresses; nothing in it needs a confirmation.
+func TestReviewList(t *testing.T) {
 	now := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
 	targets := []store.Target{
 		{LocalID: "a", Name: "plex", Host: "192.168.1.20", Port: 32400, Grandfathered: true, Source: store.SourceV1Machine, ConfirmedAt: &now},
-		{LocalID: "b", Name: "site", Host: "example.com", Port: 443, Grandfathered: true, Source: store.SourceV1Machine},
-		{LocalID: "c", Name: "meta", Host: "169.254.169.254", Port: 80, Grandfathered: true, Source: store.SourceV1Machine},
+		{LocalID: "b", Name: "site", Host: "example.com", Port: 443, Source: store.SourceLocal},
+		{LocalID: "c", Name: "meta", Host: "169.254.169.254", Port: 80, Source: store.SourceV1Machine},
 		{LocalID: "d", Name: "new", Host: "192.168.1.30", Port: 80, Source: store.SourceLocal},
-		{LocalID: "e", Name: "moved", Host: "app.lan", Port: 80, Source: store.SourceLocal},
+		{LocalID: "e", Name: "gone", Host: "nowhere.lan", Port: 80, Source: store.SourceLocal},
+		{LocalID: "f", Name: "off", Host: "192.168.1.31", Port: 80, Source: store.SourceLocal, Disabled: true},
+		{LocalID: "g", Name: "asked", Host: "192.168.1.32", Port: 80, Source: store.SourceLocal, ServerDisableRequestedAt: &now},
 	}
 	resolve := func(_ context.Context, h string) ([]netip.Addr, error) {
-		switch h {
-		case "example.com":
+		if h == "example.com" {
 			return []netip.Addr{netip.MustParseAddr("93.184.216.34")}, nil
-		case "app.lan":
-			return []netip.Addr{netip.MustParseAddr("93.184.216.35")}, nil
 		}
 		return nil, errors.New("nxdomain")
 	}
-	items := BuildReview(context.Background(), targets, resolve, nil, true)
+	items := BuildReview(context.Background(), targets, resolve, nil)
 	byID := map[string]ReviewItem{}
 	for _, it := range items {
 		byID[it.LocalID] = it
 	}
-	if len(items) != 4 || byID["d"].LocalID != "" {
+	if len(items) != 5 || byID["a"].LocalID != "" || byID["d"].LocalID != "" {
 		t.Fatalf("items %+v", items)
 	}
 	if !reflect.DeepEqual(byID["b"].Required, []string{GrantPublic}) || byID["b"].Refused != "" {
-		t.Fatalf("public grandfathered %+v", byID["b"])
+		t.Fatalf("public %+v", byID["b"])
 	}
-	if byID["c"].Refused == "" {
-		t.Fatal("metadata target not flagged")
+	if byID["c"].Refused == "" || byID["e"].Refused != "host did not resolve" || !byID["f"].Disabled || byID["g"].ServerDisableRequestedAt == nil {
+		t.Fatalf("items %+v", items)
 	}
-	if !reflect.DeepEqual(byID["e"].Missing, []string{GrantPublic}) {
-		t.Fatalf("non-grandfathered drift %+v", byID["e"])
-	}
-
 	st := store.State{Targets: targets}
-	if err := Confirm(&st, "b", "example.com", 443, byID["b"].Assessment, now); err != nil {
-		t.Fatal(err)
-	}
-	b := st.Targets[1]
-	if b.Grandfathered || !reflect.DeepEqual(b.Allowed, []string{GrantPublic}) || b.ConfirmedAt == nil {
-		t.Fatalf("confirm %+v", b)
-	}
-	if err := Check(RuleFor(b), ap("93.184.216.34", 443), nil); err != nil {
-		t.Fatalf("confirmed target refused: %v", err)
-	}
-	if err := Check(RuleFor(b), ap("93.184.216.34", 25), nil); err == nil {
-		t.Fatal("confirmed grants widened to smtp")
-	}
-	if err := Confirm(&st, "c", "169.254.169.254", 80, byID["c"].Assessment, now); err == nil {
-		t.Fatal("forbidden target confirmed")
-	}
-	if err := Disable(&st, "c"); err != nil || !st.Targets[2].Disabled || len(st.Targets) != 5 {
+	if err := Disable(&st, "c"); err != nil || !st.Targets[2].Disabled || len(st.Targets) != 7 {
 		t.Fatal("disable")
 	}
-	if err := Confirm(&st, "a", "192.168.1.99", 32400, Assessment{Required: []string{}}, now); err != ErrChanged {
-		t.Fatalf("changed target confirmed: %v", err)
-	}
-	if items := BuildReview(context.Background(), st.Targets, resolve, nil, false); len(items) == 0 {
-		t.Fatal("disabled target not listed for re-enable")
-	}
-	if Confirm(&st, "zz", "h", 1, Assessment{}, now) != ErrNotFound || Disable(&st, "zz") != ErrNotFound {
+	if Disable(&st, "zz") != ErrNotFound {
 		t.Fatal("unknown id")
 	}
 }
@@ -291,41 +248,26 @@ func TestClassifyTranslationForms(t *testing.T) {
 	}
 }
 
-func TestGrandfatheredNoImplicitSensitivePort(t *testing.T) {
+func TestGatewayDescribed(t *testing.T) {
 	gw := []netip.Addr{netip.MustParseAddr("192.168.1.1")}
-	gf := Rule{Host: "nas.lan", Grandfathered: true}
-	if err := Check(gf, ap("192.168.1.20", 2375), gw); err == nil {
-		t.Fatal("grandfathered Docker API port allowed without review")
+	if err := Check(Rule{Host: "192.168.1.1"}, ap("192.168.1.1", 80), gw); err != nil {
+		t.Fatalf("router refused: %v", err)
 	}
-	if err := Check(gf, ap("192.168.1.1", 80), gw); err != nil {
-		t.Fatalf("grandfathered router refused: %v", err)
-	}
-	if err := Check(gf, ap("93.184.216.34", 443), gw); err != nil {
-		t.Fatalf("grandfathered public refused: %v", err)
-	}
-	as := Assess("192.168.1.1", 80, []netip.Addr{netip.MustParseAddr("192.168.1.1")}, gw, Options{})
+	as := Assess("192.168.1.1", 80, []netip.Addr{netip.MustParseAddr("192.168.1.1")}, gw)
 	if !reflect.DeepEqual(as.Required, []string{GrantGateway}) {
-		t.Fatalf("gateway grant: %+v", as)
+		t.Fatalf("gateway: %+v", as)
 	}
 }
 
-func TestPublicSensitivePortNeedsBothGrants(t *testing.T) {
+func TestPublicSensitivePortDescribed(t *testing.T) {
 	for _, port := range []int{2375, 2376, 6443, 10250, 10255, 2379, 2380} {
-		pub := Rule{Host: "203.0.114.9", Grants: []string{GrantPublic}}
-		if err := Check(pub, ap("203.0.114.9", port), nil); err == nil {
-			t.Errorf("public port %d allowed with only the public grant", port)
-		}
-		both := Rule{Host: "203.0.114.9", Grants: []string{GrantPublic, GrantSensitive}}
-		if err := Check(both, ap("203.0.114.9", port), nil); err != nil {
-			t.Errorf("public port %d refused with both grants: %v", port, err)
-		}
-		if err := Check(Rule{Host: "x.example", Grandfathered: true}, ap("203.0.114.9", port), nil); err == nil {
-			t.Errorf("grandfathered public port %d allowed without review", port)
+		if err := Check(Rule{Host: "203.0.114.9"}, ap("203.0.114.9", port), nil); err != nil {
+			t.Errorf("public port %d refused: %v", port, err)
 		}
 	}
-	as := Assess("203.0.114.9", 2375, []netip.Addr{netip.MustParseAddr("203.0.114.9")}, nil, Options{PublicAllowed: true})
+	as := Assess("203.0.114.9", 2375, []netip.Addr{netip.MustParseAddr("203.0.114.9")}, nil)
 	if !reflect.DeepEqual(as.Required, []string{GrantPublic, GrantSensitive}) || !slices.Contains(as.Reasons, "Docker API") {
-		t.Fatalf("assessment does not name the port risk: %+v", as)
+		t.Fatalf("assessment does not name the port: %+v", as)
 	}
 }
 

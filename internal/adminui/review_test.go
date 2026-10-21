@@ -75,27 +75,18 @@ func TestReviewEndpoints(t *testing.T) {
 	changed := 0
 	h.s.cfg.OnTargetsChanged = func(context.Context) { changed++ }
 	body := h.list()
-	if !strings.Contains(body, `"local_id":"a"`) || !strings.Contains(body, `"refused":"cloud metadata address"`) {
+	if !strings.Contains(body, `"local_id":"a"`) || !strings.Contains(body, `"required":["public"]`) ||
+		!strings.Contains(body, `"refused":"cloud metadata address"`) || strings.Contains(body, "missing") {
 		t.Fatalf("list %s", body)
 	}
-	if c := h.act(`{"local_id":"a","action":"confirm"}`, false); c != 403 {
+	if c := h.act(`{"local_id":"b","action":"disable"}`, false); c != 403 {
 		t.Fatalf("no csrf %d", c)
 	}
-	// Confirming a public target respects the operator opt-in, grandfathered or not.
-	if c := h.act(`{"local_id":"a","action":"confirm"}`, true); c != http.StatusConflict || !h.target("a").Grandfathered {
-		t.Fatalf("public confirmed without opt-in %d", c)
-	}
-	h.s.cfg.PublicAllowed = true
-	if c := h.act(`{"local_id":"a","action":"confirm"}`, true); c != 200 {
+	// Nothing needs a confirmation: the action no longer exists.
+	if c := h.act(`{"local_id":"a","action":"confirm"}`, true); c != http.StatusBadRequest || changed != 0 {
 		t.Fatalf("confirm %d", c)
 	}
-	if a := h.target("a"); a.Grandfathered || len(a.Allowed) != 1 || a.Allowed[0] != "public" || changed != 1 {
-		t.Fatalf("confirm stored %+v", a)
-	}
-	if c := h.act(`{"local_id":"b","action":"confirm"}`, true); c != http.StatusConflict {
-		t.Fatalf("forbidden confirmed %d", c)
-	}
-	if c := h.act(`{"local_id":"b","action":"disable"}`, true); c != 200 || !h.target("b").Disabled {
+	if c := h.act(`{"local_id":"b","action":"disable"}`, true); c != 200 || !h.target("b").Disabled || changed != 1 {
 		t.Fatalf("disable %d", c)
 	}
 	if c := h.act(`{"local_id":"b","action":"enable"}`, true); c != 200 || h.target("b").Disabled {
@@ -132,23 +123,5 @@ func TestServerDisableRequestActions(t *testing.T) {
 	}
 	if c := h.act(`{"local_id":"b","action":"accept_server_disable"}`, true); c != http.StatusConflict {
 		t.Fatalf("accept without request %d", c)
-	}
-}
-
-func TestConfirmRechecksTargetUnderLock(t *testing.T) {
-	now := t0
-	h := newReviewHarness(t, []store.Target{
-		{LocalID: "a", Name: "nas", Host: "nas.lan", Port: 80, Grandfathered: true, ConfirmedAt: &now, Source: store.SourceV1Machine},
-	})
-	// The target changes while its name is being resolved.
-	h.s.cfg.Resolver = func(context.Context, string) ([]netip.Addr, error) {
-		_ = h.st.Update(func(s *store.State) error { s.Targets[0].Host = "other.lan"; return nil })
-		return []netip.Addr{netip.MustParseAddr("192.168.1.20")}, nil
-	}
-	if c := h.act(`{"local_id":"a","action":"confirm"}`, true); c != http.StatusConflict {
-		t.Fatalf("stale confirm accepted %d", c)
-	}
-	if !h.target("a").Grandfathered {
-		t.Fatal("stale assessment stored")
 	}
 }

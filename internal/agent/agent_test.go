@@ -296,15 +296,26 @@ func TestPolicyAppliedToTunnels(t *testing.T) {
 	eventually(t, "frpc ready", func() bool { s := h.status(); return s.Running && len(s.Proxies) > 0 })
 	b, _ := os.ReadFile(h.agent.ConfigPath())
 	conf := string(b)
-	for _, bad := range []string{"metaapp", "169.254", "publicnogrant", "93.184.216.34", "unconfirmed", "dockerapi", "192.168.1.20", "8096"} {
+	for _, bad := range []string{"metaapp", "169.254", "93.184.216.34", "192.168.1.20", "8096"} {
 		if strings.Contains(conf, bad) {
 			t.Errorf("config contains %q:\n%s", bad, conf)
 		}
 	}
-	if !strings.Contains(conf, `name = "sid-jellyfin"`) || !strings.Contains(conf, `name = "sid-granted"`) {
-		t.Fatalf("allowed apps missing:\n%s", conf)
+	// Only forbidden addresses are refused: public, unconfirmed and
+	// management-port apps are tunnelled as in v1.
+	for _, name := range []string{"jellyfin", "publicnogrant", "unconfirmed", "dockerapi", "granted"} {
+		if !strings.Contains(conf, `name = "sid-`+name+`"`) {
+			t.Errorf("%s missing:\n%s", name, conf)
+		}
 	}
-	if strings.Count(conf, `localIP = "127.0.0.1"`) != 2 {
+	refused := map[string]string{}
+	for _, r := range h.status().Refused {
+		refused[r.LocalID] = r.Reason
+	}
+	if len(refused) != 1 || refused["m"] == "" {
+		t.Fatalf("refusals = %v", refused)
+	}
+	if strings.Count(conf, `localIP = "127.0.0.1"`) != 5 {
 		t.Fatalf("apps not routed through loopback forwarder:\n%s", conf)
 	}
 	port := confValue(t, h.agent.ConfigPath(), "localPort")

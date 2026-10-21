@@ -232,7 +232,7 @@ func TestPlanApplyRechecks(t *testing.T) {
 	}
 }
 
-func TestPlanImportsPublicOnlyOnce(t *testing.T) {
+func TestPlanRecordsServerPublic(t *testing.T) {
 	yes, no := true, false
 	old := target("a", sidA, "10.0.0.2", 80, "calm-otter")
 	old.Grandfathered = true
@@ -248,22 +248,13 @@ func TestPlanImportsPublicOnlyOnce(t *testing.T) {
 	if !changed {
 		t.Fatal("public flags not recorded")
 	}
-	a, b := st.Targets[0], st.Targets[1]
-	if !a.ServerPublic || !a.IsPublicLocally() {
-		t.Fatalf("grandfathered public app not imported: %+v", a)
+	for _, tg := range st.Targets {
+		if !tg.ServerPublic || tg.Public != nil {
+			t.Fatalf("server flag not recorded, or a local toggle set: %+v", tg)
+		}
 	}
-	if !b.ServerPublic || b.Public != nil {
-		t.Fatalf("new app made public by the server: %+v", b)
-	}
-	if len(notices) != 1 || notices[0].Kind != NoticePublicImported || notices[0].LocalID != "a" {
+	if len(notices) != 0 {
 		t.Fatalf("notices = %+v", notices)
-	}
-
-	st.Targets[0].Public = &no
-	p = PlanServices(st.Targets, remote, &DisableTracker{}, t0)
-	p.Apply(&st, t0, DefaultServerDisablesPerDay)
-	if st.Targets[0].IsPublicLocally() {
-		t.Fatal("server overrode the owner's private toggle")
 	}
 
 	remote[0].Public = nil
@@ -277,23 +268,5 @@ func TestPlanImportsPublicOnlyOnce(t *testing.T) {
 	p.Apply(&st, t0, DefaultServerDisablesPerDay)
 	if st.Targets[0].ServerPublic {
 		t.Fatal("server private flag not recorded")
-	}
-}
-
-func TestPlanGrandfatheredPrivateImportedAsPrivate(t *testing.T) {
-	no := false
-	old := target("a", sidA, "10.0.0.2", 80, "calm-otter")
-	old.Grandfathered = true
-	st := store.State{Targets: []store.Target{old}}
-	remote := []Service{{ID: sidA, Name: "a", Host: "10.0.0.2", Port: 80, Subdomain: "calm-otter", Public: &no}}
-	PlanServices(st.Targets, remote, &DisableTracker{}, t0).Apply(&st, t0, DefaultServerDisablesPerDay)
-	if st.Targets[0].Public == nil || *st.Targets[0].Public {
-		t.Fatalf("toggle = %v", st.Targets[0].Public)
-	}
-	yes := true
-	remote[0].Public = &yes
-	PlanServices(st.Targets, remote, &DisableTracker{}, t0).Apply(&st, t0, DefaultServerDisablesPerDay)
-	if st.Targets[0].IsPublicLocally() {
-		t.Fatal("server made a private app public")
 	}
 }
