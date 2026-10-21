@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/netip"
-	"slices"
 	"strings"
 	"time"
 
@@ -14,28 +13,20 @@ import (
 // Resolver returns the addresses a host name resolves to.
 type Resolver func(ctx context.Context, host string) ([]netip.Addr, error)
 
-// ReviewItem is one row of the local review screen.
+// ReviewItem is one row of the local review list. The list is
+// informational: what an app reaches, apps that are turned off, and
+// requests from SeaWise to turn an app off. Only a refused address stops
+// an app.
 type ReviewItem struct {
-	LocalID       string     `json:"local_id"`
-	Name          string     `json:"name"`
-	Host          string     `json:"host"`
-	Port          int        `json:"port"`
-	Disabled      bool       `json:"disabled"`
-	Grandfathered bool       `json:"grandfathered"`
-	ConfirmedAt   *time.Time `json:"confirmed_at,omitempty"`
-	Granted       []string   `json:"granted"`
+	LocalID  string `json:"local_id"`
+	Name     string `json:"name"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Disabled bool   `json:"disabled"`
 	// ServerDisableRequestedAt is set while the server asks to turn the app
 	// off; the app keeps running until the owner accepts.
 	ServerDisableRequestedAt *time.Time `json:"server_disable_requested_at,omitempty"`
-	// Public is the local toggle; ServerPublic is what the server reports.
-	// An app public on the server but not here is not tunnelled.
-	Public       bool `json:"public"`
-	ServerPublic bool `json:"server_public"`
 	Assessment
-	// Missing lists required grants the target does not hold. The agent does
-	// not tunnel a target while its literal address misses a grant, and the
-	// forwarder refuses connections to addresses that miss one.
-	Missing []string `json:"missing"`
 }
 
 // ResolveHost resolves a target host, returning a literal address as is.
@@ -47,11 +38,11 @@ func ResolveHost(ctx context.Context, r Resolver, host string) ([]netip.Addr, er
 	return r(ctx, h)
 }
 
-// BuildReview lists targets that are grandfathered, disabled, have a pending
-// server disable request, whose current addresses need grants they do not
-// hold, or that the server reports public while they are private here.
-// publicAllowed is the operator opt-in for public targets.
-func BuildReview(ctx context.Context, targets []store.Target, resolve Resolver, gateways []netip.Addr, publicAllowed bool) []ReviewItem {
+// BuildReview lists the targets that are turned off, have a pending server
+// disable request, reach an address that is refused, or reach a class of
+// address worth pointing out (this machine, a public address, a mail port,
+// a management API port or the network gateway).
+func BuildReview(ctx context.Context, targets []store.Target, resolve Resolver, gateways []netip.Addr) []ReviewItem {
 	out := []ReviewItem{}
 	for _, t := range targets {
 		var as Assessment
@@ -59,26 +50,14 @@ func BuildReview(ctx context.Context, targets []store.Target, resolve Resolver, 
 		if err != nil {
 			as = Assessment{Classes: []Class{}, Required: []string{}, Refused: "host did not resolve"}
 		} else {
-			as = Assess(t.Host, t.Port, addrs, gateways, Options{PublicAllowed: publicAllowed})
+			as = Assess(t.Host, t.Port, addrs, gateways)
 		}
-		granted := append([]string{}, t.Allowed...)
-		if t.Grandfathered {
-			granted = append(granted, grandfatheredGrants...)
-		}
-		missing := []string{}
-		for _, g := range as.Required {
-			if !slices.Contains(granted, g) {
-				missing = append(missing, g)
-			}
-		}
-		conflict := t.ServerPublic && !t.IsPublicLocally()
-		if !t.Grandfathered && !t.Disabled && t.ServerDisableRequestedAt == nil && len(missing) == 0 && as.Refused == "" && !conflict {
+		if !t.Disabled && t.ServerDisableRequestedAt == nil && len(as.Required) == 0 && as.Refused == "" {
 			continue
 		}
 		out = append(out, ReviewItem{
 			LocalID: t.LocalID, Name: t.Name, Host: t.Host, Port: t.Port, Disabled: t.Disabled,
-			Grandfathered: t.Grandfathered, ConfirmedAt: t.ConfirmedAt, Granted: granted, Assessment: as, Missing: missing,
-			ServerDisableRequestedAt: t.ServerDisableRequestedAt, Public: t.IsPublicLocally(), ServerPublic: t.ServerPublic,
+			ServerDisableRequestedAt: t.ServerDisableRequestedAt, Assessment: as,
 		})
 	}
 	return out
@@ -86,7 +65,6 @@ func BuildReview(ctx context.Context, targets []store.Target, resolve Resolver, 
 
 var (
 	ErrNotFound = errors.New("target not found")
-	ErrChanged  = errors.New("target changed while it was being reviewed")
 	ErrNoAction = errors.New("nothing to do for this target")
 )
 
@@ -96,39 +74,6 @@ func find(st *store.State, localID string) *store.Target {
 			return &st.Targets[i]
 		}
 	}
-	return nil
-}
-
-// Confirm records the owner's review: the target keeps exactly the grants
-// its current addresses need and stops being grandfathered. host and port
-// are the values that were assessed; a target that changed since is not
-// confirmed.
-func Confirm(st *store.State, localID, host string, port int, as Assessment, now time.Time) error {
-	if as.Refused != "" {
-		return errors.New("target cannot be confirmed: " + as.Refused)
-	}
-	t := find(st, localID)
-	if t == nil {
-		return ErrNotFound
-	}
-	if t.Host != host || t.Port != port {
-		return ErrChanged
-	}
-	t.Allowed = append([]string(nil), as.Required...)
-	t.Grandfathered = false
-	at := now
-	t.ConfirmedAt = &at
-	return nil
-}
-
-// SetPublic records the owner's public toggle for a target.
-func SetPublic(st *store.State, localID string, on bool) error {
-	t := find(st, localID)
-	if t == nil {
-		return ErrNotFound
-	}
-	v := on
-	t.Public = &v
 	return nil
 }
 

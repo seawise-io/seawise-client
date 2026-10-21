@@ -199,7 +199,6 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *age
 	}
 	srv, err := adminui.New(adminui.Config{
 		Store: st, Auth: auth, Status: status, AllowedHosts: extra, Hostname: hostname, Logger: log,
-		PublicAllowed:    os.Getenv("SEAWISE_ALLOW_PUBLIC_TARGETS") == "1",
 		OnTargetsChanged: func(ctx context.Context) { _ = a.Reconcile(ctx) },
 		AccessLog:        al,
 		KillSwitch:       a.SetKillSwitch,

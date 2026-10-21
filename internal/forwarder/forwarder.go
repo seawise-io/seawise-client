@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
-	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -44,8 +43,7 @@ type App struct {
 }
 
 func (a App) same(b App) bool {
-	return a.ID == b.ID && a.Host == b.Host && a.Port == b.Port && a.Rule.Host == b.Rule.Host &&
-		a.Rule.Grandfathered == b.Rule.Grandfathered && slices.Equal(a.Rule.Grants, b.Rule.Grants)
+	return a.ID == b.ID && a.Host == b.Host && a.Port == b.Port && a.Rule == b.Rule
 }
 
 type Config struct {

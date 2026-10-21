@@ -114,30 +114,23 @@ func TestKillSwitchEndpoint(t *testing.T) {
 	}
 }
 
-func TestPublicToggleActions(t *testing.T) {
+// Whether an app is public is the server's setting, as in 1.x: there is no
+// local public toggle to set.
+func TestNoLocalPublicToggle(t *testing.T) {
 	now := t0
 	h := newReviewHarness(t, []store.Target{
 		{LocalID: "a", Name: "site", Host: "192.168.1.5", Port: 80, ConfirmedAt: &now, Source: store.SourceLocal, ServerPublic: true},
 	})
-	changed := 0
-	h.s.cfg.OnTargetsChanged = func(context.Context) { changed++ }
-	if body := h.list(); !strings.Contains(body, `"server_public":true`) || !strings.Contains(body, `"public":false`) {
-		t.Fatalf("conflict not listed: %s", body)
+	if body := h.list(); strings.Contains(body, `"server_public"`) || strings.Contains(body, `"public"`) {
+		t.Fatalf("public state listed: %s", body)
 	}
-	if code := h.act(`{"local_id":"a","action":"make_public"}`, true); code != 200 {
-		t.Fatalf("make_public %d", code)
+	for _, action := range []string{"make_public", "make_private"} {
+		if code := h.act(`{"local_id":"a","action":"`+action+`"}`, true); code != http.StatusBadRequest {
+			t.Fatalf("%s %d", action, code)
+		}
 	}
-	if !h.target("a").IsPublicLocally() || changed != 1 {
-		t.Fatal("toggle not saved")
-	}
-	if code := h.act(`{"local_id":"a","action":"make_private"}`, true); code != 200 {
-		t.Fatalf("make_private %d", code)
-	}
-	if p := h.target("a").Public; p == nil || *p {
-		t.Fatal("private not saved")
-	}
-	if code := h.act(`{"local_id":"a","action":"make_public"}`, false); code != 403 {
-		t.Fatalf("without CSRF %d", code)
+	if h.target("a").Public != nil {
+		t.Fatal("toggle saved")
 	}
 }
 
@@ -154,9 +147,14 @@ func TestUIUsesTextContentOnly(t *testing.T) {
 		}
 	}
 	b, _ := staticFS.ReadFile("static/app.js")
-	for _, want := range []string{"/api/access-log", "/api/kill-switch", "make_public", "make_private"} {
+	for _, want := range []string{"/api/access-log", "/api/kill-switch"} {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("app.js does not use %s", want)
+		}
+	}
+	for _, gone := range []string{"make_public", "make_private", `"confirm"`} {
+		if strings.Contains(string(b), gone) {
+			t.Errorf("app.js still offers %s", gone)
 		}
 	}
 }

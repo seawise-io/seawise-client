@@ -17,15 +17,13 @@ its own state in `<data folder>/v2`.
   dialled, after DNS resolution:
   - cloud metadata, link-local, multicast and reserved addresses are always
     refused, including in IPv6 translation forms;
-  - a name that resolves to this machine's loopback is refused unless the
-    app's host is itself `localhost` or a loopback address;
-  - public addresses, mail ports on public addresses, loopback, management
-    API ports (Docker, Kubernetes, kubelet, etcd) and the network gateway
-    each need a confirmation on this machine.
+  - every other address is allowed, as in 1.x: no confirmation is needed on
+    this machine for new or existing apps.
 
-  Apps set up before the upgrade keep working without confirmation, except
-  on management API ports, and are listed for review in the admin UI.
-  New apps not yet confirmed on this machine are not tunnelled.
+  The admin UI lists apps that reach this machine, a public address, a mail
+  port, a management API (Docker, Kubernetes, kubelet, etcd) or the network
+  gateway, for information. Whether an app is public is set in SeaWise, as
+  in 1.x.
 - **Admin UI over HTTPS** on the same port as before, with a self-signed
   certificate whose fingerprint is logged at start. Plain HTTP redirects to
   HTTPS for 90 days after an upgrade, then shows a notice. `/healthz` stays
@@ -146,7 +144,6 @@ stay on the current client.
 | `SEAWISE_PORT` | Admin UI port (default `8082`) |
 | `SEAWISE_BIND_ADDR` | Admin UI listening address |
 | `SEAWISE_ALLOWED_HOSTS` | Extra host names allowed to reach the admin UI |
-| `SEAWISE_ALLOW_PUBLIC_TARGETS` | `1` lets new apps use public addresses (each still needs confirmation) |
 | `SEAWISE_NAT64_PREFIXES` | Extra NAT64 prefixes used on this network, comma separated |
 | `SEAWISE_CONTAINER` | `1` treats the process as running in a container |
 | `SEAWISE_FRPC_PATH`, `SEAWISE_TRUSTED_CA_FILE` | frpc binary and CA bundle |

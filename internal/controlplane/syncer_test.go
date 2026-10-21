@@ -283,7 +283,7 @@ func TestSyncerServerDisableNeedsOwner(t *testing.T) {
 	}
 }
 
-func TestPublicImportOnlyCountsOnceSaved(t *testing.T) {
+func TestServerPublicRecordedOnceSaved(t *testing.T) {
 	var public atomic.Bool
 	public.Store(true)
 	f := newFake(t, func(w http.ResponseWriter, r *http.Request, n int) {
@@ -305,17 +305,16 @@ func TestPublicImportOnlyCountsOnceSaved(t *testing.T) {
 	if err := os.Chmod(st.Dir(), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if p := st.State().Targets[0].Public; p != nil {
-		t.Fatalf("import applied in memory without being saved: %v", *p)
+	if st.State().Targets[0].ServerPublic {
+		t.Fatal("server flag applied in memory without being saved")
+	}
+	s.Step(context.Background())
+	if tg := st.State().Targets[0]; !tg.ServerPublic || tg.Public != nil {
+		t.Fatalf("server flag not recorded, or a local toggle set: %+v", tg)
 	}
 	public.Store(false)
 	s.Step(context.Background())
-	if p := st.State().Targets[0].Public; p == nil || *p {
-		t.Fatalf("toggle = %v, want the first saved import (private)", p)
-	}
-	public.Store(true)
-	s.Step(context.Background())
-	if st.State().Targets[0].IsPublicLocally() {
-		t.Fatal("import repeated after it was saved")
+	if st.State().Targets[0].ServerPublic {
+		t.Fatal("server private flag not recorded")
 	}
 }

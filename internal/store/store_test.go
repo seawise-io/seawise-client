@@ -721,11 +721,8 @@ func TestPublicToggleIsCopied(t *testing.T) {
 	}
 	st := s.State()
 	*st.Targets[0].Public = false
-	if !s.State().Targets[0].IsPublicLocally() {
+	if p := s.State().Targets[0].Public; p == nil || !*p {
 		t.Fatal("State() shares the public toggle")
-	}
-	if (Target{}).IsPublicLocally() {
-		t.Fatal("no decision must count as private")
 	}
 }
 

@@ -54,19 +54,13 @@
       var notes = [];
       if (it.disabled) notes.push("turned off");
       if (it.refused) notes.push("connections refused: " + it.refused);
-      else if (it.missing && it.missing.length) notes.push("connections refused until you confirm: " + it.missing.join(", "));
-      if (it.reasons && it.reasons.length) notes.push("why: " + it.reasons.join(", "));
-      else if (it.grandfathered) notes.push("set up before this version, still working");
+      else if (it.reasons && it.reasons.length) notes.push("reaches " + it.reasons.join(", "));
       if (it.server_disable_requested_at) notes.push("SeaWise asks to turn this app off; it keeps running until you accept");
-      if (it.server_public && !it.public) notes.push("public on SeaWise but private on this machine, so it is not shared until you make it public here");
       li.appendChild(document.createTextNode((it.name ? it.name + " (" + where + ")" : name) + ": " + notes.join("; ") + " "));
-      if (!it.refused && (it.grandfathered || (it.missing && it.missing.length))) li.appendChild(button("Confirm", it.local_id, "confirm", name));
       if (it.server_disable_requested_at) {
         li.appendChild(button("Turn off as asked", it.local_id, "accept_server_disable", name));
         li.appendChild(button("Keep running", it.local_id, "dismiss_server_disable", name));
       }
-      if (it.server_public && !it.public) li.appendChild(button("Make public", it.local_id, "make_public", name));
-      if (it.public) li.appendChild(button("Make private", it.local_id, "make_private", name));
       li.appendChild(it.disabled ? button("Turn on", it.local_id, "enable", name) : button("Turn off", it.local_id, "disable", name));
       ul.appendChild(li);
     });

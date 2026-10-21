@@ -96,7 +96,7 @@ func refused(t *testing.T, f *Forwarder, app App) {
 func TestForwardsAllowedTarget(t *testing.T) {
 	port, accepts := echoServer(t)
 	f := newFwd(t, Config{})
-	app := App{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1", Grants: []string{targetpolicy.GrantLoopback}}}
+	app := App{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1"}}
 	ports := f.Sync([]App{app})
 	c := dialApp(t, ports["a"])
 	defer c.Close()
@@ -109,15 +109,15 @@ func TestForwardsAllowedTarget(t *testing.T) {
 	}
 }
 
-func TestRefusesForbiddenAndUngranted(t *testing.T) {
+func TestRefusesForbidden(t *testing.T) {
 	f := newFwd(t, Config{DialTimeout: time.Second})
-	refused(t, f, App{ID: "meta", Host: "169.254.169.254", Port: 80, Rule: targetpolicy.Rule{Host: "169.254.169.254", Grandfathered: true}})
-	refused(t, f, App{ID: "ll", Host: "169.254.10.10", Port: 80, Rule: targetpolicy.Rule{Host: "169.254.10.10", Grandfathered: true}})
-	refused(t, f, App{ID: "pub", Host: "93.184.216.34", Port: 80, Rule: targetpolicy.Rule{Host: "93.184.216.34"}})
-	refused(t, f, App{ID: "nat64", Host: "64:ff9b::a9fe:a9fe", Port: 80, Rule: targetpolicy.Rule{Host: "64:ff9b::a9fe:a9fe", Grandfathered: true}})
+	refused(t, f, App{ID: "meta", Host: "169.254.169.254", Port: 80, Rule: targetpolicy.Rule{Host: "169.254.169.254"}})
+	refused(t, f, App{ID: "ll", Host: "169.254.10.10", Port: 80, Rule: targetpolicy.Rule{Host: "169.254.10.10"}})
+	refused(t, f, App{ID: "nat64", Host: "64:ff9b::a9fe:a9fe", Port: 80, Rule: targetpolicy.Rule{Host: "64:ff9b::a9fe:a9fe"}})
 }
 
-func TestRebindingToLoopbackRefused(t *testing.T) {
+// A name that resolves to this machine is forwarded, as with 1.x.
+func TestNameToLoopbackForwarded(t *testing.T) {
 	port, accepts := echoServer(t)
 	resolve := func(_ context.Context, h string) ([]netip.Addr, error) {
 		if h == "rebind.test" {
@@ -126,17 +126,18 @@ func TestRebindingToLoopbackRefused(t *testing.T) {
 		return nil, errors.New("nxdomain")
 	}
 	f := newFwd(t, Config{Resolve: resolve})
-	all := []string{targetpolicy.GrantLoopback, targetpolicy.GrantPublic, targetpolicy.GrantSensitive, targetpolicy.GrantGateway}
-	refused(t, f, App{ID: "r", Host: "rebind.test", Port: port, Rule: targetpolicy.Rule{Host: "rebind.test", Grants: all, Grandfathered: true}})
-	if accepts.Load() != 0 {
-		t.Fatal("target was connected to")
+	ports := f.Sync([]App{{ID: "r", Host: "rebind.test", Port: port, Rule: targetpolicy.Rule{Host: "rebind.test"}}})
+	c := dialApp(t, ports["r"])
+	defer c.Close()
+	if got, err := roundTrip(c, "hi"); err != nil || got != "echo:hi\n" || accepts.Load() != 1 {
+		t.Fatalf("forward: %q %v", got, err)
 	}
 }
 
 func TestRevocationClosesListenerAndConnections(t *testing.T) {
 	port, _ := echoServer(t)
 	f := newFwd(t, Config{})
-	granted := App{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1", Grants: []string{targetpolicy.GrantLoopback}}}
+	granted := App{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1"}}
 	ports := f.Sync([]App{granted})
 	c := dialApp(t, ports["a"])
 	defer c.Close()
@@ -144,10 +145,10 @@ func TestRevocationClosesListenerAndConnections(t *testing.T) {
 		t.Fatal(err)
 	}
 	revoked := granted
-	revoked.Rule = targetpolicy.Rule{Host: "127.0.0.1"}
+	revoked.Host, revoked.Rule = "localhost", targetpolicy.Rule{Host: "localhost"}
 	newPorts := f.Sync([]App{revoked})
 	if newPorts["a"] == ports["a"] {
-		t.Fatal("listener kept after a grant change")
+		t.Fatal("listener kept after a target change")
 	}
 	if _, err := roundTrip(c, "two"); err == nil {
 		t.Fatal("open connection survived revocation")
@@ -164,7 +165,7 @@ func TestRevocationClosesListenerAndConnections(t *testing.T) {
 func TestConnectionCap(t *testing.T) {
 	port, _ := echoServer(t)
 	f := newFwd(t, Config{MaxConns: 1})
-	ports := f.Sync([]App{{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1", Grants: []string{targetpolicy.GrantLoopback}}}})
+	ports := f.Sync([]App{{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1"}}})
 	first := dialApp(t, ports["a"])
 	defer first.Close()
 	if _, err := roundTrip(first, "x"); err != nil {
@@ -180,7 +181,7 @@ func TestConnectionCap(t *testing.T) {
 func TestIdleTimeout(t *testing.T) {
 	port, _ := echoServer(t)
 	f := newFwd(t, Config{IdleTimeout: 150 * time.Millisecond})
-	ports := f.Sync([]App{{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1", Grants: []string{targetpolicy.GrantLoopback}}}})
+	ports := f.Sync([]App{{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1"}}})
 	c := dialApp(t, ports["a"])
 	defer c.Close()
 	if _, err := roundTrip(c, "x"); err != nil {
@@ -195,7 +196,7 @@ func TestIdleTimeout(t *testing.T) {
 func TestListenersOnLoopbackOnly(t *testing.T) {
 	port, _ := echoServer(t)
 	f := newFwd(t, Config{})
-	f.Sync([]App{{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1", Grants: []string{targetpolicy.GrantLoopback}}}})
+	f.Sync([]App{{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1"}}})
 	for _, l := range f.listeners() {
 		if !l.ln.Addr().(*net.TCPAddr).IP.IsLoopback() {
 			t.Fatalf("listener on %v", l.ln.Addr())
@@ -204,7 +205,7 @@ func TestListenersOnLoopbackOnly(t *testing.T) {
 }
 
 func loopApp(port int) App {
-	return App{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1", Grants: []string{targetpolicy.GrantLoopback}}}
+	return App{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1"}}
 }
 
 func TestMaxLifetime(t *testing.T) {
@@ -299,7 +300,7 @@ func TestRecordsEachConnection(t *testing.T) {
 	port, _ := echoServer(t)
 	rec := &recorder{}
 	f := newFwd(t, Config{Record: rec.record})
-	ports := f.Sync([]App{{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1", Grants: []string{targetpolicy.GrantLoopback}}}})
+	ports := f.Sync([]App{{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1"}}})
 	c := dialApp(t, ports["a"])
 	if _, err := roundTrip(c, "hello"); err != nil {
 		t.Fatal(err)
@@ -320,8 +321,8 @@ func TestRecordsRefusalsAndBusy(t *testing.T) {
 	rec := &recorder{}
 	f := newFwd(t, Config{Record: rec.record, MaxConns: 1, DialTimeout: time.Second})
 	ports := f.Sync([]App{
-		{ID: "meta", Host: "169.254.169.254", Port: 80, Rule: targetpolicy.Rule{Host: "169.254.169.254", Grandfathered: true}},
-		{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1", Grants: []string{targetpolicy.GrantLoopback}}},
+		{ID: "meta", Host: "169.254.169.254", Port: 80, Rule: targetpolicy.Rule{Host: "169.254.169.254"}},
+		{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1"}},
 	})
 	m := dialApp(t, ports["meta"])
 	_, _ = roundTrip(m, "x")
@@ -350,7 +351,7 @@ func TestRecordsUnreachable(t *testing.T) {
 	rec := &recorder{}
 	f := newFwd(t, Config{Record: rec.record, DialTimeout: time.Second})
 	port := freePort(t)
-	ports := f.Sync([]App{{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1", Grants: []string{targetpolicy.GrantLoopback}}}})
+	ports := f.Sync([]App{{ID: "a", Host: "127.0.0.1", Port: port, Rule: targetpolicy.Rule{Host: "127.0.0.1"}}})
 	c := dialApp(t, ports["a"])
 	_, _ = roundTrip(c, "x")
 	c.Close()

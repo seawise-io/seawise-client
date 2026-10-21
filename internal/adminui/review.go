@@ -21,13 +21,11 @@ func defaultResolver(ctx context.Context, host string) ([]netip.Addr, error) {
 }
 
 func (s *Server) handleReviewList(w http.ResponseWriter, r *http.Request) {
-	items := targetpolicy.BuildReview(r.Context(), s.cfg.Store.State().Targets, s.cfg.Resolver, s.cfg.Gateways(), s.cfg.PublicAllowed)
+	items := targetpolicy.BuildReview(r.Context(), s.cfg.Store.State().Targets, s.cfg.Resolver, s.cfg.Gateways())
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-// handleReviewAction applies one owner decision to a target. A confirmation
-// is assessed here, so the browser cannot grant more than the target needs,
-// and stored only if the target still has the host and port assessed.
+// handleReviewAction applies one owner decision to a target.
 func (s *Server) handleReviewAction(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		LocalID string `json:"local_id"`
@@ -50,20 +48,6 @@ func (s *Server) handleReviewAction(w http.ResponseWriter, r *http.Request) {
 	}
 	var apply func(*store.State) error
 	switch body.Action {
-	case "confirm":
-		addrs, err := targetpolicy.ResolveHost(r.Context(), s.cfg.Resolver, target.Host)
-		if err != nil {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "host did not resolve"})
-			return
-		}
-		as := targetpolicy.Assess(target.Host, target.Port, addrs, s.cfg.Gateways(), targetpolicy.Options{PublicAllowed: s.cfg.PublicAllowed})
-		if as.Refused != "" {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": as.Refused})
-			return
-		}
-		now := s.cfg.Now()
-		host, port := target.Host, target.Port
-		apply = func(st *store.State) error { return targetpolicy.Confirm(st, body.LocalID, host, port, as, now) }
 	case "disable":
 		apply = func(st *store.State) error { return targetpolicy.Disable(st, body.LocalID) }
 	case "enable":
@@ -72,10 +56,6 @@ func (s *Server) handleReviewAction(w http.ResponseWriter, r *http.Request) {
 		apply = func(st *store.State) error { return targetpolicy.AcceptServerDisable(st, body.LocalID) }
 	case "dismiss_server_disable":
 		apply = func(st *store.State) error { return targetpolicy.DismissServerDisable(st, body.LocalID) }
-	case "make_public":
-		apply = func(st *store.State) error { return targetpolicy.SetPublic(st, body.LocalID, true) }
-	case "make_private":
-		apply = func(st *store.State) error { return targetpolicy.SetPublic(st, body.LocalID, false) }
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown action"})
 		return
@@ -85,7 +65,7 @@ func (s *Server) handleReviewAction(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, targetpolicy.ErrNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "app not found"})
 			return
-		case errors.Is(err, targetpolicy.ErrChanged), errors.Is(err, targetpolicy.ErrNoAction):
+		case errors.Is(err, targetpolicy.ErrNoAction):
 			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 			return
 		}
