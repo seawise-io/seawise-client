@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -169,8 +170,8 @@ func startUpdateCheck(ctx context.Context, log *slog.Logger, st *store.Store) fu
 	return c.Status
 }
 
-// startAdminUI serves HTTPS and plain HTTP on the admin port and returns a
-// function that waits for it to stop.
+// startAdminUI serves the admin UI on the admin port (plain HTTP, or HTTPS
+// with SEAWISE_TLS=auto) and returns a function that waits for it to stop.
 func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *agent.Agent, al *accesslog.Log, status func(context.Context) any) (func(), error) {
 	auth, err := adminui.NewAuth(adminui.AuthConfig{Store: st, Logger: log})
 	if err != nil {
@@ -178,10 +179,13 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *age
 	}
 	hostname, _ := os.Hostname()
 	extra := adminui.AllowedHostsFromEnv()
-	names, ips := adminui.LocalNames(hostname, extra)
-	cert, err := adminui.EnsureCert(st.Dir(), names, ips, time.Now())
-	if err != nil {
-		return nil, err
+	useTLS := os.Getenv("SEAWISE_TLS") == "auto"
+	var cert *adminui.CertInfo
+	if useTLS {
+		names, ips := adminui.LocalNames(hostname, extra)
+		if cert, err = adminui.EnsureCert(st.Dir(), names, ips, time.Now()); err != nil {
+			return nil, err
+		}
 	}
 	port := constants.DefaultWebPort
 	if v := os.Getenv("SEAWISE_PORT"); v != "" {
@@ -198,7 +202,7 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *age
 		}
 	}
 	srv, err := adminui.New(adminui.Config{
-		Store: st, Auth: auth, Status: status, AllowedHosts: extra, Hostname: hostname, Logger: log,
+		Store: st, Auth: auth, Status: status, AllowedHosts: extra, Hostname: hostname, Logger: log, TLS: useTLS,
 		OnTargetsChanged: func(ctx context.Context) { _ = a.Reconcile(ctx) },
 		AccessLog:        al,
 		KillSwitch:       a.SetKillSwitch,
@@ -210,10 +214,15 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *age
 	if err != nil {
 		return nil, err
 	}
-	log.Info("admin UI listening", "address", ln.Addr().String(), "https", true, "cert_sha256", cert.Fingerprint, "cert_new", cert.Regenerated)
+	var tlsCert *tls.Certificate
+	if cert != nil {
+		tlsCert = &cert.Cert
+		log.Info("admin UI listening", "address", ln.Addr().String(), "https", true, "cert_sha256", cert.Fingerprint, "cert_new", cert.Regenerated)
+	} else {
+		log.Info("admin UI listening", "address", ln.Addr().String(), "https", false)
+	}
 	if auth.SetupRequired() {
-		log.Warn("No password set. Open the admin UI over HTTPS and set one within "+adminui.FirstRunWindowText()+".",
-			"port", port, "cert_sha256", cert.Fingerprint)
+		log.Warn("No password set. Open the admin UI and set one within "+adminui.FirstRunWindowText()+".", "port", port)
 		t := time.AfterFunc(time.Until(auth.SetupDeadline()), func() {
 			if auth.SetupRequired() {
 				log.Warn("Setup window closed. Restart the client to set a password.")
@@ -224,7 +233,7 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *age
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		if err := srv.Serve(ctx, ln, cert.Cert); err != nil && !errors.Is(err, context.Canceled) {
+		if err := srv.Serve(ctx, ln, tlsCert); err != nil && !errors.Is(err, context.Canceled) {
 			log.Error("admin UI stopped", "error", err)
 		}
 	}()

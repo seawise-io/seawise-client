@@ -414,7 +414,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sess.removeAll()
 	token, csrf := s.sess.create()
-	setSessionCookie(w, token)
+	setSessionCookie(w, r, token)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "csrf": csrf})
 }
 
@@ -441,7 +441,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token, csrf := s.sess.create()
-	setSessionCookie(w, token)
+	setSessionCookie(w, r, token)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "csrf": csrf})
 }
 

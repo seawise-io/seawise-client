@@ -1,4 +1,5 @@
-// Package adminui serves the agent's local admin UI over HTTPS, sharing its port with a minimal plain HTTP handler.
+// Package adminui serves the agent's local admin UI: plain HTTP by default,
+// HTTPS on the same port with SEAWISE_TLS=auto.
 package adminui
 
 import (
@@ -7,7 +8,6 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
-	"html/template"
 	"log"
 	"log/slog"
 	"net"
@@ -22,7 +22,6 @@ import (
 )
 
 const (
-	RedirectWindow = 90 * 24 * time.Hour
 	MaxAPIBody     = 4 << 10
 	maxHeaderBytes = 16 << 10
 )
@@ -33,22 +32,17 @@ const csp = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 's
 //go:embed static/*
 var staticFS embed.FS
 
-var noticeTmpl = template.Must(template.New("notice").Parse(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>SeaWise: use HTTPS</title></head>
-<body><main><h1>This page moved to HTTPS</h1>
-<p>The SeaWise admin page is now served over HTTPS on the same port. Open <code>https://{{.}}/</code>.</p>
-<p>Your browser will warn about a self-signed certificate the first time. Compare its fingerprint with the one in the client's logs before you continue.</p>
-</main></body></html>
-`))
-
 type Config struct {
 	Store        *store.Store
 	Auth         *Auth
 	Status       func(ctx context.Context) any
 	AllowedHosts []string
-	Hostname     string
-	Now          func() time.Time
-	Logger       *slog.Logger
+	// TLS serves the UI over HTTPS only (SEAWISE_TLS=auto); off, it is
+	// served over plain HTTP.
+	TLS      bool
+	Hostname string
+	Now      func() time.Time
+	Logger   *slog.Logger
 	// Resolver and Gateways feed the target review; defaults use the system.
 	Resolver         targetpolicy.Resolver
 	Gateways         func() []netip.Addr
@@ -113,24 +107,42 @@ func New(cfg Config) (*Server, error) {
 
 // SecureHandler is served over TLS.
 func (s *Server) SecureHandler() http.Handler {
-	return s.headers(s.hostCheck(s.originCheck(s.limitBody(s.secure))))
+	return s.headers(s.hostCheck(s.scheme(true, s.originCheck(s.limitBody(s.secure)))))
 }
 
-// PlainHandler is served over plain HTTP.
+// PlainHandler is served over plain HTTP: the UI when TLS is off; with TLS
+// on, the loopback health check only.
 func (s *Server) PlainHandler() http.Handler {
-	return s.headers(http.HandlerFunc(s.plain))
+	if s.cfg.TLS {
+		return s.headers(http.HandlerFunc(s.plainTLSOn))
+	}
+	ui := s.hostCheck(s.scheme(false, s.originCheck(s.limitBody(s.secure))))
+	return s.headers(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if loopbackHealthz(r) {
+			s.handleHealthz(w, r)
+			return
+		}
+		ui.ServeHTTP(w, r)
+	}))
 }
 
-// Serve runs both servers on ln until ctx is cancelled.
-func (s *Server) Serve(ctx context.Context, ln net.Listener, cert tls.Certificate) error {
-	tlsL, plainL := splitListener(ln, limits{peek: s.cfg.PeekTimeout, total: s.cfg.MaxConns, perIP: s.cfg.MaxConnsPerIP})
+// Serve runs the servers on ln until ctx is cancelled. cert is required
+// with TLS on and unused with it off.
+func (s *Server) Serve(ctx context.Context, ln net.Listener, cert *tls.Certificate) error {
+	if s.cfg.TLS && cert == nil {
+		return errors.New("adminui: TLS needs a certificate")
+	}
+	tlsL, plainL := splitListener(ln, limits{peek: s.cfg.PeekTimeout, total: s.cfg.MaxConns, perIP: s.cfg.MaxConnsPerIP, plainOnly: !s.cfg.TLS})
 	errLog := slog.NewLogLogger(s.log.Handler(), slog.LevelDebug)
 	newServer := func(h http.Handler) *http.Server { return newHTTPServer(h, errLog) }
-	secure := newServer(s.SecureHandler())
-	secure.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{cert}}
 	plain := newServer(s.PlainHandler())
 	errs := make(chan error, 2)
-	go func() { errs <- secure.ServeTLS(tlsL, "", "") }()
+	var secure *http.Server
+	if s.cfg.TLS {
+		secure = newServer(s.SecureHandler())
+		secure.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{*cert}}
+		go func() { errs <- secure.ServeTLS(tlsL, "", "") }()
+	}
 	go func() { errs <- plain.Serve(plainL) }()
 	var err error
 	select {
@@ -139,7 +151,9 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, cert tls.Certificat
 	}
 	sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_ = secure.Shutdown(sctx)
+	if secure != nil {
+		_ = secure.Shutdown(sctx)
+	}
 	_ = plain.Shutdown(sctx)
 	_ = ln.Close()
 	if err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
@@ -200,9 +214,14 @@ func (s *Server) limitBody(next http.Handler) http.Handler {
 
 func safeMethod(m string) bool { return m == http.MethodGet || m == http.MethodHead }
 
+// sameOrigin compares the Origin with this server's scheme and host.
 func sameOrigin(r *http.Request) bool {
 	if o := r.Header.Get("Origin"); o != "" {
-		return strings.EqualFold(o, "https://"+r.Host)
+		sch := "http://"
+		if isHTTPS(r) {
+			sch = "https://"
+		}
+		return strings.EqualFold(o, sch+r.Host)
 	}
 	return r.Header.Get("Sec-Fetch-Site") == "same-origin"
 }
@@ -225,8 +244,32 @@ func (s *Server) requireSession(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) plain(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/healthz" && r.Method == http.MethodGet && loopbackPeer(r.RemoteAddr) {
+type httpsKey struct{}
+
+// scheme records whether the request arrived over TLS, for the origin check
+// and the session cookie.
+func (s *Server) scheme(https bool, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, withHTTPS(r, https))
+	})
+}
+
+func withHTTPS(r *http.Request, on bool) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), httpsKey{}, on))
+}
+
+func isHTTPS(r *http.Request) bool {
+	on, _ := r.Context().Value(httpsKey{}).(bool)
+	return on
+}
+
+func loopbackHealthz(r *http.Request) bool {
+	return r.URL.Path == "/healthz" && r.Method == http.MethodGet && loopbackPeer(r.RemoteAddr)
+}
+
+// plainTLSOn answers plain HTTP while the UI is HTTPS only.
+func (s *Server) plainTLSOn(w http.ResponseWriter, r *http.Request) {
+	if loopbackHealthz(r) {
 		s.handleHealthz(w, r)
 		return
 	}
@@ -234,18 +277,7 @@ func (s *Server) plain(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "host not allowed", http.StatusMisdirectedRequest)
 		return
 	}
-	if safeMethod(r.Method) && s.inRedirectWindow() {
-		http.Redirect(w, r, "https://"+r.Host+r.URL.RequestURI(), http.StatusPermanentRedirect)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusForbidden)
-	_ = noticeTmpl.Execute(w, r.Host)
-}
-
-func (s *Server) inRedirectWindow() bool {
-	up := s.cfg.Store.State().UpgradedAt
-	return up != nil && s.cfg.Now().Before(up.Add(RedirectWindow))
+	http.Error(w, "Client sent an HTTP request to an HTTPS server.", http.StatusBadRequest)
 }
 
 func loopbackPeer(remote string) bool {
@@ -290,7 +322,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	s.sess.remove(sessionToken(r))
-	clearSessionCookie(w)
+	clearSessionCookie(w, r)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

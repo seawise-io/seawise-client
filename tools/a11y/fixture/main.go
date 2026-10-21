@@ -81,7 +81,7 @@ func run(ctx context.Context, log *slog.Logger, dir string, port int, ready stri
 	var mu sync.Mutex
 	killed := false
 	srv, err := adminui.New(adminui.Config{
-		Store: st, Auth: auth, Logger: log,
+		Store: st, Auth: auth, Logger: log, TLS: true,
 		Status: func(context.Context) any {
 			mu.Lock()
 			defer mu.Unlock()
@@ -121,7 +121,7 @@ func run(ctx context.Context, log *slog.Logger, dir string, port int, ready stri
 		ln.Close()
 		return err
 	}
-	return srv.Serve(ctx, ln, cert.Cert)
+	return srv.Serve(ctx, ln, &cert.Cert)
 }
 
 // closedUI serves a UI with no password whose first-run window has passed.
@@ -151,7 +151,7 @@ func closedUI(ctx context.Context, log *slog.Logger, dir string, now time.Time) 
 		st.Close()
 		return "", nil, err
 	}
-	srv, err := adminui.New(adminui.Config{Store: st, Auth: auth, Logger: log, Status: func(context.Context) any { return map[string]any{} }})
+	srv, err := adminui.New(adminui.Config{Store: st, Auth: auth, Logger: log, TLS: true, Status: func(context.Context) any { return map[string]any{} }})
 	if err != nil {
 		st.Close()
 		return "", nil, err
@@ -163,7 +163,7 @@ func closedUI(ctx context.Context, log *slog.Logger, dir string, now time.Time) 
 	}
 	return "https://" + ln.Addr().String() + "/", func() error {
 		defer st.Close()
-		return srv.Serve(ctx, ln, cert.Cert)
+		return srv.Serve(ctx, ln, &cert.Cert)
 	}, nil
 }
 
