@@ -56,7 +56,8 @@ folder are left alone.
 - The templates hold no secrets. The admin password is set in the admin
   UI and stored in the data folder.
 
-The admin UI is HTTPS on port 8082 with a self-signed certificate. On first
+The admin UI is plain HTTP on port 8082 (HTTPS with a self-signed
+certificate when `SEAWISE_TLS=auto` is set). On first
 start, open it and set the admin password within 5 minutes; after that,
 restart the container to set it.
 

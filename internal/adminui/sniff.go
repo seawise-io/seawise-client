@@ -30,6 +30,8 @@ type limits struct {
 	perIP    int
 	reserved int
 	local    func(net.Addr) bool
+	// plainOnly sends every connection to the plain listener (TLS off).
+	plainOnly bool
 }
 
 func (l limits) withDefaults() limits {
@@ -172,7 +174,7 @@ func (s *split) classify(c net.Conn) {
 	_ = c.SetReadDeadline(time.Time{})
 	pc := &peekedConn{Conn: c, r: br}
 	target := s.plain
-	if isTLSClientHello(b) {
+	if !s.lim.plainOnly && isTLSClientHello(b) {
 		target = s.tls
 	}
 	select {

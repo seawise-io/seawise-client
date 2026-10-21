@@ -24,10 +24,10 @@ its own state in `<data folder>/v2`.
   port, a management API (Docker, Kubernetes, kubelet, etcd) or the network
   gateway, for information. Whether an app is public is set in SeaWise, as
   in 1.x.
-- **Admin UI over HTTPS** on the same port as before, with a self-signed
-  certificate whose fingerprint is logged at start. Plain HTTP redirects to
-  HTTPS for 90 days after an upgrade, then shows a notice. `/healthz` stays
-  plain HTTP for local health checks.
+- **Admin UI** on the same port as before, over plain HTTP as in 1.x. With
+  `SEAWISE_TLS=auto` it is served over HTTPS only, with a self-signed
+  certificate whose fingerprint is logged at start; plain HTTP then answers
+  only `/healthz` for local health checks.
 - **First run.** As in 1.0.12, the admin password can be set in the admin
   UI only within 5 minutes of the client starting. After that, setup stays
   closed until the client is restarted. Anyone who can reach the admin
@@ -131,8 +131,8 @@ stay on the current client.
   Without `--user`, the entrypoint needs the `CHOWN`, `SETUID` and `SETGID`
   capabilities (`--cap-drop ALL --cap-add CHOWN --cap-add SETUID
   --cap-add SETGID`).
-- **Health check.** `GET http://127.0.0.1:8082/healthz` (plain HTTP,
-  loopback only). If `SEAWISE_BIND_ADDR` is set to an address other than
+- **Health check.** `GET http://127.0.0.1:8082/healthz` (plain HTTP; with
+  `SEAWISE_TLS=auto`, loopback only). If `SEAWISE_BIND_ADDR` is set to an address other than
   `0.0.0.0` or `127.0.0.1`, the image health check cannot reach it.
 - **Platforms.** `linux/amd64`, `linux/arm64`, `linux/arm/v7`.
 
@@ -144,6 +144,7 @@ stay on the current client.
 | `SEAWISE_PORT` | Admin UI port (default `8082`) |
 | `SEAWISE_BIND_ADDR` | Admin UI listening address |
 | `SEAWISE_ALLOWED_HOSTS` | Extra host names allowed to reach the admin UI |
+| `SEAWISE_TLS` | `auto` serves the admin UI over HTTPS only, with a self-signed certificate |
 | `SEAWISE_NAT64_PREFIXES` | Extra NAT64 prefixes used on this network, comma separated |
 | `SEAWISE_CONTAINER` | `1` treats the process as running in a container |
 | `SEAWISE_FRPC_PATH`, `SEAWISE_TRUSTED_CA_FILE` | frpc binary and CA bundle |

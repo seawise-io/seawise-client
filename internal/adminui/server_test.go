@@ -37,11 +37,16 @@ func newStore(t *testing.T, upgraded *time.Time) *store.Store {
 
 func newServer(t *testing.T, st *store.Store, clk *testClock) *Server {
 	t.Helper()
+	return newServerTLS(t, st, clk, false)
+}
+
+func newServerTLS(t *testing.T, st *store.Store, clk *testClock, tlsOn bool) *Server {
+	t.Helper()
 	auth, err := NewAuth(AuthConfig{Store: st, Now: clk.Now, BcryptCost: bcrypt.MinCost})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := New(Config{Store: st, Auth: auth, Now: clk.Now, Hostname: "nas", AllowedHosts: []string{"seawise.internal.example"},
+	s, err := New(Config{Store: st, Auth: auth, Now: clk.Now, Hostname: "nas", AllowedHosts: []string{"seawise.internal.example"}, TLS: tlsOn,
 		Status: func(context.Context) any { return map[string]string{"state": "ok"} }})
 	if err != nil {
 		t.Fatal(err)
@@ -98,64 +103,9 @@ func TestHostAllowlistEveryMethod(t *testing.T) {
 	}
 }
 
-func TestRedirectWindow(t *testing.T) {
-	up := t0
-	clk := &testClock{now: t0.Add(24 * time.Hour)}
-	s := newServer(t, newStore(t, &up), clk)
-	w := serve(s.PlainHandler(), req("GET", "/some/path?x=1", "192.168.1.10:8082"))
-	if w.Code != http.StatusPermanentRedirect || w.Header().Get("Location") != "https://192.168.1.10:8082/some/path?x=1" {
-		t.Fatalf("redirect %d %q", w.Code, w.Header().Get("Location"))
-	}
-	clk.now = t0.Add(RedirectWindow)
-	w = serve(s.PlainHandler(), req("GET", "/", "192.168.1.10:8082"))
-	if w.Code != http.StatusForbidden || w.Header().Get("Location") != "" || !strings.Contains(w.Body.String(), "https://192.168.1.10:8082/") {
-		t.Fatalf("after window %d %q", w.Code, w.Body.String())
-	}
-}
-
-func TestNewInstallShowsNotice(t *testing.T) {
-	s := newServer(t, newStore(t, nil), &testClock{now: t0})
-	w := serve(s.PlainHandler(), req("GET", "/", "nas.local:8082"))
-	if w.Code != http.StatusForbidden || w.Header().Get("Location") != "" {
-		t.Fatalf("new install %d", w.Code)
-	}
-}
-
-func TestPlainPostNotProcessed(t *testing.T) {
-	up := t0
-	s := newServer(t, newStore(t, &up), &testClock{now: t0})
-	for _, m := range []string{"POST", "PUT", "DELETE", "PATCH"} {
-		w := serve(s.PlainHandler(), req(m, "/api/auth/login", "192.168.1.10:8082"))
-		if w.Code != http.StatusForbidden || w.Header().Get("Location") != "" {
-			t.Fatalf("%s over plain: %d", m, w.Code)
-		}
-	}
-}
-
-func TestRedirectDisallowedHost(t *testing.T) {
-	up := t0
-	s := newServer(t, newStore(t, &up), &testClock{now: t0})
-	w := serve(s.PlainHandler(), req("GET", "/", "evil.example"))
-	if w.Code != http.StatusMisdirectedRequest || w.Header().Get("Location") != "" {
-		t.Fatalf("open redirect: %d %q", w.Code, w.Header().Get("Location"))
-	}
-}
-
-func TestNoticeEscapesHost(t *testing.T) {
-	// Only allowlisted hosts reach the notice, but it is escaped anyway.
-	if strings.Contains(renderNotice(`<x>`), "<x>") {
-		t.Fatal("notice not escaped")
-	}
-}
-
-func renderNotice(host string) string {
-	var b strings.Builder
-	_ = noticeTmpl.Execute(&b, host)
-	return b.String()
-}
-
+// With TLS on, plain HTTP answers the health check to loopback peers only.
 func TestHealthzLoopbackOnly(t *testing.T) {
-	s := newServer(t, newStore(t, nil), &testClock{now: t0})
+	s := newServerTLS(t, newStore(t, nil), &testClock{now: t0}, true)
 	r := req("GET", "/healthz", "127.0.0.1:8082")
 	r.RemoteAddr = "127.0.0.1:5555"
 	if w := serve(s.PlainHandler(), r); w.Code != http.StatusOK {
@@ -263,11 +213,68 @@ func TestSessionsCapAndExpiry(t *testing.T) {
 }
 
 func TestCookieFlags(t *testing.T) {
-	w := httptest.NewRecorder()
-	setSessionCookie(w, "v")
-	c := w.Result().Cookies()[0]
-	if c.Name != "__Host-seawise_session" || !c.Secure || !c.HttpOnly || c.SameSite != http.SameSiteStrictMode || c.Path != "/" || c.Domain != "" {
-		t.Fatalf("cookie %+v", c)
+	for _, https := range []bool{true, false} {
+		w := httptest.NewRecorder()
+		setSessionCookie(w, withHTTPS(req("GET", "/", "nas"), https), "v")
+		c := w.Result().Cookies()[0]
+		name := PlainSessionCookie
+		if https {
+			name = SessionCookie
+		}
+		if c.Name != name || c.Secure != https || !c.HttpOnly || c.SameSite != http.SameSiteStrictMode || c.Path != "/" || c.Domain != "" {
+			t.Fatalf("https %v: cookie %+v", https, c)
+		}
+	}
+}
+
+// Plain HTTP serves the whole UI by default, as in 1.x, also right after an
+// upgrade: no redirect and no notice.
+func TestPlainByDefault(t *testing.T) {
+	up := t0
+	s := newServer(t, newStore(t, &up), &testClock{now: t0.Add(time.Hour)})
+	const host = "192.168.1.10:8082"
+	w := serve(s.PlainHandler(), req("GET", "/", host))
+	if w.Code != http.StatusOK || w.Header().Get("Location") != "" || !strings.Contains(w.Body.String(), "<html") {
+		t.Fatalf("plain / %d %q", w.Code, w.Header().Get("Location"))
+	}
+	token, csrf := s.sess.create()
+	logout := func(origin, cookie string) int {
+		r := req("POST", "/api/auth/logout", host)
+		r.AddCookie(&http.Cookie{Name: cookie, Value: token})
+		r.Header.Set("Origin", origin)
+		r.Header.Set("X-CSRF-Token", csrf)
+		return serve(s.PlainHandler(), r).Code
+	}
+	if c := logout("https://"+host, PlainSessionCookie); c != http.StatusForbidden {
+		t.Fatalf("https origin over plain: %d", c)
+	}
+	if c := logout("http://"+host, SessionCookie); c != http.StatusUnauthorized {
+		t.Fatalf("the HTTPS cookie over plain: %d", c)
+	}
+	if c := logout("http://"+host, PlainSessionCookie); c != http.StatusOK {
+		t.Fatalf("same-origin logout over plain: %d", c)
+	}
+	if w := serve(s.PlainHandler(), req("GET", "/healthz", host)); w.Code != http.StatusOK {
+		t.Fatalf("healthz over plain: %d", w.Code)
+	}
+}
+
+// With SEAWISE_TLS=auto the UI is HTTPS only: plain HTTP gets the loopback
+// health check and a bare 400, never a redirect or the UI.
+func TestTLSOptIn(t *testing.T) {
+	up := t0
+	s := newServerTLS(t, newStore(t, &up), &testClock{now: t0}, true)
+	for _, m := range []string{"GET", "POST"} {
+		w := serve(s.PlainHandler(), req(m, "/", "192.168.1.10:8082"))
+		if w.Code != http.StatusBadRequest || w.Header().Get("Location") != "" || strings.Contains(w.Body.String(), "<html") {
+			t.Fatalf("%s plain with TLS on: %d %q", m, w.Code, w.Header().Get("Location"))
+		}
+	}
+	if w := serve(s.PlainHandler(), req("GET", "/", "evil.example")); w.Code != http.StatusMisdirectedRequest {
+		t.Fatalf("host check: %d", w.Code)
+	}
+	if w := serve(s.SecureHandler(), req("GET", "/", "192.168.1.10:8082")); w.Code != http.StatusOK {
+		t.Fatalf("https /: %d", w.Code)
 	}
 }
 
@@ -275,7 +282,7 @@ func TestCookieFlags(t *testing.T) {
 func TestOnePortServesBoth(t *testing.T) {
 	up := t0
 	st := newStore(t, &up)
-	s := newServer(t, st, &testClock{now: t0})
+	s := newServerTLS(t, st, &testClock{now: t0}, true)
 	info, err := EnsureCert(t.TempDir(), []string{"localhost"}, []net.IP{net.IPv4(127, 0, 0, 1)}, time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -286,7 +293,7 @@ func TestOnePortServesBoth(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- s.Serve(ctx, ln, info.Cert) }()
+	go func() { done <- s.Serve(ctx, ln, &info.Cert) }()
 	defer func() { cancel(); <-done }()
 	addr := ln.Addr().String()
 
@@ -320,9 +327,50 @@ func TestOnePortServesBoth(t *testing.T) {
 			t.Fatal(err)
 		}
 		resp.Body.Close()
-		if resp.StatusCode != http.StatusPermanentRedirect || resp.Header.Get("Location") != "https://"+addr+"/" {
+		if resp.StatusCode != http.StatusBadRequest || resp.Header.Get("Location") != "" {
 			t.Fatalf("plain / %d %q", resp.StatusCode, resp.Header.Get("Location"))
 		}
+	}
+}
+
+// TestPlainOnlyPort runs the real listener with TLS off: plain HTTP serves
+// the UI and a TLS handshake gets no certificate.
+func TestPlainOnlyPort(t *testing.T) {
+	s := newServer(t, newStore(t, nil), &testClock{now: t0})
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(ctx, ln, nil) }()
+	defer func() { cancel(); <-done }()
+	addr := ln.Addr().String()
+	hc := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}} //nolint:gosec // the handshake must fail
+	resp, err := hc.Get("http://" + addr + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 || !strings.Contains(string(b), "<html") {
+		t.Fatalf("plain / %d", resp.StatusCode)
+	}
+	if resp, err := hc.Get("https://" + addr + "/"); err == nil {
+		resp.Body.Close()
+		t.Fatal("TLS served with TLS off")
+	}
+}
+
+func TestServeNeedsCertWithTLS(t *testing.T) {
+	s := newServerTLS(t, newStore(t, nil), &testClock{now: t0}, true)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	if err := s.Serve(context.Background(), ln, nil); err == nil {
+		t.Fatal("served TLS without a certificate")
 	}
 }
 

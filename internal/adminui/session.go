@@ -12,8 +12,11 @@ import (
 
 const (
 	SessionCookie = "__Host-seawise_session"
-	SessionTTL    = 8 * time.Hour
-	MaxSessions   = 64
+	// PlainSessionCookie is the session cookie over plain HTTP, where a
+	// __Host- cookie cannot be set.
+	PlainSessionCookie = "seawise_session"
+	SessionTTL         = 8 * time.Hour
+	MaxSessions        = 64
 )
 
 type session struct {
@@ -107,22 +110,33 @@ func equalSecret(a, b string) bool {
 	return subtle.ConstantTimeCompare(ha[:], hb[:]) == 1
 }
 
-func setSessionCookie(w http.ResponseWriter, token string) {
+// cookieName is the session cookie for the request's scheme; Secure only
+// over HTTPS.
+func cookieName(r *http.Request) string {
+	if isHTTPS(r) {
+		return SessionCookie
+	}
+	return PlainSessionCookie
+}
+
+func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
+	// #nosec G124 -- Secure over HTTPS; the UI is plain HTTP unless SEAWISE_TLS=auto
 	http.SetCookie(w, &http.Cookie{
-		Name: SessionCookie, Value: token, Path: "/", MaxAge: int(SessionTTL / time.Second),
-		Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode,
+		Name: cookieName(r), Value: token, Path: "/", MaxAge: int(SessionTTL / time.Second),
+		Secure: isHTTPS(r), HttpOnly: true, SameSite: http.SameSiteStrictMode,
 	})
 }
 
-func clearSessionCookie(w http.ResponseWriter) {
+func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	// #nosec G124 -- Secure over HTTPS; the UI is plain HTTP unless SEAWISE_TLS=auto
 	http.SetCookie(w, &http.Cookie{
-		Name: SessionCookie, Value: "", Path: "/", MaxAge: -1,
-		Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode,
+		Name: cookieName(r), Value: "", Path: "/", MaxAge: -1,
+		Secure: isHTTPS(r), HttpOnly: true, SameSite: http.SameSiteStrictMode,
 	})
 }
 
 func sessionToken(r *http.Request) string {
-	c, err := r.Cookie(SessionCookie)
+	c, err := r.Cookie(cookieName(r))
 	if err != nil {
 		return ""
 	}
