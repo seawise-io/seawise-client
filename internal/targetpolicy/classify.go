@@ -1,7 +1,7 @@
 // Package targetpolicy decides which addresses an app may reach. The agent
-// applies it twice: when it renders frpc's config (literal addresses and
-// unconfirmed apps) and in the forwarding proxy's dialer, on the address
-// actually connected to, for every connection.
+// applies it twice: when it renders frpc's config (literal addresses) and in
+// the forwarding proxy's dialer, on the address actually connected to, for
+// every connection.
 package targetpolicy
 
 import (

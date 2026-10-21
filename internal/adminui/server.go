@@ -52,7 +52,6 @@ type Config struct {
 	// Resolver and Gateways feed the target review; defaults use the system.
 	Resolver         targetpolicy.Resolver
 	Gateways         func() []netip.Addr
-	PublicAllowed    bool
 	OnTargetsChanged func(context.Context)
 	// KillSwitch drops or restores all tunnels.
 	AccessLog     AccessLog

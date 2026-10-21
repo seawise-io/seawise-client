@@ -77,7 +77,6 @@ const (
 	NoticeSubdomainDiffer NoticeKind = "subdomain_differs"
 	NoticeDisablePending  NoticeKind = "disable_pending"
 	NoticeDisableCap      NoticeKind = "disable_cap"
-	NoticePublicImported  NoticeKind = "public_imported"
 )
 
 type Notice struct {
@@ -120,23 +119,12 @@ func (p Plan) Apply(st *store.State, now time.Time, perDay int) (bool, []Notice)
 			changed = true
 		}
 	}
-	// The server's flag is recorded, never applied: an app is public only
-	// with the local toggle. A grandfathered app with no local decision
-	// takes the server's flag once, so nothing goes private on upgrade.
+	// The server's flag is recorded for the admin UI; the server decides
+	// whether an app is public.
 	for id, pub := range p.ServerPublic {
-		t := byID[id]
-		if t == nil {
-			continue
-		}
-		if t.ServerPublic != pub {
+		if t := byID[id]; t != nil && t.ServerPublic != pub {
 			t.ServerPublic = pub
 			changed = true
-		}
-		if t.Public == nil && t.Grandfathered {
-			v := pub
-			t.Public = &v
-			changed = true
-			notices = append(notices, Notice{Kind: NoticePublicImported, LocalID: id})
 		}
 	}
 	for _, id := range p.ClearRequest {

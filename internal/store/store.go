@@ -56,32 +56,30 @@ type Account struct {
 }
 
 type Target struct {
-	LocalID         string     `json:"local_id"`
-	Name            string     `json:"name"`
-	Host            string     `json:"host"`
-	Port            int        `json:"port"`
-	IconURL         string     `json:"icon_url,omitempty"`
-	ServerServiceID string     `json:"server_service_id,omitempty"`
-	Subdomain       string     `json:"subdomain,omitempty"`
-	Disabled        bool       `json:"disabled,omitempty"`
-	Source          string     `json:"source"`
-	Grandfathered   bool       `json:"grandfathered,omitempty"`
-	ConfirmedAt     *time.Time `json:"confirmed_at,omitempty"`
-	// Allowed lists the target classes the owner confirmed locally, beyond
-	// private addresses. Grandfathered targets are not limited by it.
-	Allowed []string `json:"allowed,omitempty"`
+	LocalID         string `json:"local_id"`
+	Name            string `json:"name"`
+	Host            string `json:"host"`
+	Port            int    `json:"port"`
+	IconURL         string `json:"icon_url,omitempty"`
+	ServerServiceID string `json:"server_service_id,omitempty"`
+	Subdomain       string `json:"subdomain,omitempty"`
+	Disabled        bool   `json:"disabled,omitempty"`
+	Source          string `json:"source"`
+	// Grandfathered marks an app imported from 1.x. ConfirmedAt and Allowed
+	// are kept from earlier 2.0 builds' local confirmation; they have no
+	// effect.
+	Grandfathered bool       `json:"grandfathered,omitempty"`
+	ConfirmedAt   *time.Time `json:"confirmed_at,omitempty"`
+	Allowed       []string   `json:"allowed,omitempty"`
 	// ServerDisableRequestedAt is set while the server asks for this app to
 	// be turned off; the owner accepts or dismisses it locally.
 	ServerDisableRequestedAt *time.Time `json:"server_disable_requested_at,omitempty"`
-	// Public is the owner's local toggle for a public link. Nil means no
-	// decision yet, which counts as private.
+	// Public is a local public toggle kept from earlier 2.0 builds; it has
+	// no effect.
 	Public *bool `json:"public,omitempty"`
 	// ServerPublic is the server's last report of the app's public flag.
 	ServerPublic bool `json:"server_public,omitempty"`
 }
-
-// IsPublicLocally reports whether the owner turned the public toggle on.
-func (t Target) IsPublicLocally() bool { return t.Public != nil && *t.Public }
 
 // Grants a target can hold; see internal/targetpolicy.
 var KnownGrants = map[string]bool{"public": true, "loopback": true, "sensitive": true, "smtp": true, "gateway": true}
