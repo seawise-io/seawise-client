@@ -1,0 +1,54 @@
+# v2 full CI: every v2 check in one run, on demand.
+#
+# Pushes and pull requests on v2 and v2-integration start no workflow by
+# themselves. This workflow calls each check as a local reusable workflow,
+# with no path filters, so a run covers everything.
+#
+# To run: add the label `run-full-ci` to a pull request against v2. To run
+# again, remove the label and add it back. Any other label starts a run
+# whose jobs are all skipped (no runner time).
+#
+# workflow_dispatch only works once this file is on the default branch
+# (main), so until v2 merges to main the label is the way to start it.
+#
+# Each job grants contents: read, the most any called workflow asks for.
+# No secrets are passed: no called workflow uses one beyond GITHUB_TOKEN.
+
+name: v2 full CI
+
+on:
+  pull_request:
+    types: [labeled]
+    branches: [v2]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: v2-full-ci-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}-${{ github.event.label.name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  ci:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-full-ci'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  licences:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-full-ci'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/licences.yml
+
+  security:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-full-ci'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/security.yml
+
+  workflow-lint:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'run-full-ci'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/workflow-lint.yml

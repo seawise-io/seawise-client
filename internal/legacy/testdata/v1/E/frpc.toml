@@ -1,0 +1,49 @@
+serverAddr = "frp-1.example.invalid"
+serverPort = 7000
+
+transport.tls.enable = true
+transport.tls.serverName = "frp-1.example.invalid"
+transport.tls.trustedCaFile = "/etc/ssl/certs/ca-certificates.crt"
+
+# Authentication - token and server ID sent via metadata for plugin validation
+metadatas.token = "synthetic-frp-token-E"
+metadatas.server_id = "00000000-0000-4000-8000-0000000000a1"
+metadatas.connection_id = "synthetic-connection-id"
+
+log.to = "console"
+log.level = "info"
+
+
+[[proxies]]
+name = "00000000-0000-4000-8000-0000000000a1-jellyfin"
+
+# Standard HTTP mode - TLS terminated at gateway
+type = "http"
+localIP = "192.168.1.20"
+localPort = 8096
+
+subdomain = "jellyfin-E"
+
+[[proxies]]
+name = "00000000-0000-4000-8000-0000000000a1-kuma"
+
+# Standard HTTP mode - TLS terminated at gateway
+type = "http"
+localIP = "uptime-kuma"
+localPort = 3001
+
+subdomain = "kuma-E"
+
+[[proxies]]
+name = "00000000-0000-4000-8000-0000000000a1-nas \"ui\""
+
+# E2E TLS mode - TLS terminated locally, traffic encrypted end-to-end
+type = "https"
+[proxies.plugin]
+type = "https2http"
+localAddr = "10.0.0.5:5000"
+crtPath = "/config/certs/nas.crt"
+keyPath = "/config/certs/nas.key"
+
+subdomain = "nas-E"
+

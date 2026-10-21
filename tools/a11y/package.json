@@ -1,0 +1,11 @@
+{
+  "name": "seawise-admin-ui-a11y",
+  "private": true,
+  "description": "Accessibility check of the agent admin UI (CI only)",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "devDependencies": {
+    "axe-core": "4.13.0"
+  }
+}
