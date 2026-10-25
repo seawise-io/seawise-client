@@ -1,0 +1,4008 @@
+{
+  "format": "ladder",
+  "note": "TEST ONLY. Every key in this file is derived from a published seed; never use these keys outside tests.",
+  "cases": [
+    {
+      "name": "probe-success-make-before-break",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "no-flags-ever-stays-frpc",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 3600000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 3600000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "flags-off-stays-frpc",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "OFF"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 3600000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "probe-transient-failures-double-to-cap",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {
+              "probe": [
+                31000,
+                931000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 931000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 932000,
+            "kind": "refused",
+            "code": "EDGE_NOT_READY"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {
+              "probe": [
+                932000,
+                2732000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2732000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2733000,
+            "kind": "refused",
+            "code": "OVERLOADED"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {
+              "probe": [
+                2733000,
+                6333000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 6334000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 6335000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {
+              "probe": [
+                6335000,
+                13535000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 13536000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 13537000,
+            "kind": "dial_failed",
+            "cause": "ack_signature"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {
+              "probe": [
+                13537000,
+                27937000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 27938000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 27939000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {
+              "probe": [
+                27939000,
+                42339000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 27940000,
+            "kind": "flags",
+            "generation": 2,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                27940000,
+                27970000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "probe-terminal-refusal-blocks-until-new-generation",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 18000000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 18000000,
+            "kind": "flags",
+            "generation": 2,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                18000000,
+                18030000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "probe-terminal-VERSION_TOO_OLD",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "refused",
+            "code": "VERSION_TOO_OLD"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 18000000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "probe-terminal-TOO_MANY_ROUTES",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "refused",
+            "code": "TOO_MANY_ROUTES"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 18000000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "probe-terminal-alpn",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 18000000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "probe-terminal-edge_too_old",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_failed",
+            "cause": "edge_too_old"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 18000000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "probe-auth-refusal-unconfirmed-stays-frpc",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "refused",
+            "code": "KEY_REVOKED"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "probe": [
+                31000,
+                931000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 32000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {
+              "probe": [
+                31000,
+                931000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "probe-auth-refusal-confirmed-hold",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "refused",
+            "code": "KEY_REVOKED"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "probe": [
+                31000,
+                931000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 32000,
+            "kind": "signed_state",
+            "device_status": "revoked",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "HOLD",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                332000,
+                332000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 332000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                632000,
+                632000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 333000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "start_frpc"
+            ],
+            "timers": {
+              "dial": [
+                333000,
+                363000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 364000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "probe-invalid-proof-never-hold-alone",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "refused",
+            "code": "INVALID_PROOF"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "probe": [
+                31000,
+                931000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 32000,
+            "kind": "refused",
+            "code": "ACCOUNT_SUSPENDED"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {
+              "probe": [
+                31000,
+                931000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "flapping-within-fallback-timer",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 51000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 60000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                120000,
+                120000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 61000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [],
+            "timers": {
+              "fallback": [
+                120000,
+                120000
+              ],
+              "redial": [
+                61000,
+                62000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 62000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                120000,
+                120000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 62000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 70000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                130000,
+                130000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 71000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "reconnect-three-failures-fall-back",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 51000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ],
+              "redial": [
+                51000,
+                52000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 52000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 53000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ],
+              "redial": [
+                53000,
+                55000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 55000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 56000,
+            "kind": "refused",
+            "code": "OVERLOADED"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "start_frpc"
+            ],
+            "timers": {
+              "probe": [
+                56000,
+                956000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reconnect-60s-fall-back",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 109000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 110000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "start_frpc"
+            ],
+            "timers": {
+              "probe": [
+                110000,
+                1010000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reconnect-network-change-redials-now",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 51000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ],
+              "redial": [
+                51000,
+                52000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 51500,
+            "kind": "network_change"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "reconnect-terminal-refusal",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 51000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "start_frpc"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "flapping-across-reprobe-backoff",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 110000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "start_frpc"
+            ],
+            "timers": {
+              "probe": [
+                110000,
+                1010000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 1010000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1011000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {
+              "stop_frpc": [
+                1021000,
+                1021000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 1100000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                1160000,
+                1160000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 1160000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "start_frpc"
+            ],
+            "timers": {
+              "probe": [
+                1160000,
+                2960000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2960000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "liveness-traffic-without-pong",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 65000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 66000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 80000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 81000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 100000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 101000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "send_ping"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 115000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 116000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                176000,
+                176000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "liveness-ping-answered-by-any-byte",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 61000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "send_ping"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 70000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 76000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-reconnect-same-run-make-before-break",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "drain",
+            "reason": "ROLLOUT",
+            "action": "RECONNECT"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 51000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "switch_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 52000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-max-age",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "drain",
+            "reason": "MAX_AGE",
+            "action": "RECONNECT"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 51000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "switch_session"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-second-dial-fails-then-old-closes",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "drain",
+            "reason": "REBALANCE",
+            "action": "ACTION_UNSPECIFIED"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 51000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 60000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                120000,
+                120000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-superseded-stop",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "drain",
+            "reason": "SUPERSEDED",
+            "action": "STOP"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "start_frpc",
+              "count_supersede"
+            ],
+            "timers": {
+              "probe": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 100000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {
+              "probe": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 110000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-use-frpc-while-flags-on",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "drain",
+            "reason": "KILL_SWITCH",
+            "action": "USE_FRPC"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "kill-switch-signed-flags-off",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "flags",
+            "generation": 2,
+            "mode": "OFF"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "start_frpc",
+              "close_session_after_frpc_up"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 3600000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "flags-rollback-refused",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "OFF"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "flags_rollback_refused"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 51000,
+            "kind": "flags",
+            "mode": "OFF"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "flags_rollback_refused"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "key-rotated-with-pending-key",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "drain",
+            "reason": "KEY_ROTATED",
+            "action": "RECONNECT",
+            "pending_key": true
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "commit_rotation",
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 51000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "switch_session"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "key-rotated-without-pending-key",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "drain",
+            "reason": "KEY_ROTATED",
+            "action": "RECONNECT"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "close_session",
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 51000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "legacy-reactivated-revoke-device-confirmed",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "revoke",
+            "scope": "DEVICE"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "close_session",
+              "request_signed_heartbeat",
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 51000,
+            "kind": "refused",
+            "code": "KEY_REVOKED"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "start_frpc",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "probe": [
+                51000,
+                951000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 52000,
+            "kind": "signed_state",
+            "device_status": "revoked",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "HOLD",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                352000,
+                352000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "revoke-device-unconfirmed",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "revoke",
+            "scope": "DEVICE"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "close_session",
+              "request_signed_heartbeat",
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 51000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 52000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "revoke-account-confirmed",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "revoke",
+            "scope": "ACCOUNT"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "close_session",
+              "request_signed_heartbeat",
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 51000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "suspended"
+          },
+          "want": {
+            "state": "HOLD",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                351000,
+                351000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "revoke-app-keeps-session",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "revoke",
+            "scope": "APP"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "end_app_sessions"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "repair-needed-hold",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "repair_needed"
+          },
+          "want": {
+            "state": "HOLD",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                300000,
+                300000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 300000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                600000,
+                600000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "v1-without-signed-live-token",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "frpc_refused",
+            "authenticated": true
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "frpc_refused"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "ignored_unauthenticated"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 3000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "v1-with-signed-live-token",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "frpc_refused",
+            "authenticated": true
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "signed_state",
+            "device_status": "pending",
+            "account_status": "active",
+            "v1_token_live": true
+          },
+          "want": {
+            "state": "V1",
+            "actions": [
+              "use_v1_token"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "enrolled"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "start_frpc",
+              "delete_v1_token_copy"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "v1-unauthenticated-refusal-ignored",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "signed_state",
+            "device_status": "pending",
+            "account_status": "active",
+            "v1_token_live": true
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "frpc_refused"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "ignored_unauthenticated"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "unenrolled-v1-enrols",
+      "initial": {
+        "state": "V1",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "signed_state",
+            "device_status": "pending",
+            "account_status": "active",
+            "v1_token_live": true
+          },
+          "want": {
+            "state": "V1",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "enrolled"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "start_frpc",
+              "delete_v1_token_copy"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "unsigned-statements-never-hold",
+      "initial": {
+        "state": "FRPC",
+        "generation": 0,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [],
+            "timers": {
+              "dial": [
+                0,
+                30000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "PROBING",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "delete_v1_token_copy"
+            ],
+            "timers": {
+              "stop_frpc": [
+                41000,
+                41000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 41000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "actions": [
+              "stop_frpc"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "revoke",
+            "scope": "DEVICE"
+          },
+          "want": {
+            "state": "OWN_RECONNECTING",
+            "actions": [
+              "close_session",
+              "request_signed_heartbeat",
+              "dial"
+            ],
+            "timers": {
+              "fallback": [
+                110000,
+                110000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 51000,
+            "kind": "refused",
+            "code": "KEY_REVOKED"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [
+              "start_frpc",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "probe": [
+                51000,
+                951000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 52000,
+            "kind": "refused",
+            "code": "ACCOUNT_SUSPENDED"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {
+              "probe": [
+                51000,
+                951000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 53000,
+            "kind": "drain",
+            "reason": "KILL_SWITCH",
+            "action": "USE_FRPC"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {
+              "probe": [
+                51000,
+                951000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 120000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "FRPC",
+            "actions": [],
+            "timers": {
+              "probe": [
+                51000,
+                951000
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

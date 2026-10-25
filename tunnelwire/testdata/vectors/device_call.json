@@ -1,0 +1,247 @@
+{
+  "format": "device_call",
+  "note": "TEST ONLY. Every key in this file is derived from a published seed; never use these keys outside tests.",
+  "keys": [
+    {
+      "name": "device-a",
+      "seed": "9b67f1987274c60bcea26117ecc5662790fe5cc5beb5dfc0a4ca16b6859522e8",
+      "x": "qYklkTB9s4gdjWqIu88z5rNohd8lXkHeosIrjz0UeP8",
+      "kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo"
+    },
+    {
+      "name": "device-b",
+      "seed": "5945a2e2824c22c74fea8abcf380f7ee5516e00c2351cba98af1d8dadf7eddc2",
+      "x": "GGjbToKsrATfH6iktzQkxuVDw4CsZ6lxPU_0Q-6e0W4",
+      "kid": "s6XaxZBr2_jRf5lAfSp2AZGefGjRScK25ZnTrMfJhyE"
+    }
+  ],
+  "cases": [
+    {
+      "name": "valid-REGISTER_APPS",
+      "kind": "relayed_call",
+      "input": "CAESEL/X6tsWT68D++37GiCr8pYYASqJBGV5SjBlWEFpT2lKa2NHOXdLMnAzZENJc0ltRnNaeUk2SWtWa1JGTkJJaXdpYW5kcklqcDdJbXQwZVNJNklrOUxVQ0lzSW1OeWRpSTZJa1ZrTWpVMU1Ua2lMQ0o0SWpvaWNWbHJiR3RVUWpsek5HZGthbGR4U1hVNE9IbzFjazV2YUdRNGJGaHJTR1Z2YzBseWFub3dWV1ZRT0NKOWZRLmV5SmliMlI1WDNOb1lUSTFOaUk2SWxRMlptTjJOMlJ6VG0wMFVVRnZSMGhwYVRkaVJ6WlRiVWRXVkVkSWIxTXRYMk5yVWpScFJqZExjREFpTENKb2RHMGlPaUpRVDFOVUlpd2lhSFIxSWpvaWFIUjBjSE02THk5aGNHa3VjMlZoZDJselpTNXBieTlrWlhacFkyVXZkakl2WVhCd2N5SXNJbWxoZENJNk1UYzVNekF3TURBd01Dd2lhblJwSWpvaVpFZFdlbVJETVhGa1IydDBUVVJCZDAxRVFYZE5SRVVpTENKdWIyNWpaU0k2SW00eExrRkJRVUZCVVM1ak1sWjVaRzFXZVV4WE5YWmliVTVzSW4wLnpDWDNobFJ4TkktQ3ZnMjItUFdzZHJ5WDlWR0M2aVhqVW5aeWFIMWpuazU4R1Q4bThvY1A1S0FMTVRLNDRnSTI0c3RIUVpsQkdmbFB5MzVEdHZrS0FnMj57ImFwcHMiOlt7ImxvY2FsX2lkIjoiYXBwLTEiLCJob3N0IjoiMTI3LjAuMC4xIiwicG9ydCI6ODA5Nn1dfQ==",
+      "context": {
+        "nonce": "n1.AAAAAQ.c2VydmVyLW5vbmNl",
+        "origin": "https://api.seawise.io",
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "server_kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo"
+      },
+      "expect": "ok",
+      "result": {
+        "body_sha256": "T6fcv7dsNm4QAoGHii7bG6SmGVTGHoS-_ckR4iF7Kp0",
+        "htm": "POST",
+        "htu": "https://api.seawise.io/device/v2/apps"
+      }
+    },
+    {
+      "name": "valid-DELETE_APPS",
+      "kind": "relayed_call",
+      "input": "CAESEL/X6tsWT68D++37GiCr8pYYAiqSBGV5SjBlWEFpT2lKa2NHOXdLMnAzZENJc0ltRnNaeUk2SWtWa1JGTkJJaXdpYW5kcklqcDdJbXQwZVNJNklrOUxVQ0lzSW1OeWRpSTZJa1ZrTWpVMU1Ua2lMQ0o0SWpvaWNWbHJiR3RVUWpsek5HZGthbGR4U1hVNE9IbzFjazV2YUdRNGJGaHJTR1Z2YzBseWFub3dWV1ZRT0NKOWZRLmV5SmliMlI1WDNOb1lUSTFOaUk2SW5OemNqUjZZWE54WjFSZk4zRkJNRjl4WTB0WlRtVmxNbEZZVFhGb1JIRnpNVTlVTW1aSGQyMDBjVGdpTENKb2RHMGlPaUpRVDFOVUlpd2lhSFIxSWpvaWFIUjBjSE02THk5aGNHa3VjMlZoZDJselpTNXBieTlrWlhacFkyVXZkakl2WVhCd2N5OWtaV3hsZEdVaUxDSnBZWFFpT2pFM09UTXdNREF3TURBc0ltcDBhU0k2SW1SSFZucGtRekZ4WkVkcmRFMUVRWGROUkVGM1RVUkZJaXdpYm05dVkyVWlPaUp1TVM1QlFVRkJRVkV1WXpKV2VXUnRWbmxNVnpWMlltMU9iQ0o5LkU3SWxFQ1RUcG5RVUZYd2tWZ0tkLTlYZFJHNzdXRnY1TE1ZV0pybUZNUUN6UGtCSWt3VkxfWEVtWUJoR1JzenB2VG5QczdQUUROVlM5WElnTHBXeURRMhl7ImRlbGV0ZWRfaWRzIjpbImFwcC0yIl19",
+      "context": {
+        "nonce": "n1.AAAAAQ.c2VydmVyLW5vbmNl",
+        "origin": "https://api.seawise.io",
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "server_kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo"
+      },
+      "expect": "ok",
+      "result": {
+        "body_sha256": "ssr4zasqgT_7qA0_qcKYNee2QXMqhDqs1OT2fGwm4q8",
+        "htm": "POST",
+        "htu": "https://api.seawise.io/device/v2/apps/delete"
+      }
+    },
+    {
+      "name": "valid-LIST_APPS",
+      "kind": "relayed_call",
+      "input": "CAESEL/X6tsWT68D++37GiCr8pYYAyqIBGV5SjBlWEFpT2lKa2NHOXdLMnAzZENJc0ltRnNaeUk2SWtWa1JGTkJJaXdpYW5kcklqcDdJbXQwZVNJNklrOUxVQ0lzSW1OeWRpSTZJa1ZrTWpVMU1Ua2lMQ0o0SWpvaWNWbHJiR3RVUWpsek5HZGthbGR4U1hVNE9IbzFjazV2YUdRNGJGaHJTR1Z2YzBseWFub3dWV1ZRT0NKOWZRLmV5SmliMlI1WDNOb1lUSTFOaUk2SWpRM1JFVlJjR280U0VKVFlTMWZWRWx0VnkwMVNrTmxkVkZsVW10dE5VNU5jRXBYV2tjemFGTjFSbFVpTENKb2RHMGlPaUpIUlZRaUxDSm9kSFVpT2lKb2RIUndjem92TDJGd2FTNXpaV0YzYVhObExtbHZMMlJsZG1salpTOTJNaTloY0hCeklpd2lhV0YwSWpveE56a3pNREF3TURBd0xDSnFkR2tpT2lKa1IxWjZaRU14Y1dSSGEzUk5SRUYzVFVSQmQwMUVSU0lzSW01dmJtTmxJam9pYmpFdVFVRkJRVUZSTG1NeVZubGtiVlo1VEZjMWRtSnRUbXdpZlEudXpaZ1dwWTJNdDF0NEstWmZsSlcwdl85eV9TVWhUdHNQTXpiV1h4Tm96Z1BOUW5jbnJjQVVJODBEajZqaV9mVXRrcDltSFh1TUpnVmtxbmF3TF95QWc=",
+      "context": {
+        "nonce": "n1.AAAAAQ.c2VydmVyLW5vbmNl",
+        "origin": "https://api.seawise.io",
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "server_kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo"
+      },
+      "expect": "ok",
+      "result": {
+        "body_sha256": "47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU",
+        "htm": "GET",
+        "htu": "https://api.seawise.io/device/v2/apps"
+      }
+    },
+    {
+      "name": "valid-REPORT_HEALTH",
+      "kind": "relayed_call",
+      "input": "CAESEL/X6tsWT68D++37GiCr8pYYBCqMBGV5SjBlWEFpT2lKa2NHOXdLMnAzZENJc0ltRnNaeUk2SWtWa1JGTkJJaXdpYW5kcklqcDdJbXQwZVNJNklrOUxVQ0lzSW1OeWRpSTZJa1ZrTWpVMU1Ua2lMQ0o0SWpvaWNWbHJiR3RVUWpsek5HZGthbGR4U1hVNE9IbzFjazV2YUdRNGJGaHJTR1Z2YzBseWFub3dWV1ZRT0NKOWZRLmV5SmliMlI1WDNOb1lUSTFOaUk2SWxORVMxWkdTbFpoVnkxcVdWRjFaM1phVDFsTVYzaGhUMGw2VUROVU1rOVZUbTVxY1VwMVVVZ3lUR2NpTENKb2RHMGlPaUpRVDFOVUlpd2lhSFIxSWpvaWFIUjBjSE02THk5aGNHa3VjMlZoZDJselpTNXBieTlrWlhacFkyVXZkakl2YUdWaGJIUm9JaXdpYVdGMElqb3hOemt6TURBd01EQXdMQ0pxZEdraU9pSmtSMVo2WkVNeGNXUkhhM1JOUkVGM1RVUkJkMDFFUlNJc0ltNXZibU5sSWpvaWJqRXVRVUZCUVVGUkxtTXlWbmxrYlZaNVRGYzFkbUp0VG13aWZRLkt6QUZ0VkpBUm9FQi1oWkdhV3hIWEt3UUlIaGhxTXl6MUhmMG5JMlg3eVdIOV85TDdkQW9Ua2pvdC1YSl9zYlRwNGM1eVlPUmJ6eWVaeVRFeDBfeEFnMi57ImFwcHMiOlt7ImxvY2FsX2lkIjoiYXBwLTEiLCJoZWFsdGh5Ijp0cnVlfV19",
+      "context": {
+        "nonce": "n1.AAAAAQ.c2VydmVyLW5vbmNl",
+        "origin": "https://api.seawise.io",
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "server_kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo"
+      },
+      "expect": "ok",
+      "result": {
+        "body_sha256": "SDKVFJVaW-jYQugvZOYLWxaOIzP3T2OUNnjqJuQH2Lg",
+        "htm": "POST",
+        "htu": "https://api.seawise.io/device/v2/health"
+      }
+    },
+    {
+      "name": "valid-ROTATE_KEY",
+      "kind": "relayed_call",
+      "input": "CAESEL/X6tsWT68D++37GiCr8pYYBSqSBGV5SjBlWEFpT2lKa2NHOXdLMnAzZENJc0ltRnNaeUk2SWtWa1JGTkJJaXdpYW5kcklqcDdJbXQwZVNJNklrOUxVQ0lzSW1OeWRpSTZJa1ZrTWpVMU1Ua2lMQ0o0SWpvaWNWbHJiR3RVUWpsek5HZGthbGR4U1hVNE9IbzFjazV2YUdRNGJGaHJTR1Z2YzBseWFub3dWV1ZRT0NKOWZRLmV5SmliMlI1WDNOb1lUSTFOaUk2SW14UFlVcDJhM2t5ZGtKa1VHcEpVazFsUmtNeE5HSm9Sa2wwY21ab1NtMVdVSEZUUkhCUGFtTm5jVFFpTENKb2RHMGlPaUpRVDFOVUlpd2lhSFIxSWpvaWFIUjBjSE02THk5aGNHa3VjMlZoZDJselpTNXBieTlrWlhacFkyVXZkakl2YTJWNWN5OXliM1JoZEdVaUxDSnBZWFFpT2pFM09UTXdNREF3TURBc0ltcDBhU0k2SW1SSFZucGtRekZ4WkVkcmRFMUVRWGROUkVGM1RVUkZJaXdpYm05dVkyVWlPaUp1TVM1QlFVRkJRVkV1WXpKV2VXUnRWbmxNVnpWMlltMU9iQ0o5LlJYUUhYbUpjT0N6bEdHMlpaMndBUU1OUU5zU2EtdnZ4cldFeWgwVS1fa0VialNKUXJoQTQtckI3VUpaZUtuUGN2WldmNEVCTmRDRnlTdjR0eXR6MkFBMiN7InN0YXRlbWVudCI6ImEuYi5jIiwicG9wIjoiZC5lLmYifQ==",
+      "context": {
+        "nonce": "n1.AAAAAQ.c2VydmVyLW5vbmNl",
+        "origin": "https://api.seawise.io",
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "server_kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo"
+      },
+      "expect": "ok",
+      "result": {
+        "body_sha256": "lOaJvky2vBdPjIRMeFC14bhFItrfhJmVPqSDpOjcgq4",
+        "htm": "POST",
+        "htu": "https://api.seawise.io/device/v2/keys/rotate"
+      }
+    },
+    {
+      "name": "valid-SIGNED_TIME",
+      "kind": "relayed_call",
+      "input": "CAESEL/X6tsWT68D++37GiCr8pYYBiqQBGV5SjBlWEFpT2lKa2NHOXdLMnAzZENJc0ltRnNaeUk2SWtWa1JGTkJJaXdpYW5kcklqcDdJbXQwZVNJNklrOUxVQ0lzSW1OeWRpSTZJa1ZrTWpVMU1Ua2lMQ0o0SWpvaWNWbHJiR3RVUWpsek5HZGthbGR4U1hVNE9IbzFjazV2YUdRNGJGaHJTR1Z2YzBseWFub3dWV1ZRT0NKOWZRLmV5SmliMlI1WDNOb1lUSTFOaUk2SW1vNWNuWkphV0Z5V0haclNIWXRZVXBPWWpRNFJsQTVabXBGT0RCbGF6aHZUV2RJTTBOWE4xQXRMVVVpTENKb2RHMGlPaUpRVDFOVUlpd2lhSFIxSWpvaWFIUjBjSE02THk5aGNHa3VjMlZoZDJselpTNXBieTlrWlhacFkyVXZkakl2YUdWaGNuUmlaV0YwSWl3aWFXRjBJam94Tnprek1EQXdNREF3TENKcWRHa2lPaUprUjFaNlpFTXhjV1JIYTNSTlJFRjNUVVJCZDAxRVJTSXNJbTV2Ym1ObElqb2liakV1UVVGQlFVRlJMbU15Vm5sa2JWWjVURmMxZG1KdFRtd2lmUS5fXzEzY0RGaXJrdDdMNTAzX2lFQ2NteGVSRllFV2FqR2R0REhULUliZTZMM1pyVUxnNGZHXzMzU3N1MmktUkFBbzZoeElKV0VVUWNzSnZNQXZvdGVCQTIqeyJjbGllbnRfbm9uY2UiOiJkR2x0WlMxdWIyNWpaUzB3TURBd01ERSJ9",
+      "context": {
+        "nonce": "n1.AAAAAQ.c2VydmVyLW5vbmNl",
+        "origin": "https://api.seawise.io",
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "server_kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo"
+      },
+      "expect": "ok",
+      "result": {
+        "body_sha256": "j9rvIiarXvkHv-aJNb48FP9fjE80ek8oMgH3CW7P--E",
+        "htm": "POST",
+        "htu": "https://api.seawise.io/device/v2/heartbeat"
+      }
+    },
+    {
+      "name": "first-call-stale-nonce",
+      "kind": "relayed_call",
+      "input": "CAESEL/X6tsWT68D++37GiCr8pYYASqJBGV5SjBlWEFpT2lKa2NHOXdLMnAzZENJc0ltRnNaeUk2SWtWa1JGTkJJaXdpYW5kcklqcDdJbXQwZVNJNklrOUxVQ0lzSW1OeWRpSTZJa1ZrTWpVMU1Ua2lMQ0o0SWpvaWNWbHJiR3RVUWpsek5HZGthbGR4U1hVNE9IbzFjazV2YUdRNGJGaHJTR1Z2YzBseWFub3dWV1ZRT0NKOWZRLmV5SmliMlI1WDNOb1lUSTFOaUk2SWxRMlptTjJOMlJ6VG0wMFVVRnZSMGhwYVRkaVJ6WlRiVWRXVkVkSWIxTXRYMk5yVWpScFJqZExjREFpTENKb2RHMGlPaUpRVDFOVUlpd2lhSFIxSWpvaWFIUjBjSE02THk5aGNHa3VjMlZoZDJselpTNXBieTlrWlhacFkyVXZkakl2WVhCd2N5SXNJbWxoZENJNk1UYzVNekF3TURBd01Dd2lhblJwSWpvaVpFZFdlbVJETVhGa1IydDBUVVJCZDAxRVFYZE5SRVVpTENKdWIyNWpaU0k2SW00eExrRkJRVUZCVVM1ak1sWjVaRzFXZVV4WE5YWmliVTVzSW4wLnpDWDNobFJ4TkktQ3ZnMjItUFdzZHJ5WDlWR0M2aVhqVW5aeWFIMWpuazU4R1Q4bThvY1A1S0FMTVRLNDRnSTI0c3RIUVpsQkdmbFB5MzVEdHZrS0FnMj57ImFwcHMiOlt7ImxvY2FsX2lkIjoiYXBwLTEiLCJob3N0IjoiMTI3LjAuMC4xIiwicG9ydCI6ODA5Nn1dfQ==",
+      "context": {
+        "nonce": "n1.AAAAAg.c2VydmVyLW5vbmNl",
+        "origin": "https://api.seawise.io",
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "server_kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo"
+      },
+      "expect": "use_dpop_nonce",
+      "result": {
+        "http_status": 401
+      }
+    },
+    {
+      "name": "retry-with-fresh-nonce",
+      "kind": "relayed_call",
+      "input": "CAESEL/X6tsWT68D++37GiCr8pYYASqJBGV5SjBlWEFpT2lKa2NHOXdLMnAzZENJc0ltRnNaeUk2SWtWa1JGTkJJaXdpYW5kcklqcDdJbXQwZVNJNklrOUxVQ0lzSW1OeWRpSTZJa1ZrTWpVMU1Ua2lMQ0o0SWpvaWNWbHJiR3RVUWpsek5HZGthbGR4U1hVNE9IbzFjazV2YUdRNGJGaHJTR1Z2YzBseWFub3dWV1ZRT0NKOWZRLmV5SmliMlI1WDNOb1lUSTFOaUk2SWxRMlptTjJOMlJ6VG0wMFVVRnZSMGhwYVRkaVJ6WlRiVWRXVkVkSWIxTXRYMk5yVWpScFJqZExjREFpTENKb2RHMGlPaUpRVDFOVUlpd2lhSFIxSWpvaWFIUjBjSE02THk5aGNHa3VjMlZoZDJselpTNXBieTlrWlhacFkyVXZkakl2WVhCd2N5SXNJbWxoZENJNk1UYzVNekF3TURBd01Dd2lhblJwSWpvaVpFZFdlbVJETVhGa1IydDBUVVJCZDAxRVFYZE5SRWtpTENKdWIyNWpaU0k2SW00eExrRkJRVUZCWnk1ak1sWjVaRzFXZVV4WE5YWmliVTVzSW4wLlZkdGMteHNYZmxTTXJvS1Q1b0hSbG9HUXZGN0NQbk4zVTF5by1IRlliYlBETnhsei1LWEpFaUQ5Y29oSUtQTks4VXluU1p3LVhrOG1GTnJCdGtNR0J3Mj57ImFwcHMiOlt7ImxvY2FsX2lkIjoiYXBwLTEiLCJob3N0IjoiMTI3LjAuMC4xIiwicG9ydCI6ODA5Nn1dfQ==",
+      "context": {
+        "nonce": "n1.AAAAAg.c2VydmVyLW5vbmNl",
+        "origin": "https://api.seawise.io",
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "server_kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo"
+      },
+      "expect": "ok"
+    },
+    {
+      "name": "proof-for-other-path",
+      "kind": "relayed_call",
+      "input": "CAESEL/X6tsWT68D++37GiCr8pYYASqMBGV5SjBlWEFpT2lKa2NHOXdLMnAzZENJc0ltRnNaeUk2SWtWa1JGTkJJaXdpYW5kcklqcDdJbXQwZVNJNklrOUxVQ0lzSW1OeWRpSTZJa1ZrTWpVMU1Ua2lMQ0o0SWpvaWNWbHJiR3RVUWpsek5HZGthbGR4U1hVNE9IbzFjazV2YUdRNGJGaHJTR1Z2YzBseWFub3dWV1ZRT0NKOWZRLmV5SmliMlI1WDNOb1lUSTFOaUk2SWxRMlptTjJOMlJ6VG0wMFVVRnZSMGhwYVRkaVJ6WlRiVWRXVkVkSWIxTXRYMk5yVWpScFJqZExjREFpTENKb2RHMGlPaUpRVDFOVUlpd2lhSFIxSWpvaWFIUjBjSE02THk5aGNHa3VjMlZoZDJselpTNXBieTlrWlhacFkyVXZkakl2YUdWaGJIUm9JaXdpYVdGMElqb3hOemt6TURBd01EQXdMQ0pxZEdraU9pSmtSMVo2WkVNeGNXUkhhM1JOUkVGM1RVUkJkMDFFUlNJc0ltNXZibU5sSWpvaWJqRXVRVUZCUVVGUkxtTXlWbmxrYlZaNVRGYzFkbUp0VG13aWZRLmc4cExVOTZTYXpzd09rNmNYajBLYTdCSzktZjdkbkdvWjl2dWIxaGNtMm40TENQbUhJWHVmWmI2RDNUeTZDZGZ4TkMwV0VCSmJBVWNheThEbVhXdkR3Mj57ImFwcHMiOlt7ImxvY2FsX2lkIjoiYXBwLTEiLCJob3N0IjoiMTI3LjAuMC4xIiwicG9ydCI6ODA5Nn1dfQ==",
+      "context": {
+        "nonce": "n1.AAAAAQ.c2VydmVyLW5vbmNl",
+        "origin": "https://api.seawise.io",
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "server_kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo"
+      },
+      "expect": "wrong_htu"
+    },
+    {
+      "name": "proof-for-other-origin",
+      "kind": "relayed_call",
+      "input": "CAESEL/X6tsWT68D++37GiCr8pYYASqGBGV5SjBlWEFpT2lKa2NHOXdLMnAzZENJc0ltRnNaeUk2SWtWa1JGTkJJaXdpYW5kcklqcDdJbXQwZVNJNklrOUxVQ0lzSW1OeWRpSTZJa1ZrTWpVMU1Ua2lMQ0o0SWpvaWNWbHJiR3RVUWpsek5HZGthbGR4U1hVNE9IbzFjazV2YUdRNGJGaHJTR1Z2YzBseWFub3dWV1ZRT0NKOWZRLmV5SmliMlI1WDNOb1lUSTFOaUk2SWxRMlptTjJOMlJ6VG0wMFVVRnZSMGhwYVRkaVJ6WlRiVWRXVkVkSWIxTXRYMk5yVWpScFJqZExjREFpTENKb2RHMGlPaUpRVDFOVUlpd2lhSFIxSWpvaWFIUjBjSE02THk5bGRtbHNMbVY0WVcxd2JHVXZaR1YyYVdObEwzWXlMMkZ3Y0hNaUxDSnBZWFFpT2pFM09UTXdNREF3TURBc0ltcDBhU0k2SW1SSFZucGtRekZ4WkVkcmRFMUVRWGROUkVGM1RVUkZJaXdpYm05dVkyVWlPaUp1TVM1QlFVRkJRVkV1WXpKV2VXUnRWbmxNVnpWMlltMU9iQ0o5LlA0MUM4RTlhN0pCclNSRTJDN2o5clg2akwyREZrSkQzZmItRDViN2JweXI4RUVLeG5VeTZvT0pxeF9taUE2UlJnNXQ0Vk1ZQ0w4TFIxWVJRMGNkZ0FRMj57ImFwcHMiOlt7ImxvY2FsX2lkIjoiYXBwLTEiLCJob3N0IjoiMTI3LjAuMC4xIiwicG9ydCI6ODA5Nn1dfQ==",
+      "context": {
+        "nonce": "n1.AAAAAQ.c2VydmVyLW5vbmNl",
+        "origin": "https://api.seawise.io",
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "server_kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo"
+      },
+      "expect": "wrong_htu"
+    },
+    {
+      "name": "proof-for-other-method",
+      "kind": "relayed_call",
+      "input": "CAESEL/X6tsWT68D++37GiCr8pYYASqIBGV5SjBlWEFpT2lKa2NHOXdLMnAzZENJc0ltRnNaeUk2SWtWa1JGTkJJaXdpYW5kcklqcDdJbXQwZVNJNklrOUxVQ0lzSW1OeWRpSTZJa1ZrTWpVMU1Ua2lMQ0o0SWpvaWNWbHJiR3RVUWpsek5HZGthbGR4U1hVNE9IbzFjazV2YUdRNGJGaHJTR1Z2YzBseWFub3dWV1ZRT0NKOWZRLmV5SmliMlI1WDNOb1lUSTFOaUk2SWxRMlptTjJOMlJ6VG0wMFVVRnZSMGhwYVRkaVJ6WlRiVWRXVkVkSWIxTXRYMk5yVWpScFJqZExjREFpTENKb2RHMGlPaUpIUlZRaUxDSm9kSFVpT2lKb2RIUndjem92TDJGd2FTNXpaV0YzYVhObExtbHZMMlJsZG1salpTOTJNaTloY0hCeklpd2lhV0YwSWpveE56a3pNREF3TURBd0xDSnFkR2tpT2lKa1IxWjZaRU14Y1dSSGEzUk5SRUYzVFVSQmQwMUVSU0lzSW01dmJtTmxJam9pYmpFdVFVRkJRVUZSTG1NeVZubGtiVlo1VEZjMWRtSnRUbXdpZlEuWm92TVdWM3hhX1N2eFFXUWtOWHphZlVMdDA0Q2xEdGNMT0J6MGdjLWUtZ2Z6RERfdUxRRDJXOElPcXRsUklERWdxU084RHF5MTlRTzRqenBUWmdqQmcyPnsiYXBwcyI6W3sibG9jYWxfaWQiOiJhcHAtMSIsImhvc3QiOiIxMjcuMC4wLjEiLCJwb3J0Ijo4MDk2fV19",
+      "context": {
+        "nonce": "n1.AAAAAQ.c2VydmVyLW5vbmNl",
+        "origin": "https://api.seawise.io",
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "server_kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo"
+      },
+      "expect": "wrong_htm"
+    },
+    {
+      "name": "body-changed-in-relay",
+      "kind": "relayed_call",
+      "input": "CAESEL/X6tsWT68D++37GiCr8pYYASqJBGV5SjBlWEFpT2lKa2NHOXdLMnAzZENJc0ltRnNaeUk2SWtWa1JGTkJJaXdpYW5kcklqcDdJbXQwZVNJNklrOUxVQ0lzSW1OeWRpSTZJa1ZrTWpVMU1Ua2lMQ0o0SWpvaWNWbHJiR3RVUWpsek5HZGthbGR4U1hVNE9IbzFjazV2YUdRNGJGaHJTR1Z2YzBseWFub3dWV1ZRT0NKOWZRLmV5SmliMlI1WDNOb1lUSTFOaUk2SWxRMlptTjJOMlJ6VG0wMFVVRnZSMGhwYVRkaVJ6WlRiVWRXVkVkSWIxTXRYMk5yVWpScFJqZExjREFpTENKb2RHMGlPaUpRVDFOVUlpd2lhSFIxSWpvaWFIUjBjSE02THk5aGNHa3VjMlZoZDJselpTNXBieTlrWlhacFkyVXZkakl2WVhCd2N5SXNJbWxoZENJNk1UYzVNekF3TURBd01Dd2lhblJwSWpvaVpFZFdlbVJETVhGa1IydDBUVVJCZDAxRVFYZE5SRVVpTENKdWIyNWpaU0k2SW00eExrRkJRVUZCVVM1ak1sWjVaRzFXZVV4WE5YWmliVTVzSW4wLnpDWDNobFJ4TkktQ3ZnMjItUFdzZHJ5WDlWR0M2aVhqVW5aeWFIMWpuazU4R1Q4bThvY1A1S0FMTVRLNDRnSTI0c3RIUVpsQkdmbFB5MzVEdHZrS0FnMgt7ImFwcHMiOltdfQ==",
+      "context": {
+        "nonce": "n1.AAAAAQ.c2VydmVyLW5vbmNl",
+        "origin": "https://api.seawise.io",
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "server_kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo"
+      },
+      "expect": "body_mismatch"
+    },
+    {
+      "name": "proof-by-another-device",
+      "kind": "relayed_call",
+      "input": "CAESEL/X6tsWT68D++37GiCr8pYYASqJBGV5SjBlWEFpT2lKa2NHOXdLMnAzZENJc0ltRnNaeUk2SWtWa1JGTkJJaXdpYW5kcklqcDdJbXQwZVNJNklrOUxVQ0lzSW1OeWRpSTZJa1ZrTWpVMU1Ua2lMQ0o0SWpvaVIwZHFZbFJ2UzNOeVFWUm1TRFpwYTNSNlVXdDRkVlpFZHpSRGMxbzJiSGhRVlY4d1VTMDJaVEJYTkNKOWZRLmV5SmliMlI1WDNOb1lUSTFOaUk2SWxRMlptTjJOMlJ6VG0wMFVVRnZSMGhwYVRkaVJ6WlRiVWRXVkVkSWIxTXRYMk5yVWpScFJqZExjREFpTENKb2RHMGlPaUpRVDFOVUlpd2lhSFIxSWpvaWFIUjBjSE02THk5aGNHa3VjMlZoZDJselpTNXBieTlrWlhacFkyVXZkakl2WVhCd2N5SXNJbWxoZENJNk1UYzVNekF3TURBd01Dd2lhblJwSWpvaVpFZFdlbVJETVhGa1IydDBUVVJCZDAxRVFYZE5SRVVpTENKdWIyNWpaU0k2SW00eExrRkJRVUZCVVM1ak1sWjVaRzFXZVV4WE5YWmliVTVzSW4wLlBLSlpiUzVWajhCWmFEM0JjY3Myc01abkhEVTBHeWVpcXFaWlBHZGhSSDJYeFRSbEI1bEV0NDdLWHg3UjM4OE8xZnI1SDBpcThEVURUVkVQTE1qeEJRMj57ImFwcHMiOlt7ImxvY2FsX2lkIjoiYXBwLTEiLCJob3N0IjoiMTI3LjAuMC4xIiwicG9ydCI6ODA5Nn1dfQ==",
+      "context": {
+        "nonce": "n1.AAAAAQ.c2VydmVyLW5vbmNl",
+        "origin": "https://api.seawise.io",
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+        "server_kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo"
+      },
+      "expect": "wrong_key"
+    },
+    {
+      "name": "dedupe-first-call",
+      "kind": "dedupe",
+      "context": {
+        "body": "eyJhcHBzIjpbeyJsb2NhbF9pZCI6ImFwcC0xIiwiaG9zdCI6IjEyNy4wLjAuMSIsInBvcnQiOjgwOTZ9XX0="
+      },
+      "expect": "execute"
+    },
+    {
+      "name": "dedupe-duplicate",
+      "kind": "dedupe",
+      "context": {
+        "body": "eyJhcHBzIjpbeyJsb2NhbF9pZCI6ImFwcC0xIiwiaG9zdCI6IjEyNy4wLjAuMSIsInBvcnQiOjgwOTZ9XX0=",
+        "stored_body_sha256": "4fa7dcbfb76c366e100281878a2edb1ba4a61954c61e84befdc911e2217b2a9d"
+      },
+      "expect": "replay"
+    },
+    {
+      "name": "dedupe-mismatch",
+      "kind": "dedupe",
+      "context": {
+        "body": "eyJhcHBzIjpbXX0=",
+        "stored_body_sha256": "4fa7dcbfb76c366e100281878a2edb1ba4a61954c61e84befdc911e2217b2a9d"
+      },
+      "expect": "idempotency_mismatch"
+    },
+    {
+      "name": "dedupe-scope",
+      "kind": "scope",
+      "context": {
+        "key": "bfd7eadb164faf03fbedfb1a20abf296",
+        "method": "REGISTER_APPS",
+        "path": "/device/v2/apps",
+        "server_id": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b"
+      },
+      "expect": "ok",
+      "result": "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b REGISTER_APPS /device/v2/apps bfd7eadb164faf03fbedfb1a20abf296"
+    }
+  ]
+}
