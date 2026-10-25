@@ -240,6 +240,26 @@
       "expect": "malformed"
     },
     {
+      "name": "tab-in-value",
+      "kind": "request",
+      "input": "GET / HTTP/1.1\r\nHost: app.example.test\r\nA: b\tc\r\n\r\n",
+      "expect": "ok",
+      "result": {
+        "method": "GET",
+        "target": "/",
+        "header": {
+          "A": [
+            "b\tc"
+          ],
+          "Host": [
+            "app.example.test"
+          ]
+        },
+        "body_len": 0,
+        "upgrade": false
+      }
+    },
+    {
       "name": "del-in-value",
       "kind": "request",
       "input": "GET / HTTP/1.1\r\nHost: app.example.test\r\nA: bc\r\n\r\n",

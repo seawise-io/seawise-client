@@ -63,6 +63,7 @@ func genRequestBytes() vfile {
 	req("bare-lf-header", "GET / HTTP/1.1\r\n"+host+"A: b\n\r\n", "malformed")
 	req("bare-cr-in-value", "GET / HTTP/1.1\r\n"+host+"A: b\rc\r\n\r\n", "malformed")
 	req("nul-in-value", "GET / HTTP/1.1\r\n"+host+"A: b\x00c\r\n\r\n", "malformed")
+	req("tab-in-value", "GET / HTTP/1.1\r\n"+host+"A: b\tc\r\n\r\n", "ok")
 	req("del-in-value", "GET / HTTP/1.1\r\n"+host+"A: b\x7fc\r\n\r\n", "malformed")
 	req("obs-fold", "GET / HTTP/1.1\r\n"+host+"A: b\r\n c\r\n\r\n", "malformed")
 	req("space-before-colon", "GET / HTTP/1.1\r\n"+host+"Content-Length : 5\r\n\r\nhello", "malformed")
