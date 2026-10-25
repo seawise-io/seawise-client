@@ -496,6 +496,24 @@
       "expect": "bad_field"
     },
     {
+      "name": "h2-name-uppercase-a",
+      "kind": "h2_field",
+      "context": {
+        "name": "xA",
+        "value": "b"
+      },
+      "expect": "bad_field"
+    },
+    {
+      "name": "h2-name-uppercase-z",
+      "kind": "h2_field",
+      "context": {
+        "name": "xZ",
+        "value": "b"
+      },
+      "expect": "bad_field"
+    },
+    {
       "name": "h2-name-cr",
       "kind": "h2_field",
       "context": {

@@ -196,6 +196,9 @@ func TestOrdinal(t *testing.T) {
 			t.Error(id, n, ok)
 		}
 	}
+	if n, ok := Ordinal("-5"); !ok || n != 5 {
+		t.Error("leading dash")
+	}
 	for _, id := range []string{"edge", "edge-a-b-x", "edge-a-b-"} {
 		if _, ok := Ordinal(id); ok {
 			t.Error(id)

@@ -19,8 +19,9 @@ func TestExactCapsPassSizeCheck(t *testing.T) {
 		"header":    func(b []byte) error { _, err := DecodeStreamHeader(b, nil); return err },
 		"reply":     func(b []byte) error { _, err := DecodeStreamReply(b); return err },
 		"relay":     func(b []byte) error { _, err := DecodeRelayPrefix(b, fx.EdgeA); return err },
+		"control":   func(b []byte) error { _, err := DecodeControl(b, FromEdge); return err },
 	} {
-		n := map[string]int{"hello": MaxHelloBody, "hello_ack": MaxHelloAckBody, "header": MaxHeader, "reply": MaxReply, "relay": MaxRelayPrefix}[name]
+		n := map[string]int{"control": MaxControlMessage, "hello": MaxHelloBody, "hello_ack": MaxHelloAckBody, "header": MaxHeader, "reply": MaxReply, "relay": MaxRelayPrefix}[name]
 		if err := f(make([]byte, n)); CodeOf(err) == CodeTooLarge {
 			t.Errorf("%s: %d bytes refused as too large", name, n)
 		}
@@ -60,6 +61,12 @@ func TestBoundaryValuesAccepted(t *testing.T) {
 	bad := msgWith(1, 1, &pb.ControlMessage_PolicyVersion{PolicyVersion: &pb.PolicyVersion{Version: 1, Flags: "not a jws"}})
 	if _, err := EncodeControl(bad, FromEdge); CodeOf(err) != CodeBadValue {
 		t.Error("flags not a jws", err)
+	}
+	if _, err := EncodeControl(msgWith(1, 1, &pb.ControlMessage_RouteSet{RouteSet: &pb.RouteSet{Jws: fx.JWS(100)}}), FromEdge); err != nil {
+		t.Error("route set without signed time", err)
+	}
+	if _, err := EncodeControl(msgWith(1, 1, &pb.ControlMessage_RouteSet{RouteSet: &pb.RouteSet{Jws: fx.JWS(100), SignedTime: "x"}}), FromEdge); CodeOf(err) != CodeBadValue {
+		t.Error("signed time not a jws", err)
 	}
 	r := &pb.DeviceResult{CallId: MaxCallID + 1, Class: pb.ResultClass_DONE, HttpStatus: 200}
 	if _, err := EncodeControl(msgWith(1, 1, &pb.ControlMessage_DeviceResult{DeviceResult: r}), FromEdge); CodeOf(err) != CodeBadValue {

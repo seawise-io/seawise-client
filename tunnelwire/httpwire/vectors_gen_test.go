@@ -100,6 +100,8 @@ func genRequestBytes() vfile {
 	h2("h2-value-leading-space", "x-a", " b", "bad_field")
 	h2("h2-value-trailing-tab", "x-a", "b\t", "bad_field")
 	h2("h2-name-uppercase", "X-A", "b", "bad_field")
+	h2("h2-name-uppercase-a", "xA", "b", "bad_field")
+	h2("h2-name-uppercase-z", "xZ", "b", "bad_field")
 	h2("h2-name-cr", "x-a\r", "b", "bad_field")
 	h2("h2-name-lf", "x-a\nx-b", "b", "bad_field")
 	h2("h2-name-nul", "x\x00a", "b", "bad_field")
