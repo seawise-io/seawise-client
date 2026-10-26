@@ -179,20 +179,20 @@ func delayCopy(dst, src net.Conn, d time.Duration) {
 	dst.Close()
 }
 
-// sessions returns an edge (client) and agent (server) session over a link
+// sessions returns an edge (server) and agent (client) session over a link
 // with the given one-way delay.
 func sessions(t *testing.T, oneWay time.Duration, edge, agent *Gate) (*yamux.Session, *yamux.Session) {
 	t.Helper()
 	ec, ac := delayPair(t, oneWay)
-	cfg, err := YamuxConfig(DefaultAgentMaxStreams)
+	acfg, err := YamuxConfig(DefaultAgentMaxStreams)
 	if err != nil {
 		t.Fatal(err)
 	}
-	es, err := yamux.Client(ec, cfg, edge.NewSpan)
+	es, err := yamux.Server(ec, EdgeYamuxConfig(), edge.NewSpan)
 	if err != nil {
 		t.Fatal(err)
 	}
-	as, err := yamux.Server(ac, cfg, agent.NewSpan)
+	as, err := yamux.Client(ac, acfg, agent.NewSpan)
 	if err != nil {
 		t.Fatal(err)
 	}
