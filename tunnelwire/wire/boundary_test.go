@@ -83,3 +83,15 @@ func TestErrorStrings(t *testing.T) {
 		t.Fatal("peer values")
 	}
 }
+
+func TestMoreBoundaries(t *testing.T) {
+	h := fx.StreamHeader()
+	h.EdgeTimeMs = 0
+	if _, err := EncodeStreamHeader(h, nil); err != nil {
+		t.Fatal("edge_time_ms 0", err)
+	}
+	id := "edge-" + fx.Repeat("a", 54) + "-b-1"
+	if len(id) != MaxEdgeID || !ValidEdgeID(id) || ValidEdgeID("edge-"+fx.Repeat("a", 55)+"-b-1") {
+		t.Fatal("edge id length cap")
+	}
+}
