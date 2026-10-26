@@ -21,31 +21,34 @@ Vectors live in `testdata/vectors` (see its README).
 
 ## Stream window and buffer budgets
 
-Streams are multiplexed with `libp2p/go-yamux/v5`. A stream starts with a
-256 KiB receive window and doubles it each round trip while its reader
-keeps up, to at most 16 MiB. Every window reservation goes through a
-`caps.Gate`, go-yamux's memory manager: the agent charges a 32 MiB session
-budget, the edge a per-session budget (32 MiB default) and its 256 MiB
-global budget. Growth is granted only from what the budget has left, so one
-busy stream can grow while idle streams keep 256 KiB
-(`TestBusyStreamGrowsIdleStreamsStaySmall`). `max_streams` stays at
-budget / 256 KiB = 128.
+Streams are multiplexed with `libp2p/go-yamux/v5`. A stream starts with the
+256 KiB receive window yamux fixes and doubles it each round trip while its
+reader keeps up, to at most 16 MiB (go-yamux stalls a stream if the cap is
+not a power of two). Every window reservation goes through a `caps.Gate`,
+go-yamux's memory manager.
 
-go-yamux closes the whole session when an incoming stream's initial window
-cannot be reserved. The agent gate therefore always grants initial windows,
-whose number `MaxIncomingStreams` caps at `max_streams`, and refuses only
-growth. Its worst case is the 32 MiB budget plus initial windows of streams
-opened after the budget filled: at most 64 MiB. The edge gate refuses both,
-since the edge opens data streams itself and a refused open fails only that
-stream.
+The agent's session budget is 48 MiB, strict: 32.25 MiB holds the initial
+windows of 128 data streams and stream 0, the remaining 15.75 MiB is the
+growth pool, enough for one busy stream to reach 16 MiB
+(`TestBusyStreamGrowsIdleStreamsStaySmall`, `Test128StreamsStayWithinBudget`).
+`max_streams` stays at 128. go-yamux closes the whole session when an
+incoming stream's initial window cannot be reserved, so an initial window
+beyond 129 (an edge exceeding `max_streams`, or a new stream racing an old
+one's cleanup) is taken from the growth pool; the session closes only when
+both pools are spent.
+
+The edge charges a per-session budget (48 MiB default) and its 256 MiB
+global budget and refuses any reservation that does not fit; the edge
+opens data streams itself, so a refusal fails only that open.
 
 Per-stream throughput: frp v0.67 uses `hashicorp/yamux` with a static 6 MiB
 window on both sides (`client/connector.go`, `server/service.go`), a bound
-of about 60 MiB/s per stream at 100 ms RTT. With 16 MiB windows the bound is
-about 160 MiB/s; `TestThroughputAt100msRTT` sends 512 MiB over a loopback
-link with 50 ms added each way and requires at least 50 MiB/s on one stream
-(measured: about 75 MiB/s). Window growth needs an RTT sample, so go-yamux
-pings once at session start and then every 10 minutes; its keepalive is off.
+of about 60 MiB/s per stream at 100 ms RTT. `TestThroughputAt100msRTT` sends
+512 MiB each way over a loopback link with 50 ms added in each direction
+and requires at least 50 MiB/s on one stream; it measures about 75 MiB/s
+both for downloads (edge receiving) and uploads (agent receiving). Window
+growth needs an RTT sample, so go-yamux pings once at session start and then
+every 10 minutes; its keepalive is off.
 
 ## Fuzzing
 

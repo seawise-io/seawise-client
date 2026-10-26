@@ -22,13 +22,16 @@ import (
 
 // Limits and defaults.
 const (
-	InitialWindow          = 256 << 10 // initial stream window, go-yamux's minimum
-	MaxWindow              = 16 << 20  // largest window one stream may grow to
-	AgentBudget            = 32 << 20  // agent session buffer budget
-	EdgeSessionBudget      = 32 << 20  // edge buffer budget per agent session
-	EdgeBudget             = 256 << 20 // edge-wide buffer budget
+	InitialWindow      = 256 << 10 // initial stream window, fixed by yamux
+	AgentInitialBudget = 32 << 20  // initial windows of the agent's data streams
+	AgentBudget        = 48 << 20  // agent session buffer budget: initial windows plus growth
+	EdgeSessionBudget  = 48 << 20  // edge buffer budget per agent session
+	EdgeBudget         = 256 << 20 // edge-wide buffer budget
+	// MaxWindow is the largest window one stream may grow to. go-yamux
+	// doubles windows and stalls a stream when the cap is not a power of two.
+	MaxWindow              = 16 << 20
 	MeasureRTTInterval     = 10 * time.Minute
-	DefaultAgentMaxStreams = AgentBudget / InitialWindow
+	DefaultAgentMaxStreams = AgentInitialBudget / InitialWindow
 	MaxStreamsLimit        = 4096
 	AccountStreamsFree     = 256
 	AccountStreamsPaid     = 1024
@@ -163,15 +166,20 @@ var ErrBudget = errors.New("tunnelwire: stream buffer budget exhausted")
 // Gate is a session's go-yamux memory manager: one span per stream, every
 // span charged to the session budget and, at the edge, the global budget.
 //
-// go-yamux closes the whole session when an incoming stream's initial
-// window cannot be reserved, so the agent gate always grants initial
-// windows (their number is capped by MaxIncomingStreams) and refuses only
-// growth past the budget. The edge gate refuses both: the edge opens data
+// The agent gate splits its budget into initial windows for max_streams
+// data streams plus stream 0, and a growth pool for the rest. go-yamux
+// closes the whole session when an incoming stream's initial window cannot
+// be reserved, so an initial window beyond that count (an edge opening more
+// than max_streams, or a new stream racing an old one's cleanup) is taken
+// from the growth pool, and the session closes only when both are spent.
+// The session never exceeds its budget. The edge gate refuses both: the edge opens data
 // streams itself, where a refusal fails just that open, and an agent may
 // not open streams other than stream 0.
 type Gate struct {
 	session *Budget
 	shared  *Budget
+	initial *Budget
+	growth  *Budget
 	strict  bool
 
 	mu    sync.Mutex
@@ -179,10 +187,17 @@ type Gate struct {
 	peak  int64
 }
 
-// NewAgentGate returns the agent's gate with a session budget of budget
-// bytes.
-func NewAgentGate(budget int64) *Gate {
-	return &Gate{session: NewBudget(budget), spans: map[*span]struct{}{}}
+// AgentGrowth is the growth pool of an agent session: budget less the
+// initial windows of maxStreams data streams and stream 0.
+func AgentGrowth(budget int64, maxStreams uint32) int64 {
+	return max(0, budget-int64(maxStreams+1)*InitialWindow)
+}
+
+// NewAgentGate returns the agent's gate for a session budget of budget
+// bytes and maxStreams data streams.
+func NewAgentGate(budget int64, maxStreams uint32) *Gate {
+	initial := min(budget, int64(maxStreams+1)*InitialWindow)
+	return &Gate{session: NewBudget(budget), initial: NewBudget(initial), growth: NewBudget(budget - initial), spans: map[*span]struct{}{}}
 }
 
 // NewEdgeGate returns an edge gate with a per-session budget, charging the
@@ -229,8 +244,9 @@ func (g *Gate) SmallSpans(n int64) int {
 const initialPriority = 255
 
 type span struct {
-	g    *Gate
-	held int64
+	g     *Gate
+	held  int64
+	grown int64
 }
 
 func (s *span) ReserveMemory(size int, prio uint8) error {
@@ -239,9 +255,15 @@ func (s *span) ReserveMemory(size int, prio uint8) error {
 		return nil
 	}
 	g := s.g
-	if prio == initialPriority && !g.strict {
-		g.session.force(n)
-	} else {
+	grown := false
+	switch {
+	case !g.strict && prio == initialPriority && g.initial.TryAcquire(n):
+	case !g.strict:
+		if !g.growth.TryAcquire(n) {
+			return ErrBudget
+		}
+		grown = true
+	default:
 		if !g.session.TryAcquire(n) {
 			return ErrBudget
 		}
@@ -250,42 +272,57 @@ func (s *span) ReserveMemory(size int, prio uint8) error {
 			return ErrBudget
 		}
 	}
+	if !g.strict {
+		g.session.force(n)
+	}
 	g.mu.Lock()
 	s.held += n
+	if grown {
+		s.grown += n
+	}
 	g.peak = max(g.peak, s.held)
 	g.mu.Unlock()
 	return nil
 }
 
-func (s *span) ReleaseMemory(size int) {
+func (s *span) ReleaseMemory(size int) { s.release(int64(size)) }
+
+func (s *span) Done() {
+	s.release(s.heldNow())
 	g := s.g
 	g.mu.Lock()
-	n := min(int64(size), s.held)
+	delete(g.spans, s)
+	g.mu.Unlock()
+}
+
+func (s *span) heldNow() int64 {
+	s.g.mu.Lock()
+	defer s.g.mu.Unlock()
+	return s.held
+}
+
+// release returns up to n bytes of the span, growth first.
+func (s *span) release(n int64) {
+	g := s.g
+	g.mu.Lock()
+	n = min(n, s.held)
 	if n <= 0 {
 		g.mu.Unlock()
 		return
 	}
+	fromGrowth := min(n, s.grown)
 	s.held -= n
+	s.grown -= fromGrowth
 	g.mu.Unlock()
-	g.release(n)
-}
-
-func (s *span) Done() {
-	g := s.g
-	g.mu.Lock()
-	n := s.held
-	s.held = 0
-	delete(g.spans, s)
-	g.mu.Unlock()
-	if n > 0 {
-		g.release(n)
-	}
-}
-
-func (g *Gate) release(n int64) {
 	g.session.Release(n)
 	if g.shared != nil {
 		g.shared.Release(n)
+	}
+	if fromGrowth > 0 {
+		g.growth.Release(fromGrowth)
+	}
+	if n > fromGrowth && g.initial != nil {
+		g.initial.Release(n - fromGrowth)
 	}
 }
 

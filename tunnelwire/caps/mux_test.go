@@ -36,7 +36,7 @@ func TestAgentBudgetSplit(t *testing.T) {
 	if AgentBudget != 48<<20 || DefaultAgentMaxStreams != 128 {
 		t.Fatal("budget constants")
 	}
-	if g := AgentGrowth(AgentBudget, DefaultAgentMaxStreams); g != AgentBudget-130*InitialWindow || int64(MaxWindow) != InitialWindow+g {
+	if g := AgentGrowth(AgentBudget, DefaultAgentMaxStreams); g != AgentBudget-129*InitialWindow || g < MaxWindow-InitialWindow {
 		t.Fatal("growth pool", g)
 	}
 	if AgentGrowth(InitialWindow, 128) != 0 {
@@ -44,21 +44,16 @@ func TestAgentBudgetSplit(t *testing.T) {
 	}
 }
 
-func TestAgentGateNeverRefusesInitialWindow(t *testing.T) {
+func TestAgentGatePools(t *testing.T) {
+	// One data stream: initial pool of 2 windows, growth pool of 2.
 	g := NewAgentGate(4*InitialWindow, 1)
 	var spans []yamux.MemoryManager
-	for i := 0; i < 4; i++ {
-		s, err := g.NewSpan()
-		if err != nil {
-			t.Fatal(err)
-		}
+	for i := 0; i < 3; i++ {
+		s, _ := g.NewSpan()
 		if err := s.ReserveMemory(InitialWindow, 255); err != nil {
 			t.Fatalf("initial window %d refused: %v", i+1, err)
 		}
 		spans = append(spans, s)
-	}
-	if g.Used() != 4*InitialWindow {
-		t.Fatal(g.Used())
 	}
 	if err := spans[0].ReserveMemory(InitialWindow, 128); err != nil {
 		t.Fatal("growth within the pool refused", err)
@@ -66,8 +61,12 @@ func TestAgentGateNeverRefusesInitialWindow(t *testing.T) {
 	if err := spans[1].ReserveMemory(1, 128); !errors.Is(err, ErrBudget) {
 		t.Fatal("growth past the pool granted", err)
 	}
-	if g.PeakStream() != 2*InitialWindow {
-		t.Fatal(g.PeakStream())
+	extra, _ := g.NewSpan()
+	if err := extra.ReserveMemory(InitialWindow, 255); !errors.Is(err, ErrBudget) {
+		t.Fatal("initial window past both pools granted", err)
+	}
+	if g.Used() != 4*InitialWindow || g.Peak() != 4*InitialWindow || g.PeakStream() != 2*InitialWindow {
+		t.Fatal(g.Used(), g.Peak(), g.PeakStream())
 	}
 	spans[0].ReleaseMemory(InitialWindow / 2)
 	if err := spans[1].ReserveMemory(InitialWindow/2, 128); err != nil {
@@ -75,16 +74,21 @@ func TestAgentGateNeverRefusesInitialWindow(t *testing.T) {
 	}
 	spans[0].Done()
 	spans[0].Done()
-	if g.Used() != 3*InitialWindow+InitialWindow/2 {
+	if g.Used() != 2*InitialWindow+InitialWindow/2 {
 		t.Fatal("done", g.Used())
 	}
-	if err := spans[2].ReserveMemory(InitialWindow/2, 128); err != nil {
-		t.Fatal("growth freed by done not reusable", err)
+	if err := extra.ReserveMemory(InitialWindow, 255); err != nil {
+		t.Fatal("initial window freed by done not reusable", err)
 	}
-	spans[3].ReleaseMemory(0)
-	spans[3].ReleaseMemory(2 * InitialWindow)
-	if g.Used() != 3*InitialWindow {
+	spans[1].ReleaseMemory(0)
+	spans[1].ReleaseMemory(4 * InitialWindow)
+	if g.Used() != 2*InitialWindow {
 		t.Fatal("release past the span's reservation", g.Used())
+	}
+	small := NewAgentGate(InitialWindow/2, 1)
+	s, _ := small.NewSpan()
+	if err := s.ReserveMemory(InitialWindow, 255); !errors.Is(err, ErrBudget) {
+		t.Fatal("budget below one window")
 	}
 }
 
@@ -251,55 +255,73 @@ func TestBusyStreamGrowsIdleStreamsStaySmall(t *testing.T) {
 	}
 }
 
-// A single stream moves at least 50 MiB/s over a link with 100 ms RTT.
+// A single stream moves at least 50 MiB/s over a link with 100 ms RTT, in
+// both directions: edge receiving (downloads) and agent receiving (uploads).
 func TestThroughputAt100msRTT(t *testing.T) {
 	if raceEnabled || testing.Short() {
 		t.Skip("throughput test needs a non-race, full run")
 	}
-	edge := NewEdgeGate(EdgeSessionBudget, NewBudget(EdgeBudget))
-	agent := NewAgentGate(AgentBudget, DefaultAgentMaxStreams)
-	es, as := sessions(t, 50*time.Millisecond, edge, agent)
-	const total = 512 << 20
-	go func() {
-		s, err := as.AcceptStream()
+	for _, upload := range []bool{false, true} {
+		edge := NewEdgeGate(EdgeSessionBudget, NewBudget(EdgeBudget))
+		agent := NewAgentGate(AgentBudget, DefaultAgentMaxStreams)
+		es, as := sessions(t, 50*time.Millisecond, edge, agent)
+		const total = 512 << 20
+		recvGate := edge
+		if upload {
+			recvGate = agent
+		}
+		send := func(s *yamux.Stream) {
+			buf := make([]byte, 1<<20)
+			for sent := 0; sent < total; sent += len(buf) {
+				if _, err := s.Write(buf); err != nil {
+					return
+				}
+			}
+			s.Close()
+		}
+		st, err := es.OpenStream(t.Context())
 		if err != nil {
-			return
+			t.Fatal(err)
+		}
+		if _, err := st.Write([]byte{1}); err != nil {
+			t.Fatal(err)
+		}
+		as2, err := as.AcceptStream()
+		if err != nil {
+			t.Fatal(err)
+		}
+		recv := st
+		if upload {
+			go send(st)
+			recv = as2
+			one := make([]byte, 1)
+			if _, err := io.ReadFull(recv, one); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			go send(as2)
 		}
 		buf := make([]byte, 1<<20)
-		for sent := 0; sent < total; sent += len(buf) {
-			if _, err := s.Write(buf); err != nil {
-				return
+		got, warm := 0, 128<<20
+		var start time.Time
+		for got < total {
+			n, err := recv.Read(buf)
+			got += n
+			if start.IsZero() && got >= warm {
+				start = time.Now()
+			}
+			if err != nil {
+				break
 			}
 		}
-		s.Close()
-	}()
-	st, err := es.OpenStream(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := st.Write([]byte{1}); err != nil {
-		t.Fatal(err)
-	}
-	buf := make([]byte, 1<<20)
-	got, warm := 0, 128<<20
-	var start time.Time
-	for got < total {
-		n, err := st.Read(buf)
-		got += n
-		if start.IsZero() && got >= warm {
-			start = time.Now()
+		if got != total {
+			t.Fatalf("upload=%v: received %d of %d bytes", upload, got, total)
 		}
-		if err != nil {
-			break
+		rate := float64(total-warm) / time.Since(start).Seconds() / (1 << 20)
+		t.Logf("upload=%v: steady-state %.1f MiB/s, receive window peak %d", upload, rate, recvGate.PeakStream())
+		if rate < 50 {
+			t.Fatalf("upload=%v: %.1f MiB/s at 100 ms RTT, want at least 50", upload, rate)
 		}
-	}
-	if got != total {
-		t.Fatalf("received %d of %d bytes", got, total)
-	}
-	rate := float64(total-warm) / time.Since(start).Seconds() / (1 << 20)
-	t.Logf("steady-state %.1f MiB/s, edge stream window peak %d", rate, edge.PeakStream())
-	if rate < 50 {
-		t.Fatalf("%.1f MiB/s at 100 ms RTT, want at least 50", rate)
 	}
 }
 

@@ -25,7 +25,9 @@ cases at exactly those lengths are frame-layer only: the frame is accepted
 and its content is not a valid message.
 
 The vectors do not depend on the multiplexer; stream windows and budgets
-are covered by the tests in `caps`.
+are covered by the tests in `caps`. The agent buffer budget there is 48 MiB
+(initial windows of 128 streams plus a 15.75 MiB growth pool), not the
+32 MiB the protocol spec gives; the stream cap of 128 is unchanged.
 
 The paths in `device_call.json` follow the provisional method table in
 `wire/device.go` and change if that table changes.
