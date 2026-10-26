@@ -398,7 +398,11 @@ func Test128StreamsStayWithinBudget(t *testing.T) {
 			}
 		}(s)
 	}
-	time.Sleep(3 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
+	for agent.PeakStream() <= InitialWindow && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	time.Sleep(time.Second)
 	if agent.Peak() > AgentBudget {
 		t.Fatalf("agent reserved %d bytes, budget %d", agent.Peak(), AgentBudget)
 	}

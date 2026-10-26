@@ -145,12 +145,6 @@ func TestEdgeYamuxConfig(t *testing.T) {
 	}
 }
 
-func TestEdgeSessionBudgetMatchesSpec(t *testing.T) {
-	if EdgeSessionBudget != 32<<20 {
-		t.Fatal(EdgeSessionBudget)
-	}
-}
-
 func TestRefusedOpensLeaveNoSpans(t *testing.T) {
 	g := NewEdgeGate(InitialWindow, 0, NewBudget(EdgeBudget))
 	keep, _ := g.NewSpan()
