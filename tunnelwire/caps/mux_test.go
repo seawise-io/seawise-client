@@ -284,3 +284,15 @@ func TestThroughputAt100msRTT(t *testing.T) {
 		t.Fatalf("%.1f MiB/s at 100 ms RTT, want at least 50", rate)
 	}
 }
+
+func TestSmallSpans(t *testing.T) {
+	g := NewAgentGate(AgentBudget)
+	g.NewSpan()
+	a, _ := g.NewSpan()
+	a.ReserveMemory(InitialWindow, 255)
+	b, _ := g.NewSpan()
+	b.ReserveMemory(InitialWindow+1, 255)
+	if n := g.SmallSpans(InitialWindow); n != 1 {
+		t.Fatalf("%d small spans", n)
+	}
+}
