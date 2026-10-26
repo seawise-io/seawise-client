@@ -16,14 +16,14 @@ func TestDerivedStreams(t *testing.T) {
 		window uint32
 		want   uint32
 	}{
-		{AgentBudget, InitialWindow, 128},
-		{AgentBudget, 6 << 20, 5},
-		{AgentBudget - 1, InitialWindow, 127},
+		{AgentInitialBudget, InitialWindow, 128},
+		{AgentInitialBudget, 6 << 20, 5},
+		{AgentInitialBudget - 1, InitialWindow, 127},
 		{InitialWindow, InitialWindow, 1},
 		{InitialWindow - 1, InitialWindow, 0},
 		{0, InitialWindow, 0},
 		{-1, InitialWindow, 0},
-		{AgentBudget, 0, 0},
+		{AgentInitialBudget, 0, 0},
 		{1 << 40, InitialWindow, 4096},
 		{4096 * InitialWindow, InitialWindow, 4096},
 		{4097 * InitialWindow, InitialWindow, 4096},

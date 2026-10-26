@@ -32,10 +32,22 @@ func TestYamuxConfig(t *testing.T) {
 	}
 }
 
+func TestAgentBudgetSplit(t *testing.T) {
+	if AgentBudget != 48<<20 || DefaultAgentMaxStreams != 128 {
+		t.Fatal("budget constants")
+	}
+	if g := AgentGrowth(AgentBudget, DefaultAgentMaxStreams); g != AgentBudget-130*InitialWindow || int64(MaxWindow) != InitialWindow+g {
+		t.Fatal("growth pool", g)
+	}
+	if AgentGrowth(InitialWindow, 128) != 0 {
+		t.Fatal("negative growth pool")
+	}
+}
+
 func TestAgentGateNeverRefusesInitialWindow(t *testing.T) {
-	g := NewAgentGate(2 * InitialWindow)
+	g := NewAgentGate(4*InitialWindow, 1)
 	var spans []yamux.MemoryManager
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
 		s, err := g.NewSpan()
 		if err != nil {
 			t.Fatal(err)
@@ -45,27 +57,33 @@ func TestAgentGateNeverRefusesInitialWindow(t *testing.T) {
 		}
 		spans = append(spans, s)
 	}
-	if g.Used() != 3*InitialWindow {
+	if g.Used() != 4*InitialWindow {
 		t.Fatal(g.Used())
 	}
-	if err := spans[0].ReserveMemory(1, 128); !errors.Is(err, ErrBudget) {
-		t.Fatal("growth past the budget granted", err)
+	if err := spans[0].ReserveMemory(InitialWindow, 128); err != nil {
+		t.Fatal("growth within the pool refused", err)
 	}
-	spans[2].Done()
-	spans[2].Done()
-	if g.Used() != 2*InitialWindow {
-		t.Fatal("done not idempotent", g.Used())
+	if err := spans[1].ReserveMemory(1, 128); !errors.Is(err, ErrBudget) {
+		t.Fatal("growth past the pool granted", err)
 	}
-	spans[1].ReleaseMemory(InitialWindow / 2)
-	if err := spans[0].ReserveMemory(InitialWindow/2, 128); err != nil {
-		t.Fatal("growth within the budget refused", err)
-	}
-	if g.PeakStream() != InitialWindow+InitialWindow/2 {
+	if g.PeakStream() != 2*InitialWindow {
 		t.Fatal(g.PeakStream())
 	}
-	spans[1].ReleaseMemory(0)
-	spans[1].ReleaseMemory(InitialWindow)
-	if g.Used() != InitialWindow+InitialWindow/2 {
+	spans[0].ReleaseMemory(InitialWindow / 2)
+	if err := spans[1].ReserveMemory(InitialWindow/2, 128); err != nil {
+		t.Fatal("released growth not reusable", err)
+	}
+	spans[0].Done()
+	spans[0].Done()
+	if g.Used() != 3*InitialWindow+InitialWindow/2 {
+		t.Fatal("done", g.Used())
+	}
+	if err := spans[2].ReserveMemory(InitialWindow/2, 128); err != nil {
+		t.Fatal("growth freed by done not reusable", err)
+	}
+	spans[3].ReleaseMemory(0)
+	spans[3].ReleaseMemory(2 * InitialWindow)
+	if g.Used() != 3*InitialWindow {
 		t.Fatal("release past the span's reservation", g.Used())
 	}
 }
@@ -182,7 +200,7 @@ func sessions(t *testing.T, oneWay time.Duration, edge, agent *Gate) (*yamux.Ses
 // their initial window and the session stays within its budget.
 func TestBusyStreamGrowsIdleStreamsStaySmall(t *testing.T) {
 	edge := NewEdgeGate(EdgeSessionBudget, NewBudget(EdgeBudget))
-	agent := NewAgentGate(AgentBudget)
+	agent := NewAgentGate(AgentBudget, DefaultAgentMaxStreams)
 	es, as := sessions(t, 10*time.Millisecond, edge, agent)
 	const idle = 40
 	go func() {
@@ -239,7 +257,7 @@ func TestThroughputAt100msRTT(t *testing.T) {
 		t.Skip("throughput test needs a non-race, full run")
 	}
 	edge := NewEdgeGate(EdgeSessionBudget, NewBudget(EdgeBudget))
-	agent := NewAgentGate(AgentBudget)
+	agent := NewAgentGate(AgentBudget, DefaultAgentMaxStreams)
 	es, as := sessions(t, 50*time.Millisecond, edge, agent)
 	const total = 512 << 20
 	go func() {
@@ -286,7 +304,7 @@ func TestThroughputAt100msRTT(t *testing.T) {
 }
 
 func TestSmallSpans(t *testing.T) {
-	g := NewAgentGate(AgentBudget)
+	g := NewAgentGate(AgentBudget, DefaultAgentMaxStreams)
 	g.NewSpan()
 	a, _ := g.NewSpan()
 	a.ReserveMemory(InitialWindow, 255)
@@ -295,4 +313,57 @@ func TestSmallSpans(t *testing.T) {
 	if n := g.SmallSpans(InitialWindow); n != 1 {
 		t.Fatalf("%d small spans", n)
 	}
+}
+
+// 128 data streams opened at once, all receiving, plus the agent's own
+// stream 0 and a refused 129th stream, stay within the 48 MiB budget.
+func Test128StreamsStayWithinBudget(t *testing.T) {
+	edge := NewEdgeGate(EdgeSessionBudget, NewBudget(EdgeBudget))
+	agent := NewAgentGate(AgentBudget, DefaultAgentMaxStreams)
+	es, as := sessions(t, 5*time.Millisecond, edge, agent)
+	go func() {
+		for {
+			s, err := as.AcceptStream()
+			if err != nil {
+				return
+			}
+			go io.Copy(io.Discard, s)
+		}
+	}()
+	if _, err := as.OpenStream(t.Context()); err != nil {
+		t.Fatal("stream 0", err)
+	}
+	var streams []*yamux.Stream
+	for i := 0; i < DefaultAgentMaxStreams+1; i++ {
+		s, err := es.OpenStream(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		streams = append(streams, s)
+	}
+	stop := make(chan struct{})
+	defer close(stop)
+	for _, s := range streams {
+		go func(s *yamux.Stream) {
+			buf := make([]byte, 256<<10)
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if _, err := s.Write(buf); err != nil {
+					return
+				}
+			}
+		}(s)
+	}
+	time.Sleep(3 * time.Second)
+	if agent.Peak() > AgentBudget {
+		t.Fatalf("agent reserved %d bytes, budget %d", agent.Peak(), AgentBudget)
+	}
+	if agent.PeakStream() <= InitialWindow {
+		t.Fatal("no stream grew")
+	}
+	t.Logf("peak %d of %d, largest stream %d", agent.Peak(), AgentBudget, agent.PeakStream())
 }
