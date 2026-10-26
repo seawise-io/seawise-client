@@ -60,9 +60,7 @@ func CodeOf(err error) Code {
 }
 
 func signedMessage(context string, exporter [32]byte, body []byte) []byte {
-	m := make([]byte, 0, len(context)+1+len(exporter)+len(body))
-	m = append(m, context...)
-	m = append(m, 0)
+	m := append([]byte(context), 0)
 	m = append(m, exporter[:]...)
 	return append(m, body...)
 }

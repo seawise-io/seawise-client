@@ -192,14 +192,22 @@ func genFlags() vfile {
 		}
 		return out
 	}
-	eval("allow-256", base(func(c map[string]any) { c["allow"] = list(256) }), 0, "ok")
-	eval("allow-257", base(func(c map[string]any) { c["allow"] = list(257) }), 0, "malformed")
-	full := base(func(c map[string]any) { c["allow"] = list(150); c["deny"] = list(150)[:0] })
+	eval("allow-128", base(func(c map[string]any) { c["allow"] = list(128) }), 0, "ok")
+	eval("allow-129", base(func(c map[string]any) { c["allow"] = list(129) }), 0, "malformed")
+	eval("deny-129", base(func(c map[string]any) { c["deny"] = list(129) }), 0, "malformed")
+	full := base(func(c map[string]any) {
+		c["generation"] = int64(1)<<53 - 1
+		c["iat"] = int64(1)<<53 - 1
+		c["allow"] = list(MaxFlagsList)
+		c["deny"] = list(2 * MaxFlagsList)[MaxFlagsList:]
+	})
 	tok := vkeys.SignJWS(vkeys.Key(controlK), TypFlags, full)
-	cs = append(cs, vcase{Name: "size-under-cap", Kind: "flags_size", Input: tok, Expect: map[bool]string{true: "ok", false: "too_large"}[len(tok) <= 16384]})
-	full = base(func(c map[string]any) { c["allow"] = list(256); c["deny"] = list(256) })
-	tok = vkeys.SignJWS(vkeys.Key(controlK), TypFlags, full)
-	cs = append(cs, vcase{Name: "size-over-cap", Kind: "flags_size", Input: tok, Expect: map[bool]string{true: "ok", false: "too_large"}[len(tok) <= 16384]})
+	if len(tok) > 16384 {
+		panic(fmt.Sprintf("largest flags document is %d bytes", len(tok)))
+	}
+	cs = append(cs, vcase{Name: "largest-document-fits-cap", Kind: "flags_size", Input: tok, Expect: "ok"})
+	cs = append(cs, vcase{Name: "size-16384", Kind: "flags_size", Input: fx.JWS(16384), Expect: "ok"})
+	cs = append(cs, vcase{Name: "size-16385", Kind: "flags_size", Input: fx.JWS(16385), Expect: "too_large"})
 	return vfile{Format: "flags", Note: vkeys.Note, Keys: vkeys.Infos(controlK), Cases: cs}
 }
 

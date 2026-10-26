@@ -62,9 +62,7 @@ func ReadPeerHello(r io.Reader) (PeerHello, error) {
 // "seawise-relay/1" || 0x00 || dialer_id || acceptor_id || dialer_nonce ||
 // acceptor_nonce || role. Edge ids are self-delimiting by their syntax.
 func PeerMessage(dialer, acceptor PeerHello, role byte) []byte {
-	m := make([]byte, 0, len(relayContext)+1+len(dialer.EdgeID)+len(acceptor.EdgeID)+2*NonceSize+1)
-	m = append(m, relayContext...)
-	m = append(m, 0)
+	m := append([]byte(relayContext), 0)
 	m = append(m, dialer.EdgeID...)
 	m = append(m, acceptor.EdgeID...)
 	m = append(m, dialer.Nonce[:]...)

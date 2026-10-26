@@ -12,7 +12,7 @@ import (
 // Flags JWS type and caps.
 const (
 	TypFlags     = "sw-tunnel-flags+jws"
-	MaxFlagsList = 256
+	MaxFlagsList = 128
 	SaltSize     = 16
 )
 
