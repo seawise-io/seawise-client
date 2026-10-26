@@ -27,7 +27,7 @@ func waitZero(t *testing.T, what string, f func() int64) {
 func TestDownloadsReleaseEverything(t *testing.T) {
 	for round := 0; round < 5; round++ {
 		global := NewBudget(EdgeBudget)
-		edge := NewEdgeGate(EdgeSessionBudget, global)
+		edge := NewEdgeGate(EdgeSessionBudget, DefaultAgentMaxStreams, global)
 		agent := NewAgentGate(AgentBudget, DefaultAgentMaxStreams)
 		es, as := sessions(t, 2*time.Millisecond, edge, agent)
 		var wg sync.WaitGroup
@@ -95,7 +95,7 @@ func TestDownloadsReleaseEverything(t *testing.T) {
 
 func TestReserveAfterDoneRefused(t *testing.T) {
 	global := NewBudget(EdgeBudget)
-	g := NewEdgeGate(EdgeSessionBudget, global)
+	g := NewEdgeGate(EdgeSessionBudget, DefaultAgentMaxStreams, global)
 	s, _ := g.NewSpan()
 	if err := s.ReserveMemory(InitialWindow, 255); err != nil {
 		t.Fatal(err)
@@ -123,7 +123,7 @@ func TestReserveAfterDoneRefused(t *testing.T) {
 // Before Hello the agent can make the edge hold at most one stream window.
 func TestPreHelloClientHoldsOneWindow(t *testing.T) {
 	global := NewBudget(EdgeBudget)
-	edge := NewEdgeGate(EdgeSessionBudget, global)
+	edge := NewEdgeGate(EdgeSessionBudget, DefaultAgentMaxStreams, global)
 	agent := NewAgentGate(AgentBudget, DefaultAgentMaxStreams)
 	_, as := sessions(t, time.Millisecond, edge, agent)
 	for i := 0; i < 50; i++ {
@@ -152,7 +152,7 @@ func TestEdgeSessionBudgetMatchesSpec(t *testing.T) {
 }
 
 func TestRefusedOpensLeaveNoSpans(t *testing.T) {
-	g := NewEdgeGate(InitialWindow, NewBudget(EdgeBudget))
+	g := NewEdgeGate(InitialWindow, 0, NewBudget(EdgeBudget))
 	keep, _ := g.NewSpan()
 	if err := keep.ReserveMemory(InitialWindow, 255); err != nil {
 		t.Fatal(err)

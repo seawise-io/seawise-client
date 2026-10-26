@@ -96,22 +96,35 @@ func TestAgentGatePools(t *testing.T) {
 	}
 }
 
-func TestEdgeGateStrict(t *testing.T) {
-	global := NewBudget(3 * InitialWindow)
-	a := NewEdgeGate(2*InitialWindow, global)
-	b := NewEdgeGate(2*InitialWindow, global)
-	open := func(g *Gate) error {
+func TestEdgeGatePoolsAndShared(t *testing.T) {
+	global := NewBudget(5 * InitialWindow)
+	a := NewEdgeGate(4*InitialWindow, 1, global)
+	b := NewEdgeGate(4*InitialWindow, 1, global)
+	open := func(g *Gate) (yamux.MemoryManager, error) {
 		s, _ := g.NewSpan()
-		return s.ReserveMemory(InitialWindow, 255)
+		return s, s.ReserveMemory(InitialWindow, 255)
 	}
-	if open(a) != nil || open(a) != nil || !errors.Is(open(a), ErrBudget) {
-		t.Fatal("session cap")
+	s1, err := open(a)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if open(b) != nil || !errors.Is(open(b), ErrBudget) {
-		t.Fatal("global cap")
+	if err := s1.ReserveMemory(2*InitialWindow, 128); err != nil {
+		t.Fatal("growth within the pool", err)
 	}
-	if b.Used() != InitialWindow || global.Used() != 3*InitialWindow {
-		t.Fatal("refused reservation kept", b.Used(), global.Used())
+	if _, err := open(a); err != nil {
+		t.Fatal("second initial window", err)
+	}
+	if _, err := open(a); !errors.Is(err, ErrBudget) {
+		t.Fatal("session past its budget", err)
+	}
+	if _, err := open(b); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := open(b); !errors.Is(err, ErrBudget) {
+		t.Fatal("global cap", err)
+	}
+	if b.Used() != InitialWindow || global.Used() != 5*InitialWindow || a.Used() != 4*InitialWindow {
+		t.Fatal("refused reservation kept", a.Used(), b.Used(), global.Used())
 	}
 	if err := (&span{g: a}).ReserveMemory(0, 128); err != nil {
 		t.Fatal(err)
@@ -207,7 +220,7 @@ func sessions(t *testing.T, oneWay time.Duration, edge, agent *Gate) (*yamux.Ses
 // One busy stream grows its window past 6 MiB while idle streams keep
 // their initial window and the session stays within its budget.
 func TestBusyStreamGrowsIdleStreamsStaySmall(t *testing.T) {
-	edge := NewEdgeGate(EdgeSessionBudget, NewBudget(EdgeBudget))
+	edge := NewEdgeGate(EdgeSessionBudget, DefaultAgentMaxStreams, NewBudget(EdgeBudget))
 	agent := NewAgentGate(AgentBudget, DefaultAgentMaxStreams)
 	es, as := sessions(t, 10*time.Millisecond, edge, agent)
 	const idle = 40
@@ -266,7 +279,7 @@ func TestThroughputAt100msRTT(t *testing.T) {
 		t.Skip("throughput test needs a non-race, full run")
 	}
 	for _, upload := range []bool{false, true} {
-		edge := NewEdgeGate(EdgeSessionBudget, NewBudget(EdgeBudget))
+		edge := NewEdgeGate(EdgeSessionBudget, DefaultAgentMaxStreams, NewBudget(EdgeBudget))
 		agent := NewAgentGate(AgentBudget, DefaultAgentMaxStreams)
 		es, as := sessions(t, 50*time.Millisecond, edge, agent)
 		const total = 512 << 20
@@ -345,7 +358,7 @@ func TestSmallSpans(t *testing.T) {
 // stream 0 and a refused 129th stream, stay within the 48 MiB budget.
 func Test128StreamsStayWithinBudget(t *testing.T) {
 	// An edge ignoring its own caps opens a 129th stream.
-	edge := NewEdgeGate(2*EdgeSessionBudget, NewBudget(EdgeBudget))
+	edge := NewEdgeGate(2*EdgeSessionBudget, 2*DefaultAgentMaxStreams, NewBudget(EdgeBudget))
 	agent := NewAgentGate(AgentBudget, DefaultAgentMaxStreams)
 	es, as := sessions(t, 5*time.Millisecond, edge, agent)
 	go func() {
