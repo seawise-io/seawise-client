@@ -5,7 +5,6 @@ import (
 	"net"
 	"testing"
 	"time"
-
 )
 
 func TestDerivedStreams(t *testing.T) {

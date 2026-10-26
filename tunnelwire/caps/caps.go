@@ -2,12 +2,11 @@
 // configuration, stream caps derived from buffer budgets, the byte budgets
 // themselves, liveness timing and session lifetime.
 //
-// hashicorp/yamux gives every stream the same receive window,
-// MaxStreamWindowSize, from the moment it opens; it has no window
-// auto-tuning. The receive buffer of one stream can therefore reach the full
-// window, and a session's buffered bytes are bounded only by
-// streams x window. The caps here keep that product within the budget:
-// max streams = budget / window.
+// Streams are multiplexed with libp2p/go-yamux. A stream starts with a
+// 256 KiB receive window and grows it, doubling per round trip while the
+// reader keeps up, to at most 16 MiB. Every reservation goes through a Gate
+// that charges it to the session's byte budget (and at the edge to the
+// global budget), so growth comes only from what idle streams leave unused.
 package caps
 
 import (
@@ -18,14 +17,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/yamux"
+	"github.com/libp2p/go-yamux/v5"
 )
 
 // Limits and defaults.
 const (
-	InitialWindow          = 256 << 10 // yamux's initial and minimum stream window
+	InitialWindow          = 256 << 10 // initial stream window, go-yamux's minimum
+	MaxWindow              = 16 << 20  // largest window one stream may grow to
 	AgentBudget            = 32 << 20  // agent session buffer budget
+	EdgeSessionBudget      = 32 << 20  // edge buffer budget per agent session
 	EdgeBudget             = 256 << 20 // edge-wide buffer budget
+	MeasureRTTInterval     = 10 * time.Minute
 	DefaultAgentMaxStreams = AgentBudget / InitialWindow
 	MaxStreamsLimit        = 4096
 	AccountStreamsFree     = 256
@@ -67,22 +69,25 @@ func SessionStreams(agentOffer, sessionCap, accountHeadroom uint32) uint32 {
 	return min(agentOffer, sessionCap, accountHeadroom)
 }
 
-// ErrConfig reports an unusable window or stream count.
-var ErrConfig = errors.New("tunnelwire: window must be at least 256 KiB and max streams 1..4096")
+// ErrConfig reports an unusable stream count.
+var ErrConfig = errors.New("tunnelwire: max streams must be 1..4096")
 
-// YamuxConfig returns the session configuration for both sides: keepalive
-// off (stream 0 Ping is the only probe), the given stream window, and an
-// accept backlog equal to maxStreams.
-func YamuxConfig(window, maxStreams uint32) (*yamux.Config, error) {
-	if window < InitialWindow || maxStreams == 0 || maxStreams > MaxStreamsLimit {
+// YamuxConfig returns the session configuration for both sides: yamux
+// keepalive off (stream 0 Ping is the only liveness probe), windows from
+// 256 KiB up to 16 MiB, at most maxStreams incoming streams and an equal
+// accept backlog. go-yamux still pings once at session start and then every
+// MeasureRTTInterval to measure the RTT that window growth needs.
+func YamuxConfig(maxStreams uint32) (*yamux.Config, error) {
+	if maxStreams == 0 || maxStreams > MaxStreamsLimit {
 		return nil, ErrConfig
 	}
 	c := yamux.DefaultConfig()
 	c.EnableKeepAlive = false
-	c.MaxStreamWindowSize = window
+	c.MeasureRTTInterval = MeasureRTTInterval
+	c.InitialStreamWindowSize = InitialWindow
+	c.MaxStreamWindowSize = MaxWindow
+	c.MaxIncomingStreams = maxStreams
 	c.AcceptBacklog = int(maxStreams)
-	c.StreamOpenTimeout = StreamOpenTimeout
-	c.StreamCloseTimeout = StreamCloseTimeout
 	c.LogOutput = io.Discard
 	if err := yamux.VerifyConfig(c); err != nil {
 		return nil, err
@@ -90,13 +95,13 @@ func YamuxConfig(window, maxStreams uint32) (*yamux.Config, error) {
 	return c, nil
 }
 
-// Budget is a byte budget shared by streams. Acquire never blocks: a stream
-// that does not fit is refused (AGENT_BUSY at the agent, 503 at the edge),
-// so overload turns into backpressure, not memory growth.
+// Budget is a byte budget. It never blocks: a reservation that does not fit
+// is refused, so overload turns into backpressure, not memory growth.
 type Budget struct {
 	mu    sync.Mutex
 	limit int64
 	used  int64
+	peak  int64
 }
 
 // NewBudget returns a budget of limit bytes.
@@ -112,8 +117,20 @@ func (b *Budget) TryAcquire(n int64) bool {
 	if b.used+n > b.limit {
 		return false
 	}
-	b.used += n
+	b.add(n)
 	return true
+}
+
+// force reserves n bytes even past the limit.
+func (b *Budget) force(n int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.add(n)
+}
+
+func (b *Budget) add(n int64) {
+	b.used += n
+	b.peak = max(b.peak, b.used)
 }
 
 // Release returns n bytes. Releasing more than was acquired panics.
@@ -133,43 +150,144 @@ func (b *Budget) Used() int64 {
 	return b.used
 }
 
-// StreamGate admits a stream only when its full window fits in the session
-// budget and, when shared is set, in a wider budget too (the edge's global
-// budget).
-type StreamGate struct {
-	window  int64
+// Peak returns the most bytes ever reserved at once.
+func (b *Budget) Peak() int64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.peak
+}
+
+// ErrBudget refuses a window reservation.
+var ErrBudget = errors.New("tunnelwire: stream buffer budget exhausted")
+
+// Gate is a session's go-yamux memory manager: one span per stream, every
+// span charged to the session budget and, at the edge, the global budget.
+//
+// go-yamux closes the whole session when an incoming stream's initial
+// window cannot be reserved, so the agent gate always grants initial
+// windows (their number is capped by MaxIncomingStreams) and refuses only
+// growth past the budget. The edge gate refuses both: the edge opens data
+// streams itself, where a refusal fails just that open, and an agent may
+// not open streams other than stream 0.
+type Gate struct {
 	session *Budget
 	shared  *Budget
+	strict  bool
+
+	mu    sync.Mutex
+	spans map[*span]struct{}
+	peak  int64
 }
 
-// NewStreamGate admits streams of window bytes into a session budget of
-// sessionBudget bytes and, if shared is not nil, into shared as well.
-func NewStreamGate(sessionBudget int64, window uint32, shared *Budget) *StreamGate {
-	return &StreamGate{window: int64(window), session: NewBudget(sessionBudget), shared: shared}
+// NewAgentGate returns the agent's gate with a session budget of budget
+// bytes.
+func NewAgentGate(budget int64) *Gate {
+	return &Gate{session: NewBudget(budget), spans: map[*span]struct{}{}}
 }
 
-// Admit reserves one stream; the caller calls Done when the stream ends.
-func (g *StreamGate) Admit() bool {
-	if !g.session.TryAcquire(g.window) {
-		return false
+// NewEdgeGate returns an edge gate with a per-session budget, charging the
+// shared global budget too.
+func NewEdgeGate(sessionBudget int64, global *Budget) *Gate {
+	return &Gate{session: NewBudget(sessionBudget), shared: global, strict: true, spans: map[*span]struct{}{}}
+}
+
+// NewSpan is the go-yamux memory manager constructor.
+func (g *Gate) NewSpan() (yamux.MemoryManager, error) {
+	s := &span{g: g}
+	g.mu.Lock()
+	g.spans[s] = struct{}{}
+	g.mu.Unlock()
+	return s, nil
+}
+
+// Used returns the session's reserved bytes.
+func (g *Gate) Used() int64 { return g.session.Used() }
+
+// Peak returns the session's highest reservation.
+func (g *Gate) Peak() int64 { return g.session.Peak() }
+
+// PeakStream returns the largest reservation any one stream reached.
+func (g *Gate) PeakStream() int64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.peak
+}
+
+// SmallSpans counts live streams holding at most n bytes.
+func (g *Gate) SmallSpans(n int64) int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	c := 0
+	for s := range g.spans {
+		if s.held > 0 && s.held <= n {
+			c++
+		}
 	}
-	if g.shared != nil && !g.shared.TryAcquire(g.window) {
-		g.session.Release(g.window)
-		return false
-	}
-	return true
+	return c
 }
 
-// Done releases a stream admitted by Admit.
-func (g *StreamGate) Done() {
-	g.session.Release(g.window)
+const initialPriority = 255
+
+type span struct {
+	g    *Gate
+	held int64
+}
+
+func (s *span) ReserveMemory(size int, prio uint8) error {
+	n := int64(size)
+	if n <= 0 {
+		return nil
+	}
+	g := s.g
+	if prio == initialPriority && !g.strict {
+		g.session.force(n)
+	} else {
+		if !g.session.TryAcquire(n) {
+			return ErrBudget
+		}
+		if g.shared != nil && !g.shared.TryAcquire(n) {
+			g.session.Release(n)
+			return ErrBudget
+		}
+	}
+	g.mu.Lock()
+	s.held += n
+	g.peak = max(g.peak, s.held)
+	g.mu.Unlock()
+	return nil
+}
+
+func (s *span) ReleaseMemory(size int) {
+	g := s.g
+	g.mu.Lock()
+	n := min(int64(size), s.held)
+	if n <= 0 {
+		g.mu.Unlock()
+		return
+	}
+	s.held -= n
+	g.mu.Unlock()
+	g.release(n)
+}
+
+func (s *span) Done() {
+	g := s.g
+	g.mu.Lock()
+	n := s.held
+	s.held = 0
+	delete(g.spans, s)
+	g.mu.Unlock()
+	if n > 0 {
+		g.release(n)
+	}
+}
+
+func (g *Gate) release(n int64) {
+	g.session.Release(n)
 	if g.shared != nil {
-		g.shared.Release(g.window)
+		g.shared.Release(n)
 	}
 }
-
-// Open returns the number of admitted streams.
-func (g *StreamGate) Open() int64 { return g.session.Used() / g.window }
 
 // Liveness tracks the time since the last received byte on a session. A
 // ping is due after interval of silence; the session is dead when timeout

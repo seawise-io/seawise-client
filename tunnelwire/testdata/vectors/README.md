@@ -24,5 +24,8 @@ reaches the 65536-byte control frame cap or the 4096-byte header cap, so the
 cases at exactly those lengths are frame-layer only: the frame is accepted
 and its content is not a valid message.
 
+The vectors do not depend on the multiplexer; stream windows and budgets
+are covered by the tests in `caps`.
+
 The paths in `device_call.json` follow the provisional method table in
 `wire/device.go` and change if that table changes.
