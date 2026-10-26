@@ -77,6 +77,10 @@ func TestAgentGatePools(t *testing.T) {
 	if g.Used() != 2*InitialWindow+InitialWindow/2 {
 		t.Fatal("done", g.Used())
 	}
+	if err := extra.ReserveMemory(InitialWindow, 255); !errors.Is(err, ErrBudget) {
+		t.Fatal("refused span reused", err)
+	}
+	extra, _ = g.NewSpan()
 	if err := extra.ReserveMemory(InitialWindow, 255); err != nil {
 		t.Fatal("initial window freed by done not reusable", err)
 	}
@@ -340,7 +344,8 @@ func TestSmallSpans(t *testing.T) {
 // 128 data streams opened at once, all receiving, plus the agent's own
 // stream 0 and a refused 129th stream, stay within the 48 MiB budget.
 func Test128StreamsStayWithinBudget(t *testing.T) {
-	edge := NewEdgeGate(EdgeSessionBudget, NewBudget(EdgeBudget))
+	// An edge ignoring its own caps opens a 129th stream.
+	edge := NewEdgeGate(2*EdgeSessionBudget, NewBudget(EdgeBudget))
 	agent := NewAgentGate(AgentBudget, DefaultAgentMaxStreams)
 	es, as := sessions(t, 5*time.Millisecond, edge, agent)
 	go func() {

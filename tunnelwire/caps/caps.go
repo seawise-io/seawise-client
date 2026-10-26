@@ -25,7 +25,7 @@ const (
 	InitialWindow      = 256 << 10 // initial stream window, fixed by yamux
 	AgentInitialBudget = 32 << 20  // initial windows of the agent's data streams
 	AgentBudget        = 48 << 20  // agent session buffer budget: initial windows plus growth
-	EdgeSessionBudget  = 48 << 20  // edge buffer budget per agent session
+	EdgeSessionBudget  = 32 << 20  // edge buffer budget per agent session
 	EdgeBudget         = 256 << 20 // edge-wide buffer budget
 	// MaxWindow is the largest window one stream may grow to. go-yamux
 	// doubles windows and stalls a stream when the cap is not a power of two.
@@ -96,6 +96,57 @@ func YamuxConfig(maxStreams uint32) (*yamux.Config, error) {
 		return nil, err
 	}
 	return c, nil
+}
+
+// EdgeYamuxConfig returns the edge side's session configuration: as the
+// agent's, except that the agent may open only stream 0, so at most one
+// incoming stream and an accept backlog of one.
+func EdgeYamuxConfig() *yamux.Config {
+	c, err := YamuxConfig(1)
+	if err != nil {
+		panic(err)
+	}
+	return c
+}
+
+// Outbound counts the data streams an edge has open on one session and
+// refuses more than the session's max_streams.
+type Outbound struct {
+	mu   sync.Mutex
+	max  uint32
+	open uint32
+}
+
+// NewOutbound allows max open streams.
+func NewOutbound(max uint32) *Outbound { return &Outbound{max: max} }
+
+// TryOpen claims a stream slot.
+func (o *Outbound) TryOpen() bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.open >= o.max {
+		return false
+	}
+	o.open++
+	return true
+}
+
+// Done frees a slot claimed by TryOpen; freeing more than were claimed
+// panics.
+func (o *Outbound) Done() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.open == 0 {
+		panic("tunnelwire: outbound stream released twice")
+	}
+	o.open--
+}
+
+// Open returns the number of claimed slots.
+func (o *Outbound) Open() uint32 {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.open
 }
 
 // Budget is a byte budget. It never blocks: a reservation that does not fit
@@ -247,6 +298,7 @@ type span struct {
 	g     *Gate
 	held  int64
 	grown int64
+	done  bool
 }
 
 func (s *span) ReserveMemory(size int, prio uint8) error {
@@ -255,20 +307,23 @@ func (s *span) ReserveMemory(size int, prio uint8) error {
 		return nil
 	}
 	g := s.g
-	grown := false
+	var pool *Budget
 	switch {
 	case !g.strict && prio == initialPriority && g.initial.TryAcquire(n):
+		pool = g.initial
+	case !g.strict && g.growth.TryAcquire(n):
+		pool = g.growth
 	case !g.strict:
-		if !g.growth.TryAcquire(n) {
-			return ErrBudget
-		}
-		grown = true
+		s.drop()
+		return ErrBudget
 	default:
 		if !g.session.TryAcquire(n) {
+			s.drop()
 			return ErrBudget
 		}
 		if g.shared != nil && !g.shared.TryAcquire(n) {
 			g.session.Release(n)
+			s.drop()
 			return ErrBudget
 		}
 	}
@@ -276,8 +331,13 @@ func (s *span) ReserveMemory(size int, prio uint8) error {
 		g.session.force(n)
 	}
 	g.mu.Lock()
+	if s.done {
+		g.mu.Unlock()
+		g.give(n, pool)
+		return ErrBudget
+	}
 	s.held += n
-	if grown {
+	if pool == g.growth && pool != nil {
 		s.grown += n
 	}
 	g.peak = max(g.peak, s.held)
@@ -285,27 +345,22 @@ func (s *span) ReserveMemory(size int, prio uint8) error {
 	return nil
 }
 
-func (s *span) ReleaseMemory(size int) { s.release(int64(size)) }
-
-func (s *span) Done() {
-	s.release(s.heldNow())
+// drop forgets a span that a refused reservation left empty: go-yamux does
+// not call Done for a stream whose initial window was refused.
+func (s *span) drop() {
 	g := s.g
 	g.mu.Lock()
-	delete(g.spans, s)
+	if s.held == 0 {
+		s.done = true
+		delete(g.spans, s)
+	}
 	g.mu.Unlock()
 }
 
-func (s *span) heldNow() int64 {
-	s.g.mu.Lock()
-	defer s.g.mu.Unlock()
-	return s.held
-}
-
-// release returns up to n bytes of the span, growth first.
-func (s *span) release(n int64) {
+func (s *span) ReleaseMemory(size int) {
 	g := s.g
 	g.mu.Lock()
-	n = min(n, s.held)
+	n := min(int64(size), s.held)
 	if n <= 0 {
 		g.mu.Unlock()
 		return
@@ -314,6 +369,40 @@ func (s *span) release(n int64) {
 	s.held -= n
 	s.grown -= fromGrowth
 	g.mu.Unlock()
+	g.giveSplit(n, fromGrowth)
+}
+
+func (s *span) Done() {
+	g := s.g
+	g.mu.Lock()
+	if s.done {
+		g.mu.Unlock()
+		return
+	}
+	s.done = true
+	n, fromGrowth := s.held, s.grown
+	s.held, s.grown = 0, 0
+	delete(g.spans, s)
+	g.mu.Unlock()
+	if n > 0 {
+		g.giveSplit(n, fromGrowth)
+	}
+}
+
+// give returns n bytes taken from pool (nil at the edge).
+func (g *Gate) give(n int64, pool *Budget) {
+	g.session.Release(n)
+	if g.shared != nil {
+		g.shared.Release(n)
+	}
+	if pool != nil {
+		pool.Release(n)
+	}
+}
+
+// giveSplit returns n bytes of which fromGrowth came from the growth pool
+// and the rest, at the agent, from the initial pool.
+func (g *Gate) giveSplit(n, fromGrowth int64) {
 	g.session.Release(n)
 	if g.shared != nil {
 		g.shared.Release(n)

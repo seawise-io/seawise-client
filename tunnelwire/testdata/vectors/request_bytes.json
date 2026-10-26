@@ -194,6 +194,35 @@
       }
     },
     {
+      "name": "seawise-header-underscore-stripped",
+      "kind": "request",
+      "input": "GET / HTTP/1.1\r\nHost: app.example.test\r\nSeaWise_Visitor_Token: a\r\n\r\n",
+      "expect": "ok",
+      "result": {
+        "method": "GET",
+        "target": "/",
+        "header": {
+          "Host": [
+            "app.example.test"
+          ]
+        },
+        "body_len": 0,
+        "upgrade": false
+      }
+    },
+    {
+      "name": "content-length-in-trailer",
+      "kind": "request",
+      "input": "POST /up HTTP/1.1\r\nHost: app.example.test\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nContent-Length: 5\r\n\r\n",
+      "expect": "bad_trailer"
+    },
+    {
+      "name": "host-in-trailer",
+      "kind": "request",
+      "input": "POST /up HTTP/1.1\r\nHost: app.example.test\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nHost: other.example\r\n\r\n",
+      "expect": "bad_trailer"
+    },
+    {
       "name": "seawise-header-in-trailer-stripped",
       "kind": "request",
       "input": "POST /up HTTP/1.1\r\nHost: app.example.test\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nSeaWise-Visitor-Token: a\r\nX-Sum: 2\r\n\r\n",

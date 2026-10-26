@@ -34,6 +34,7 @@ const (
 	CodeVersion     Code = "version"
 	CodeTruncated   Code = "truncated"
 	CodeNotUpgraded Code = "not_upgraded"
+	CodeBadTrailer  Code = "bad_trailer"
 )
 
 // Error is a request-bytes error.
@@ -106,6 +107,7 @@ func CheckH2Field(name, value string) error {
 }
 
 func isSeaWise(name string) bool {
+	name = strings.ReplaceAll(name, "_", "-")
 	for _, s := range SeaWiseHeaders {
 		if strings.EqualFold(name, s) {
 			return true
@@ -279,10 +281,28 @@ func (b *chunkedBody) Read(p []byte) (int, error) {
 	return n, nil
 }
 
+// trailerForbidden are fields a trailer may not carry: framing, routing,
+// connection control, authentication and content metadata
+// (RFC 9110 section 6.5.1).
+var trailerForbidden = []string{
+	"content-length", "transfer-encoding", "host", "trailer", "te", "connection", "upgrade",
+	"keep-alive", "proxy-connection", "authorization", "proxy-authorization", "cookie",
+	"content-type", "content-encoding", "content-range", "range", "expect", "max-forwards",
+	"cache-control",
+}
+
 func (b *chunkedBody) readTrailer() error {
 	raw, names, err := readBlock(b.br, false)
 	if err != nil {
 		return err
+	}
+	for _, n := range names {
+		n = strings.ReplaceAll(n, "_", "-")
+		for _, f := range trailerForbidden {
+			if n == f {
+				return fail(CodeBadTrailer)
+			}
+		}
 	}
 	if len(names) == 0 {
 		return nil

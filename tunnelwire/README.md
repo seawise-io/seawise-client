@@ -37,9 +37,12 @@ beyond 129 (an edge exceeding `max_streams`, or a new stream racing an old
 one's cleanup) is taken from the growth pool; the session closes only when
 both pools are spent.
 
-The edge charges a per-session budget (48 MiB default) and its 256 MiB
-global budget and refuses any reservation that does not fit; the edge
-opens data streams itself, so a refusal fails only that open.
+The edge charges a per-session budget of 32 MiB and its 256 MiB global
+budget and refuses any reservation that does not fit; the edge opens data
+streams itself, so a refusal fails only that open, and `caps.Outbound`
+keeps it to `max_streams` open streams per session. The edge's session
+configuration (`EdgeYamuxConfig`) accepts one incoming stream, stream 0, so
+an agent cannot make the edge hold more than one window before Hello.
 
 Per-stream throughput: frp v0.67 uses `hashicorp/yamux` with a static 6 MiB
 window on both sides (`client/connector.go`, `server/service.go`), a bound
