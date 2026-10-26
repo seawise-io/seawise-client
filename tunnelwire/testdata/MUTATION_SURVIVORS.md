@@ -2,7 +2,10 @@
 
 Mutants that `gremlins unleash --workers 1 --timeout-coefficient 40` leaves
 alive, each with the reason it is equivalent (no input can tell it apart
-from the original). Every other mutant in `wire`, `caps`, `handshake`,
+from the original); `caps` and `httpwire` were last run after the gate and
+trailer changes, on Go 1.26.10. Mutants reported as timed out make the
+tests hang (a read loop never ends) and count as detected. Every other
+mutant in `wire`, `caps`, `handshake`,
 `httpwire`, `claims` and `ladder` is killed.
 
 | Location | Mutation | Why it is equivalent |
