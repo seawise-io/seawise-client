@@ -13,7 +13,7 @@ and the standard library.
 | `handshake` | Hello and HelloAck signatures, Hello checks, negotiation, peer edge handshake |
 | `caps` | yamux configuration, stream caps, buffer budgets, liveness, session lifetime |
 | `httpwire` | request-bytes rules of a data stream |
-| `claims` | RouteSet, flags and signed-state payload checks, relayed call binding |
+| `claims` | RouteSet, flags, signed time and signed state payload checks, relayed call binding |
 | `ladder` | reference model of the agent's transport ladder (own protocol over TLS, then WebSocket, then HOLD) |
 | `wsconn` | byte stream over WebSocket messages |
 

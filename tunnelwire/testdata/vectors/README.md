@@ -15,7 +15,7 @@ for tests only.
 | `request_bytes.json` | httpwire | one request per stream, smuggling cases, h2 fields, upgrades |
 | `routeset.json` | claims | RouteSet claims and the signed time it carries |
 | `flags.json` | claims | flags evaluation, rollback, caps |
-| `signed_state.json` | claims | nonce-bound device state |
+| `signed_state.json` | claims | device state bound to server, key and nonce (`sw-state+jwt`) |
 | `device_call.json` | claims | relayed call to DPoP binding, dedupe outcomes |
 | `ladder.json` | ladder | transport ladder event sequences |
 
