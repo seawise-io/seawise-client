@@ -36,15 +36,15 @@ func FuzzFlags(f *testing.F) {
 			return
 		}
 		m := fl.Mode(fx.UUID(fx.Server1))
-		if fl.Global == "off" && m.String() != "OFF" {
-			t.Fatal("global off not honoured")
+		if (fl.Global == "off") != (m.String() == "OFF") {
+			t.Fatal("mode does not follow global")
 		}
 	})
 }
 
 func FuzzSignedState(f *testing.F) {
 	n := "dGltZS1ub25jZS0wMDAwMDE"
-	f.Add(vkeys.JSON(map[string]any{"server_id": fx.Server1, "time": 1, "nonce": n, "device_status": "revoked", "account_status": "active", "v1_token_live": false}))
+	f.Add(vkeys.JSON(map[string]any{"server_id": fx.Server1, "time": 1, "nonce": n, "device_status": "revoked", "account_status": "active"}))
 	f.Fuzz(func(t *testing.T, p []byte) {
 		st, err := CheckSignedState(p, fx.Server1, n)
 		if err != nil {
@@ -53,7 +53,7 @@ func FuzzSignedState(f *testing.F) {
 			}
 			return
 		}
-		if st.Nonce != n || st.ServerID != fx.Server1 || (!st.HasState && (st.Holds() || st.V1TokenLive)) {
+		if st.Nonce != n || st.ServerID != fx.Server1 || (!st.HasState && st.Holds()) {
 			t.Fatal("accepted a bad state")
 		}
 	})

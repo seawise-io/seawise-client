@@ -252,8 +252,11 @@ func genControlFrames() vfile {
 	msg("drain-deadline-120000", "edge", drain(&pb.Drain{Reason: 1, DeadlineMs: 120000}), "ok")
 	msg("drain-deadline-120001", "edge", drain(&pb.Drain{Reason: 1, DeadlineMs: 120001}), "bad_value")
 	msg("drain-reason-unspecified", "edge", drain(&pb.Drain{DeadlineMs: 1000}), "bad_value")
-	msg("drain-stop-superseded", "edge", drain(&pb.Drain{Reason: pb.DrainReason_SUPERSEDED, DeadlineMs: 1000, Action: pb.DrainAction_STOP}), "ok")
-	msg("drain-stop-not-superseded", "edge", drain(&pb.Drain{Reason: pb.DrainReason_ROLLOUT, DeadlineMs: 1000, Action: pb.DrainAction_STOP}), "bad_value")
+	msg("drain-hold-superseded", "edge", drain(&pb.Drain{Reason: pb.DrainReason_SUPERSEDED, DeadlineMs: 1000, Action: pb.DrainAction_HOLD}), "ok")
+	msg("drain-hold-kill-switch", "edge", drain(&pb.Drain{Reason: pb.DrainReason_KILL_SWITCH, DeadlineMs: 1000, Action: pb.DrainAction_HOLD}), "ok")
+	msg("drain-hold-rollout", "edge", drain(&pb.Drain{Reason: pb.DrainReason_ROLLOUT, DeadlineMs: 1000, Action: pb.DrainAction_HOLD}), "bad_value")
+	msg("drain-action-2-reserved", "edge", drain(&pb.Drain{Reason: pb.DrainReason_KILL_SWITCH, DeadlineMs: 1000, Action: 2}), "bad_value")
+	msg("drain-action-3-reserved", "edge", drain(&pb.Drain{Reason: pb.DrainReason_SUPERSEDED, DeadlineMs: 1000, Action: 3}), "bad_value")
 	revoke := func(r *pb.Revoke) any { return &pb.ControlMessage_Revoke{Revoke: r} }
 	msg("revoke-app", "edge", revoke(&pb.Revoke{Scope: pb.RevokeScope_APP, AppId: fx.UUID(fx.App1)}), "ok")
 	msg("revoke-app-15", "edge", revoke(&pb.Revoke{Scope: pb.RevokeScope_APP, AppId: fx.Bytes("a", 15)}), "bad_value")

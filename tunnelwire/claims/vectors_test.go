@@ -131,13 +131,11 @@ func TestFlagsVectors(t *testing.T) {
 		}
 		var res any
 		if err == nil {
-			modes, buckets := map[string]any{}, map[string]any{}
+			modes := map[string]any{}
 			for _, s := range c.Context["servers"].([]any) {
-				id := fx.UUID(s.(string))
-				modes[s.(string)] = fl.Mode(id).String()
-				buckets[s.(string)] = Bucket(fl.salt, id)
+				modes[s.(string)] = fl.Mode(fx.UUID(s.(string))).String()
 			}
-			res = map[string]any{"modes": modes, "buckets": buckets, "hashed": map[string]string{fx.Server1: HashedID(fl.salt, fx.UUID(fx.Server1)), fx.Server2: HashedID(fl.salt, fx.UUID(fx.Server2))}}
+			res = map[string]any{"modes": modes, "hashed": map[string]string{fx.Server1: HashedID(fl.salt, fx.UUID(fx.Server1)), fx.Server2: HashedID(fl.salt, fx.UUID(fx.Server2))}}
 		}
 		expectCase(t, c, codeStr(err), res)
 	}
@@ -155,7 +153,7 @@ func TestSignedStateVectors(t *testing.T) {
 		st, err := CheckSignedState(payload, c.Context["server_id"].(string), c.Context["nonce"].(string))
 		var res any
 		if err == nil {
-			res = map[string]any{"has_state": st.HasState, "hold": st.Holds(), "clears": st.Clears(), "v1_token_live": st.V1TokenLive}
+			res = map[string]any{"has_state": st.HasState, "hold": st.Holds(), "clears": st.Clears()}
 		}
 		expectCase(t, c, codeStr(err), res)
 	}
