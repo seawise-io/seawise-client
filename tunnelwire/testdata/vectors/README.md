@@ -17,7 +17,7 @@ for tests only.
 | `flags.json` | claims | flags evaluation, rollback, caps |
 | `signed_state.json` | claims | nonce-bound device state |
 | `device_call.json` | claims | relayed call to DPoP binding, dedupe outcomes |
-| `ladder.json` | ladder | fallback state machine event sequences |
+| `ladder.json` | ladder | transport ladder event sequences |
 
 Cases with `"layer": "frame"` check only the length prefix. No valid message
 reaches the 65536-byte control frame cap or the 4096-byte header cap, so the

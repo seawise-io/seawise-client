@@ -11,7 +11,7 @@
   ],
   "cases": [
     {
-      "name": "rollout-0",
+      "name": "global-on",
       "kind": "flags",
       "input": "eyJ0eXAiOiJzdy10dW5uZWwtZmxhZ3MrandzIiwiYWxnIjoiRWREU0EiLCJraWQiOiJySHg0X3FvNEM1Vk1oUGN4ZVI2MWJlc1IyZzg4eW5ZQVpSdFU0RVRFTFEwIn0.eyJhbGxvdyI6W10sImRlbnkiOltdLCJnZW5lcmF0aW9uIjo3LCJnbG9iYWwiOiJvbiIsImlhdCI6MTc5MzAwMDAwMCwicm9sbG91dF9wZXJtaWxsZSI6MCwic2FsdCI6IjhLSXpKRkgtaXpiUmRtUWI3cU51YWcifQ.yZI2UPTPbjHk7BJXuFlVU71aKxcaxxuI-Ml838pCtUDIEEJVN9XXS-2YrEFnEtYLbbFkQ8Itbrr5MuoWvhmhDA",
       "context": {
@@ -25,12 +25,33 @@
       },
       "expect": "ok",
       "result": {
-        "buckets": {
-          "00000000-0000-4000-8000-000000000001": 244,
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": 749,
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": 310,
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": 65
+        "hashed": {
+          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "3ZKSmejlVKpipks7zAaGaasIVVtzkx-m6OT88LJOtz0",
+          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "IZNR80AA3rpYbcZnGX10-P8odBtnRFgxcQ9dA1a6gpY"
         },
+        "modes": {
+          "00000000-0000-4000-8000-000000000001": "ON",
+          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "ON",
+          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "ON",
+          "ffffffff-ffff-4fff-bfff-ffffffffffff": "ON"
+        }
+      }
+    },
+    {
+      "name": "global-off",
+      "kind": "flags",
+      "input": "eyJ0eXAiOiJzdy10dW5uZWwtZmxhZ3MrandzIiwiYWxnIjoiRWREU0EiLCJraWQiOiJySHg0X3FvNEM1Vk1oUGN4ZVI2MWJlc1IyZzg4eW5ZQVpSdFU0RVRFTFEwIn0.eyJhbGxvdyI6W10sImRlbnkiOltdLCJnZW5lcmF0aW9uIjo3LCJnbG9iYWwiOiJvZmYiLCJpYXQiOjE3OTMwMDAwMDAsInJvbGxvdXRfcGVybWlsbGUiOjAsInNhbHQiOiI4S0l6SkZILWl6YlJkbVFiN3FOdWFnIn0.H6Njod6kgjVPXndaYWqpHHRYSrdcm_LlZCiJYw11B7UYJwql-Dp1USoy_uHaXfUCYrVyHQKiBLnOLIFIuEvDAA",
+      "context": {
+        "last_generation": 0,
+        "servers": [
+          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7",
+          "00000000-0000-4000-8000-000000000001",
+          "ffffffff-ffff-4fff-bfff-ffffffffffff"
+        ]
+      },
+      "expect": "ok",
+      "result": {
         "hashed": {
           "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "3ZKSmejlVKpipks7zAaGaasIVVtzkx-m6OT88LJOtz0",
           "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "IZNR80AA3rpYbcZnGX10-P8odBtnRFgxcQ9dA1a6gpY"
@@ -44,9 +65,9 @@
       }
     },
     {
-      "name": "rollout-1000",
+      "name": "deny-by-hashed-id",
       "kind": "flags",
-      "input": "eyJ0eXAiOiJzdy10dW5uZWwtZmxhZ3MrandzIiwiYWxnIjoiRWREU0EiLCJraWQiOiJySHg0X3FvNEM1Vk1oUGN4ZVI2MWJlc1IyZzg4eW5ZQVpSdFU0RVRFTFEwIn0.eyJhbGxvdyI6W10sImRlbnkiOltdLCJnZW5lcmF0aW9uIjo3LCJnbG9iYWwiOiJvbiIsImlhdCI6MTc5MzAwMDAwMCwicm9sbG91dF9wZXJtaWxsZSI6MTAwMCwic2FsdCI6IjhLSXpKRkgtaXpiUmRtUWI3cU51YWcifQ.JyamsJsaGDszepGhhiGMmouZ5c1CPhcqNO1LRHDJLp8gJTYVaRTS4O_lWo7c5DpkJgfD9KSLasdeUBFtPXj6CA",
+      "input": "eyJ0eXAiOiJzdy10dW5uZWwtZmxhZ3MrandzIiwiYWxnIjoiRWREU0EiLCJraWQiOiJySHg0X3FvNEM1Vk1oUGN4ZVI2MWJlc1IyZzg4eW5ZQVpSdFU0RVRFTFEwIn0.eyJhbGxvdyI6W10sImRlbnkiOlsiM1pLU21lamxWS3BpcGtzN3pBYUdhYXNJVlZ0emt4LW02T1Q4OExKT3R6MCJdLCJnZW5lcmF0aW9uIjo3LCJnbG9iYWwiOiJvbiIsImlhdCI6MTc5MzAwMDAwMCwicm9sbG91dF9wZXJtaWxsZSI6MCwic2FsdCI6IjhLSXpKRkgtaXpiUmRtUWI3cU51YWcifQ.NNrrY97C7vL7MSCY0wrv8VNzxvcpeIKPKqG0zDpKha-sOg0h9Jv1SNaKdzH989GK3xLoFb61IKhMdOcIZ5eeDw",
       "context": {
         "last_generation": 0,
         "servers": [
@@ -58,45 +79,6 @@
       },
       "expect": "ok",
       "result": {
-        "buckets": {
-          "00000000-0000-4000-8000-000000000001": 244,
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": 749,
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": 310,
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": 65
-        },
-        "hashed": {
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "3ZKSmejlVKpipks7zAaGaasIVVtzkx-m6OT88LJOtz0",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "IZNR80AA3rpYbcZnGX10-P8odBtnRFgxcQ9dA1a6gpY"
-        },
-        "modes": {
-          "00000000-0000-4000-8000-000000000001": "ON",
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "ON",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "ON",
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": "ON"
-        }
-      }
-    },
-    {
-      "name": "rollout-500",
-      "kind": "flags",
-      "input": "eyJ0eXAiOiJzdy10dW5uZWwtZmxhZ3MrandzIiwiYWxnIjoiRWREU0EiLCJraWQiOiJySHg0X3FvNEM1Vk1oUGN4ZVI2MWJlc1IyZzg4eW5ZQVpSdFU0RVRFTFEwIn0.eyJhbGxvdyI6W10sImRlbnkiOltdLCJnZW5lcmF0aW9uIjo3LCJnbG9iYWwiOiJvbiIsImlhdCI6MTc5MzAwMDAwMCwicm9sbG91dF9wZXJtaWxsZSI6NTAwLCJzYWx0IjoiOEtJekpGSC1pemJSZG1RYjdxTnVhZyJ9.6OZ9hs--86WPGL8TuQk5dVpdlCmM8cD5EUzEZB5kRQ1GwORz0yRix-h0W8RgL9w8wtLbnCHvJEt-59mdTITYCg",
-      "context": {
-        "last_generation": 0,
-        "servers": [
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7",
-          "00000000-0000-4000-8000-000000000001",
-          "ffffffff-ffff-4fff-bfff-ffffffffffff"
-        ]
-      },
-      "expect": "ok",
-      "result": {
-        "buckets": {
-          "00000000-0000-4000-8000-000000000001": 244,
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": 749,
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": 310,
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": 65
-        },
         "hashed": {
           "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "3ZKSmejlVKpipks7zAaGaasIVVtzkx-m6OT88LJOtz0",
           "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "IZNR80AA3rpYbcZnGX10-P8odBtnRFgxcQ9dA1a6gpY"
@@ -106,105 +88,6 @@
           "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "OFF",
           "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "ON",
           "ffffffff-ffff-4fff-bfff-ffffffffffff": "ON"
-        }
-      }
-    },
-    {
-      "name": "rollout-at-bucket",
-      "kind": "flags",
-      "input": "eyJ0eXAiOiJzdy10dW5uZWwtZmxhZ3MrandzIiwiYWxnIjoiRWREU0EiLCJraWQiOiJySHg0X3FvNEM1Vk1oUGN4ZVI2MWJlc1IyZzg4eW5ZQVpSdFU0RVRFTFEwIn0.eyJhbGxvdyI6W10sImRlbnkiOltdLCJnZW5lcmF0aW9uIjo3LCJnbG9iYWwiOiJvbiIsImlhdCI6MTc5MzAwMDAwMCwicm9sbG91dF9wZXJtaWxsZSI6NzQ5LCJzYWx0IjoiOEtJekpGSC1pemJSZG1RYjdxTnVhZyJ9.FBtrgCo1hbIf-bmM4hLdREw_KO0VKkw0C0u2YdSWupOQWAfjmBed-OSlWXpq-EcrLeMzbvo9FrL-wxtvAwliAg",
-      "context": {
-        "last_generation": 0,
-        "servers": [
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7",
-          "00000000-0000-4000-8000-000000000001",
-          "ffffffff-ffff-4fff-bfff-ffffffffffff"
-        ]
-      },
-      "expect": "ok",
-      "result": {
-        "buckets": {
-          "00000000-0000-4000-8000-000000000001": 244,
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": 749,
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": 310,
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": 65
-        },
-        "hashed": {
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "3ZKSmejlVKpipks7zAaGaasIVVtzkx-m6OT88LJOtz0",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "IZNR80AA3rpYbcZnGX10-P8odBtnRFgxcQ9dA1a6gpY"
-        },
-        "modes": {
-          "00000000-0000-4000-8000-000000000001": "ON",
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "OFF",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "ON",
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": "ON"
-        }
-      }
-    },
-    {
-      "name": "rollout-above-bucket",
-      "kind": "flags",
-      "input": "eyJ0eXAiOiJzdy10dW5uZWwtZmxhZ3MrandzIiwiYWxnIjoiRWREU0EiLCJraWQiOiJySHg0X3FvNEM1Vk1oUGN4ZVI2MWJlc1IyZzg4eW5ZQVpSdFU0RVRFTFEwIn0.eyJhbGxvdyI6W10sImRlbnkiOltdLCJnZW5lcmF0aW9uIjo3LCJnbG9iYWwiOiJvbiIsImlhdCI6MTc5MzAwMDAwMCwicm9sbG91dF9wZXJtaWxsZSI6NzUwLCJzYWx0IjoiOEtJekpGSC1pemJSZG1RYjdxTnVhZyJ9.KxkpnPQSDLoPIRNiFCQLoqUrc5to_92Gliv5SR5UTHxyHh6INZDWobwcEEb09XBF1T1HFchi9bXRUpGPVdxBAg",
-      "context": {
-        "last_generation": 0,
-        "servers": [
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7",
-          "00000000-0000-4000-8000-000000000001",
-          "ffffffff-ffff-4fff-bfff-ffffffffffff"
-        ]
-      },
-      "expect": "ok",
-      "result": {
-        "buckets": {
-          "00000000-0000-4000-8000-000000000001": 244,
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": 749,
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": 310,
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": 65
-        },
-        "hashed": {
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "3ZKSmejlVKpipks7zAaGaasIVVtzkx-m6OT88LJOtz0",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "IZNR80AA3rpYbcZnGX10-P8odBtnRFgxcQ9dA1a6gpY"
-        },
-        "modes": {
-          "00000000-0000-4000-8000-000000000001": "ON",
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "ON",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "ON",
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": "ON"
-        }
-      }
-    },
-    {
-      "name": "allow-by-hashed-id",
-      "kind": "flags",
-      "input": "eyJ0eXAiOiJzdy10dW5uZWwtZmxhZ3MrandzIiwiYWxnIjoiRWREU0EiLCJraWQiOiJySHg0X3FvNEM1Vk1oUGN4ZVI2MWJlc1IyZzg4eW5ZQVpSdFU0RVRFTFEwIn0.eyJhbGxvdyI6WyIzWktTbWVqbFZLcGlwa3M3ekFhR2Fhc0lWVnR6a3gtbTZPVDg4TEpPdHowIl0sImRlbnkiOltdLCJnZW5lcmF0aW9uIjo3LCJnbG9iYWwiOiJvbiIsImlhdCI6MTc5MzAwMDAwMCwicm9sbG91dF9wZXJtaWxsZSI6MCwic2FsdCI6IjhLSXpKRkgtaXpiUmRtUWI3cU51YWcifQ.s8LiI_8d0QNH-7lnEpVnRyIpCQ1finS9KYE4twygQQRUlIsDcHf0TthQ-h8SseR9XfTXVfW5zfS3ofG_EmQQBQ",
-      "context": {
-        "last_generation": 0,
-        "servers": [
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7",
-          "00000000-0000-4000-8000-000000000001",
-          "ffffffff-ffff-4fff-bfff-ffffffffffff"
-        ]
-      },
-      "expect": "ok",
-      "result": {
-        "buckets": {
-          "00000000-0000-4000-8000-000000000001": 244,
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": 749,
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": 310,
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": 65
-        },
-        "hashed": {
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "3ZKSmejlVKpipks7zAaGaasIVVtzkx-m6OT88LJOtz0",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "IZNR80AA3rpYbcZnGX10-P8odBtnRFgxcQ9dA1a6gpY"
-        },
-        "modes": {
-          "00000000-0000-4000-8000-000000000001": "OFF",
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "ON",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "OFF",
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": "OFF"
         }
       }
     },
@@ -223,53 +106,14 @@
       },
       "expect": "ok",
       "result": {
-        "buckets": {
-          "00000000-0000-4000-8000-000000000001": 244,
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": 749,
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": 310,
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": 65
-        },
-        "hashed": {
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "3ZKSmejlVKpipks7zAaGaasIVVtzkx-m6OT88LJOtz0",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "IZNR80AA3rpYbcZnGX10-P8odBtnRFgxcQ9dA1a6gpY"
-        },
-        "modes": {
-          "00000000-0000-4000-8000-000000000001": "OFF",
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "OFF",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "OFF",
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": "OFF"
-        }
-      }
-    },
-    {
-      "name": "deny-beats-rollout",
-      "kind": "flags",
-      "input": "eyJ0eXAiOiJzdy10dW5uZWwtZmxhZ3MrandzIiwiYWxnIjoiRWREU0EiLCJraWQiOiJySHg0X3FvNEM1Vk1oUGN4ZVI2MWJlc1IyZzg4eW5ZQVpSdFU0RVRFTFEwIn0.eyJhbGxvdyI6W10sImRlbnkiOlsiSVpOUjgwQUEzcnBZYmNabkdYMTAtUDhvZEJ0blJGZ3hjUTlkQTFhNmdwWSJdLCJnZW5lcmF0aW9uIjo3LCJnbG9iYWwiOiJvbiIsImlhdCI6MTc5MzAwMDAwMCwicm9sbG91dF9wZXJtaWxsZSI6MTAwMCwic2FsdCI6IjhLSXpKRkgtaXpiUmRtUWI3cU51YWcifQ.ZERSnuvyKdpP_NoHWcg_t7ZffqJ7ocDWoXiKB7GcxSX0AUaWZpOR1KeDkUot5CwAX_HDLL3sFv16pSzAAQnzAg",
-      "context": {
-        "last_generation": 0,
-        "servers": [
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7",
-          "00000000-0000-4000-8000-000000000001",
-          "ffffffff-ffff-4fff-bfff-ffffffffffff"
-        ]
-      },
-      "expect": "ok",
-      "result": {
-        "buckets": {
-          "00000000-0000-4000-8000-000000000001": 244,
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": 749,
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": 310,
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": 65
-        },
         "hashed": {
           "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "3ZKSmejlVKpipks7zAaGaasIVVtzkx-m6OT88LJOtz0",
           "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "IZNR80AA3rpYbcZnGX10-P8odBtnRFgxcQ9dA1a6gpY"
         },
         "modes": {
           "00000000-0000-4000-8000-000000000001": "ON",
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "ON",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "OFF",
+          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "OFF",
+          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "ON",
           "ffffffff-ffff-4fff-bfff-ffffffffffff": "ON"
         }
       }
@@ -289,12 +133,6 @@
       },
       "expect": "ok",
       "result": {
-        "buckets": {
-          "00000000-0000-4000-8000-000000000001": 244,
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": 749,
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": 310,
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": 65
-        },
         "hashed": {
           "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "3ZKSmejlVKpipks7zAaGaasIVVtzkx-m6OT88LJOtz0",
           "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "IZNR80AA3rpYbcZnGX10-P8odBtnRFgxcQ9dA1a6gpY"
@@ -308,9 +146,9 @@
       }
     },
     {
-      "name": "raw-server-id-in-allow-ignored",
+      "name": "rollout-ignored",
       "kind": "flags",
-      "input": "eyJ0eXAiOiJzdy10dW5uZWwtZmxhZ3MrandzIiwiYWxnIjoiRWREU0EiLCJraWQiOiJySHg0X3FvNEM1Vk1oUGN4ZVI2MWJlc1IyZzg4eW5ZQVpSdFU0RVRFTFEwIn0.eyJhbGxvdyI6WyJQeXFjSGx0OVRvLWFDeHd0UGs5YWF3QUFBQUFBQUFBQUFBQUFBQUFBQUFBIl0sImRlbnkiOltdLCJnZW5lcmF0aW9uIjo3LCJnbG9iYWwiOiJvbiIsImlhdCI6MTc5MzAwMDAwMCwicm9sbG91dF9wZXJtaWxsZSI6MCwic2FsdCI6IjhLSXpKRkgtaXpiUmRtUWI3cU51YWcifQ.iu8sBmm1vahnnW7yw89vcQg0dEbGxq-6NSpCjUpk0c_pMiBOmoDP9n7JILHPr50bzgPZLjj66Lq1C9iJiSSzDw",
+      "input": "eyJ0eXAiOiJzdy10dW5uZWwtZmxhZ3MrandzIiwiYWxnIjoiRWREU0EiLCJraWQiOiJySHg0X3FvNEM1Vk1oUGN4ZVI2MWJlc1IyZzg4eW5ZQVpSdFU0RVRFTFEwIn0.eyJhbGxvdyI6W10sImRlbnkiOltdLCJnZW5lcmF0aW9uIjo3LCJnbG9iYWwiOiJvbiIsImlhdCI6MTc5MzAwMDAwMCwicm9sbG91dF9wZXJtaWxsZSI6NTAwLCJzYWx0IjoiOEtJekpGSC1pemJSZG1RYjdxTnVhZyJ9.6OZ9hs--86WPGL8TuQk5dVpdlCmM8cD5EUzEZB5kRQ1GwORz0yRix-h0W8RgL9w8wtLbnCHvJEt-59mdTITYCg",
       "context": {
         "last_generation": 0,
         "servers": [
@@ -322,28 +160,49 @@
       },
       "expect": "ok",
       "result": {
-        "buckets": {
-          "00000000-0000-4000-8000-000000000001": 244,
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": 749,
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": 310,
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": 65
-        },
         "hashed": {
           "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "3ZKSmejlVKpipks7zAaGaasIVVtzkx-m6OT88LJOtz0",
           "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "IZNR80AA3rpYbcZnGX10-P8odBtnRFgxcQ9dA1a6gpY"
         },
         "modes": {
-          "00000000-0000-4000-8000-000000000001": "OFF",
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "OFF",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "OFF",
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": "OFF"
+          "00000000-0000-4000-8000-000000000001": "ON",
+          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "ON",
+          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "ON",
+          "ffffffff-ffff-4fff-bfff-ffffffffffff": "ON"
+        }
+      }
+    },
+    {
+      "name": "raw-server-id-in-deny-ignored",
+      "kind": "flags",
+      "input": "eyJ0eXAiOiJzdy10dW5uZWwtZmxhZ3MrandzIiwiYWxnIjoiRWREU0EiLCJraWQiOiJySHg0X3FvNEM1Vk1oUGN4ZVI2MWJlc1IyZzg4eW5ZQVpSdFU0RVRFTFEwIn0.eyJhbGxvdyI6W10sImRlbnkiOlsiUHlxY0hsdDlUby1hQ3h3dFBrOWFhd0FBQUFBQUFBQUFBQUFBQUFBQUFBQSJdLCJnZW5lcmF0aW9uIjo3LCJnbG9iYWwiOiJvbiIsImlhdCI6MTc5MzAwMDAwMCwicm9sbG91dF9wZXJtaWxsZSI6MCwic2FsdCI6IjhLSXpKRkgtaXpiUmRtUWI3cU51YWcifQ.glTB8e7fkWRZzScZhV5DHzqY7lYzldMX9yz0LZj0L6IILYuCwO5VHExYbkI5lU1KO5OeTb3A0UtYSWpSaAbUBw",
+      "context": {
+        "last_generation": 0,
+        "servers": [
+          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b",
+          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7",
+          "00000000-0000-4000-8000-000000000001",
+          "ffffffff-ffff-4fff-bfff-ffffffffffff"
+        ]
+      },
+      "expect": "ok",
+      "result": {
+        "hashed": {
+          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "3ZKSmejlVKpipks7zAaGaasIVVtzkx-m6OT88LJOtz0",
+          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "IZNR80AA3rpYbcZnGX10-P8odBtnRFgxcQ9dA1a6gpY"
+        },
+        "modes": {
+          "00000000-0000-4000-8000-000000000001": "ON",
+          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "ON",
+          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "ON",
+          "ffffffff-ffff-4fff-bfff-ffffffffffff": "ON"
         }
       }
     },
     {
       "name": "hash-with-other-salt-ignored",
       "kind": "flags",
-      "input": "eyJ0eXAiOiJzdy10dW5uZWwtZmxhZ3MrandzIiwiYWxnIjoiRWREU0EiLCJraWQiOiJySHg0X3FvNEM1Vk1oUGN4ZVI2MWJlc1IyZzg4eW5ZQVpSdFU0RVRFTFEwIn0.eyJhbGxvdyI6WyJuUWZRMXh2Z0R4dkFyS2RxajE4SEZsVTd0a0F3RkxtQ2lUZnNOVUFqTlA4Il0sImRlbnkiOltdLCJnZW5lcmF0aW9uIjo3LCJnbG9iYWwiOiJvbiIsImlhdCI6MTc5MzAwMDAwMCwicm9sbG91dF9wZXJtaWxsZSI6MCwic2FsdCI6IjhLSXpKRkgtaXpiUmRtUWI3cU51YWcifQ.h5eLoYbdVWsQ22ouKOxpP9knVTX_fkuYOCKk-ITE1B_rGszzDmEfxLf5osgUrpp6RqxYWCOacLTASftXo_SQDQ",
+      "input": "eyJ0eXAiOiJzdy10dW5uZWwtZmxhZ3MrandzIiwiYWxnIjoiRWREU0EiLCJraWQiOiJySHg0X3FvNEM1Vk1oUGN4ZVI2MWJlc1IyZzg4eW5ZQVpSdFU0RVRFTFEwIn0.eyJhbGxvdyI6W10sImRlbnkiOlsiblFmUTF4dmdEeHZBcktkcWoxOEhGbFU3dGtBd0ZMbUNpVGZzTlVBak5QOCJdLCJnZW5lcmF0aW9uIjo3LCJnbG9iYWwiOiJvbiIsImlhdCI6MTc5MzAwMDAwMCwicm9sbG91dF9wZXJtaWxsZSI6MCwic2FsdCI6IjhLSXpKRkgtaXpiUmRtUWI3cU51YWcifQ.G53dWdSDhdRtYOoAfs2SdEi5YKgX-Vh3zjPyVoZiX7-dXtw0Le9gtKAdLYH9vx0oE14u0BxoB0_0caWSFWhnDw",
       "context": {
         "last_generation": 0,
         "servers": [
@@ -355,21 +214,15 @@
       },
       "expect": "ok",
       "result": {
-        "buckets": {
-          "00000000-0000-4000-8000-000000000001": 244,
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": 749,
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": 310,
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": 65
-        },
         "hashed": {
           "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "3ZKSmejlVKpipks7zAaGaasIVVtzkx-m6OT88LJOtz0",
           "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "IZNR80AA3rpYbcZnGX10-P8odBtnRFgxcQ9dA1a6gpY"
         },
         "modes": {
-          "00000000-0000-4000-8000-000000000001": "OFF",
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "OFF",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "OFF",
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": "OFF"
+          "00000000-0000-4000-8000-000000000001": "ON",
+          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "ON",
+          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "ON",
+          "ffffffff-ffff-4fff-bfff-ffffffffffff": "ON"
         }
       }
     },
@@ -418,21 +271,15 @@
       },
       "expect": "ok",
       "result": {
-        "buckets": {
-          "00000000-0000-4000-8000-000000000001": 244,
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": 749,
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": 310,
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": 65
-        },
         "hashed": {
           "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "3ZKSmejlVKpipks7zAaGaasIVVtzkx-m6OT88LJOtz0",
           "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "IZNR80AA3rpYbcZnGX10-P8odBtnRFgxcQ9dA1a6gpY"
         },
         "modes": {
-          "00000000-0000-4000-8000-000000000001": "OFF",
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "OFF",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "OFF",
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": "OFF"
+          "00000000-0000-4000-8000-000000000001": "ON",
+          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "ON",
+          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "ON",
+          "ffffffff-ffff-4fff-bfff-ffffffffffff": "ON"
         }
       }
     },
@@ -571,21 +418,15 @@
       },
       "expect": "ok",
       "result": {
-        "buckets": {
-          "00000000-0000-4000-8000-000000000001": 244,
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": 749,
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": 310,
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": 65
-        },
         "hashed": {
           "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "3ZKSmejlVKpipks7zAaGaasIVVtzkx-m6OT88LJOtz0",
           "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "IZNR80AA3rpYbcZnGX10-P8odBtnRFgxcQ9dA1a6gpY"
         },
         "modes": {
-          "00000000-0000-4000-8000-000000000001": "OFF",
-          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "OFF",
-          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "OFF",
-          "ffffffff-ffff-4fff-bfff-ffffffffffff": "OFF"
+          "00000000-0000-4000-8000-000000000001": "ON",
+          "3f2a9c1e-5b7d-4e8f-9a0b-1c2d3e4f5a6b": "ON",
+          "7c6b5a49-3827-4615-a4b3-c2d1e0f9a8b7": "ON",
+          "ffffffff-ffff-4fff-bfff-ffffffffffff": "ON"
         }
       }
     },

@@ -82,8 +82,8 @@ const (
 	RefuseCode_KEY_REVOKED        RefuseCode = 2 // only after the signature verified
 	RefuseCode_NOT_ENROLLED       RefuseCode = 3
 	RefuseCode_ACCOUNT_SUSPENDED  RefuseCode = 4
-	RefuseCode_PROTOCOL_DISABLED  RefuseCode = 5
-	RefuseCode_VERSION_TOO_OLD    RefuseCode = 6
+	RefuseCode_PROTOCOL_DISABLED  RefuseCode = 5 // maintenance: flags off for this server or globally
+	RefuseCode_VERSION_TOO_OLD    RefuseCode = 6 // update required
 	RefuseCode_EDGE_NOT_READY     RefuseCode = 7
 	RefuseCode_OVERLOADED         RefuseCode = 8 // retry_after_ms set
 	RefuseCode_TOO_MANY_ROUTES    RefuseCode = 9
@@ -213,8 +213,7 @@ type DrainAction int32
 const (
 	DrainAction_ACTION_UNSPECIFIED DrainAction = 0 // treated as RECONNECT
 	DrainAction_RECONNECT          DrainAction = 1
-	DrainAction_USE_FRPC           DrainAction = 2 // honoured only when the signed flags say OFF
-	DrainAction_STOP               DrainAction = 3 // SUPERSEDED only
+	DrainAction_HOLD               DrainAction = 4 // SUPERSEDED or KILL_SWITCH only
 )
 
 // Enum value maps for DrainAction.
@@ -222,14 +221,12 @@ var (
 	DrainAction_name = map[int32]string{
 		0: "ACTION_UNSPECIFIED",
 		1: "RECONNECT",
-		2: "USE_FRPC",
-		3: "STOP",
+		4: "HOLD",
 	}
 	DrainAction_value = map[string]int32{
 		"ACTION_UNSPECIFIED": 0,
 		"RECONNECT":          1,
-		"USE_FRPC":           2,
-		"STOP":               3,
+		"HOLD":               4,
 	}
 )
 
@@ -316,7 +313,7 @@ type ProtocolMode int32
 
 const (
 	ProtocolMode_MODE_UNSPECIFIED ProtocolMode = 0 // treated as OFF
-	ProtocolMode_OFF              ProtocolMode = 1
+	ProtocolMode_OFF              ProtocolMode = 1 // the edge refuses new sessions; the agent holds
 	ProtocolMode_ON               ProtocolMode = 2
 )
 
@@ -2434,12 +2431,11 @@ const file_seawise_tunnel_v1_tunnel_proto_rawDesc = "" +
 	"SUPERSEDED\x10\x03\x12\x0f\n" +
 	"\vKEY_ROTATED\x10\x04\x12\x0f\n" +
 	"\vKILL_SWITCH\x10\x05\x12\v\n" +
-	"\aMAX_AGE\x10\x06*L\n" +
+	"\aMAX_AGE\x10\x06*Z\n" +
 	"\vDrainAction\x12\x16\n" +
 	"\x12ACTION_UNSPECIFIED\x10\x00\x12\r\n" +
-	"\tRECONNECT\x10\x01\x12\f\n" +
-	"\bUSE_FRPC\x10\x02\x12\b\n" +
-	"\x04STOP\x10\x03*G\n" +
+	"\tRECONNECT\x10\x01\x12\b\n" +
+	"\x04HOLD\x10\x04\"\x04\b\x02\x10\x02\"\x04\b\x03\x10\x03*\bUSE_FRPC*\x04STOP*G\n" +
 	"\vRevokeScope\x12\x16\n" +
 	"\x12REVOKE_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +

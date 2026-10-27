@@ -24,7 +24,7 @@ const (
 
 // SignedState is a verified signed time statement. HasState is set when it
 // also carries the device state claims; only then may it move the agent to
-// HOLD or allow V1.
+// HOLD.
 type SignedState struct {
 	ServerID      string `json:"server_id"`
 	Time          int64  `json:"time"`
@@ -32,10 +32,9 @@ type SignedState struct {
 	HasState      bool   `json:"-"`
 	DeviceStatus  string `json:"device_status,omitempty"`
 	AccountStatus string `json:"account_status,omitempty"`
-	V1TokenLive   bool   `json:"v1_token_live,omitempty"`
 }
 
-var stateMembers = []string{"device_status", "account_status", "v1_token_live"}
+var stateMembers = []string{"device_status", "account_status"}
 
 // CheckSignedState decodes a verified control-key time statement and binds
 // it to the server and the nonce the agent just sent. The state claims are
@@ -47,7 +46,6 @@ func CheckSignedState(payload []byte, serverID, nonce string) (*SignedState, err
 		Nonce         string  `json:"nonce"`
 		DeviceStatus  *string `json:"device_status"`
 		AccountStatus *string `json:"account_status"`
-		V1TokenLive   *bool   `json:"v1_token_live"`
 	}
 	if err := decodeObject(payload, &st, []string{"server_id", "time", "nonce"}, stateMembers...); err != nil {
 		return nil, err
@@ -56,15 +54,9 @@ func CheckSignedState(payload []byte, serverID, nonce string) (*SignedState, err
 		return nil, fail(CodeMalformed)
 	}
 	out := &SignedState{ServerID: st.ServerID, Time: st.Time, Nonce: st.Nonce}
-	n := 0
-	for _, p := range []bool{st.DeviceStatus != nil, st.AccountStatus != nil, st.V1TokenLive != nil} {
-		if p {
-			n++
-		}
-	}
-	switch n {
-	case 0:
-	case 3:
+	switch {
+	case st.DeviceStatus == nil && st.AccountStatus == nil:
+	case st.DeviceStatus != nil && st.AccountStatus != nil:
 		switch *st.DeviceStatus {
 		case DeviceActive, DeviceRevoked, DeviceCompromised, DevicePending, DeviceEnrolPending:
 		default:
@@ -75,7 +67,7 @@ func CheckSignedState(payload []byte, serverID, nonce string) (*SignedState, err
 		default:
 			return nil, fail(CodeMalformed)
 		}
-		out.HasState, out.DeviceStatus, out.AccountStatus, out.V1TokenLive = true, *st.DeviceStatus, *st.AccountStatus, *st.V1TokenLive
+		out.HasState, out.DeviceStatus, out.AccountStatus = true, *st.DeviceStatus, *st.AccountStatus
 	default:
 		return nil, fail(CodeMalformed)
 	}

@@ -14,7 +14,7 @@ and the standard library.
 | `caps` | yamux configuration, stream caps, buffer budgets, liveness, session lifetime |
 | `httpwire` | request-bytes rules of a data stream |
 | `claims` | RouteSet, flags and signed-state payload checks, relayed call binding |
-| `ladder` | reference model of the agent's fallback ladder |
+| `ladder` | reference model of the agent's transport ladder (own protocol over TLS, then WebSocket, then HOLD) |
 | `wsconn` | byte stream over WebSocket messages |
 
 Vectors live in `testdata/vectors` (see its README).

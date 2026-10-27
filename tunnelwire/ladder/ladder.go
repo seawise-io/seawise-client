@@ -1,12 +1,14 @@
 // Package ladder is the reference model of the agent's transport ladder:
-// own protocol, frpc, v1, and HOLD. It is a pure state machine over events
-// with a caller-supplied clock, shared by the agent and the test harness
-// through ladder.json.
+// the own protocol over raw TLS, then over a WebSocket on 443, then
+// reconnecting with backoff, then HOLD. There is no other transport. It is
+// a pure state machine over events with a caller-supplied clock, shared by
+// the agent and the test harness through ladder.json.
 //
 // Unsigned edge statements (refusals, Drain, Revoke, session loss) never
-// move the agent below frpc and never into HOLD. HOLD and V1 need a
-// control-key signed, nonce-bound heartbeat statement, which the caller
-// verifies before passing it in as a SignedState event.
+// delete anything, and a HOLD they cause always keeps a re-dial timer. A
+// HOLD without one needs control-key signed flags or a nonce-bound signed
+// heartbeat, which the caller verifies before passing it in, or the local
+// repair-needed fact.
 package ladder
 
 import (
@@ -16,70 +18,74 @@ import (
 
 // States.
 const (
-	FRPC            = "FRPC"
-	Probing         = "PROBING"
-	Own             = "OWN"
-	OwnReconnecting = "OWN_RECONNECTING"
-	Hold            = "HOLD"
-	V1              = "V1"
+	Own          = "OWN"          // own protocol over raw TLS: session up, or the first dial
+	OwnWS        = "OWN_WS"       // own protocol over a WebSocket on 443
+	Reconnecting = "RECONNECTING" // no session; redials with backoff
+	Hold         = "HOLD"         // no tunnel; nothing deleted
+)
+
+// Transports, as in HelloBody.transport.
+const (
+	TLS       = "TLS"
+	WebSocket = "WEBSOCKET"
+)
+
+// Hold reasons.
+const (
+	HoldFlagsOff      = "flags_off"       // signed flags evaluate to OFF
+	HoldRevoked       = "revoked"         // signed heartbeat: key revoked or compromised
+	HoldSuspended     = "suspended"       // signed heartbeat: account suspended or banned
+	HoldRepair        = "repair_needed"   // rotation recovery failed
+	HoldUpdate        = "update_required" // VERSION_TOO_OLD, edge_too_old, or no /1 on either transport
+	HoldMaintenance   = "maintenance"     // PROTOCOL_DISABLED
+	HoldTooManyRoutes = "too_many_routes" // TOO_MANY_ROUTES
 )
 
 // Event kinds.
 const (
+	EvStart       = "start"         // process start
 	EvFlags       = "flags"         // signed flags, either carrier: Generation, Mode
 	EvTick        = "tick"          // clock advanced to At
 	EvDialOK      = "dial_ok"       // HelloAck verified and first RouteSet applied
-	EvDialFailed  = "dial_failed"   // Cause: dial, tls, alpn, ack_signature, edge_too_old
+	EvDialFailed  = "dial_failed"   // Cause: dial, tls, alpn, subprotocol, ack_signature, edge_too_old
 	EvRefused     = "refused"       // Code: a RefuseCode name
 	EvSessionLost = "session_lost"  // the active session ended
 	EvReceived    = "rx"            // any byte received on the session
 	EvDrain       = "drain"         // Reason, Action, PendingKey
 	EvRevoke      = "revoke"        // Scope
-	EvSignedState = "signed_state"  // verified heartbeat: DeviceStatus, AccountStatus, V1Live
+	EvSignedState = "signed_state"  // verified heartbeat: DeviceStatus, AccountStatus
 	EvRepair      = "repair_needed" // rotation recovery failed
-	EvFRPCRefused = "frpc_refused"  // Authenticated: from an frps whose certificate verified
 	EvNetwork     = "network_change"
-	EvEnrolled    = "enrolled" // an active key was accepted
 )
 
-// Actions the caller performs.
+// Actions the caller performs. Dials use Output.Transport.
 const (
-	ActDial            = "dial"
-	ActDialSecond      = "dial_second_session"
-	ActSwitchSession   = "switch_session"
-	ActCloseSession    = "close_session"
-	ActStartFRPC       = "start_frpc"
-	ActStopFRPC        = "stop_frpc"
-	ActCloseAfterFRPC  = "close_session_after_frpc_up"
-	ActSendPing        = "send_ping"
-	ActHeartbeat       = "request_signed_heartbeat"
-	ActCommitRotation  = "commit_rotation"
-	ActEndAppSessions  = "end_app_sessions"
-	ActStopTunnels     = "stop_tunnels"
-	ActUseV1           = "use_v1_token"
-	ActDeleteV1Copy    = "delete_v1_token_copy"
-	ActCountSupersede  = "count_supersede"
-	ActFlagsRollback   = "flags_rollback_refused"
-	ActIgnoredUnsigned = "ignored_unauthenticated"
+	ActDial           = "dial"
+	ActDialSecond     = "dial_second_session"
+	ActSwitchSession  = "switch_session"
+	ActCloseSession   = "close_session"
+	ActSendPing       = "send_ping"
+	ActHeartbeat      = "request_signed_heartbeat"
+	ActCommitRotation = "commit_rotation"
+	ActEndAppSessions = "end_app_sessions"
+	ActStopTunnels    = "stop_tunnels"
+	ActCountSupersede = "count_supersede"
+	ActFlagsRollback  = "flags_rollback_refused"
 )
 
 // Timers and defaults.
 const (
 	TimerDial      = "dial"
-	TimerProbe     = "probe"
-	TimerHandover  = "stop_frpc"
 	TimerRedial    = "redial"
-	TimerFallback  = "fallback"
+	TimerProbe     = "probe_tls"
 	TimerHeartbeat = "heartbeat"
 
-	ProbeJitter       = 30 * time.Second
+	DialJitter        = 30 * time.Second
 	ReprobeBase       = 15 * time.Minute
 	ReprobeCap        = 4 * time.Hour
 	RedialBase        = time.Second
 	RedialCap         = 30 * time.Second
-	FallbackAfter     = 60 * time.Second
-	FallbackAttempts  = 3
-	HandoverDelay     = 10 * time.Second
+	CarriageFailures  = 2
 	SupersedePause    = 60 * time.Second
 	HoldPoll          = 5 * time.Minute
 	DefaultPingEvery  = 20 * time.Second
@@ -101,47 +107,52 @@ type Event struct {
 	Scope         string `json:"scope,omitempty"`
 	DeviceStatus  string `json:"device_status,omitempty"`
 	AccountStatus string `json:"account_status,omitempty"`
-	V1Live        bool   `json:"v1_token_live,omitempty"`
-	Authenticated bool   `json:"authenticated,omitempty"`
 }
 
 // Window is a timer's firing window in absolute milliseconds.
 type Window [2]int64
 
-// Output is the model's state after an event.
+// Output is the model's state after an event. Transport is the carriage of
+// the session, or of the next dial when there is none.
 type Output struct {
-	State   string            `json:"state"`
-	Actions []string          `json:"actions"`
-	Timers  map[string]Window `json:"timers"`
+	State     string            `json:"state"`
+	Hold      string            `json:"hold,omitempty"`
+	Transport string            `json:"transport"`
+	Actions   []string          `json:"actions"`
+	Timers    map[string]Window `json:"timers"`
 }
 
 // Machine is the ladder for one agent.
 type Machine struct {
 	state      string
+	hold       string
+	transport  string
 	generation int64
 	modeOn     bool
-	blocked    bool
-	probeLevel int
-	attempts   int
-	timers     map[string]Window
+	up         bool
 	second     bool
+	secondTLS  bool
+	attempts   int
+	failures   int
+	noMajor    map[string]bool
+	slowLevel  int
+	probeLevel int
+	timers     map[string]Window
 	lastRx     int64
 	pinged     bool
 	pingAt     int64
 	pingEvery  int64
 	pingWithin int64
-	v1Live     bool
-	frpcAuthNo bool
-	v1Deleted  bool
 	now        int64
 	actions    []string
 }
 
-// New returns a machine in state (FRPC for an enrolled agent, V1 for one
-// that never enrolled) with the last persisted flags generation and mode.
-func New(state string, generation int64, modeOn bool) *Machine {
+// New returns a machine in OWN with the last persisted flags generation
+// and mode (ON when none was ever received).
+func New(generation int64, modeOn bool) *Machine {
 	return &Machine{
-		state: state, generation: generation, modeOn: modeOn, timers: map[string]Window{},
+		state: Own, transport: TLS, generation: generation, modeOn: modeOn,
+		noMajor: map[string]bool{}, timers: map[string]Window{},
 		pingEvery: DefaultPingEvery.Milliseconds(), pingWithin: DefaultPingWithin.Milliseconds(),
 	}
 }
@@ -158,12 +169,6 @@ func (m *Machine) act(a ...string) { m.actions = append(m.actions, a...) }
 
 func (m *Machine) set(name string, lo, hi int64) { m.timers[name] = Window{lo, hi} }
 
-func (m *Machine) clear(names ...string) {
-	for _, n := range names {
-		delete(m.timers, n)
-	}
-}
-
 func (m *Machine) clearAll() { m.timers = map[string]Window{} }
 
 func backoff(base, cap time.Duration, level int) int64 {
@@ -174,94 +179,107 @@ func backoff(base, cap time.Duration, level int) int64 {
 	return min(d, cap).Milliseconds()
 }
 
-// toFRPC moves to FRPC; startFRPC is set when frpc is not already running.
-func (m *Machine) toFRPC(startFRPC bool) {
-	m.state = FRPC
-	m.second = false
+func other(t string) string {
+	if t == TLS {
+		return WebSocket
+	}
+	return TLS
+}
+
+func signedHold(reason string) bool {
+	return reason == HoldFlagsOff || reason == HoldRevoked || reason == HoldSuspended || reason == HoldRepair
+}
+
+// toHold stops every tunnel. A hold on an unsigned statement asks for a
+// signed heartbeat at once and keeps a slow re-dial timer.
+func (m *Machine) toHold(reason string) {
+	m.state, m.hold, m.up, m.second = Hold, reason, false, false
 	m.clearAll()
-	if startFRPC {
-		m.act(ActStartFRPC)
+	m.act(ActStopTunnels)
+	m.set(TimerHeartbeat, m.now+HoldPoll.Milliseconds(), m.now+HoldPoll.Milliseconds())
+	if !signedHold(reason) {
+		m.act(ActHeartbeat)
+		m.slowRedial()
 	}
 }
 
-// reprobe schedules the next probe after a failure, doubling up to the cap.
-func (m *Machine) reprobe() {
-	m.set(TimerProbe, m.now, m.now+backoff(ReprobeBase, ReprobeCap, m.probeLevel))
-	m.probeLevel++
+func (m *Machine) slowRedial() {
+	m.set(TimerRedial, m.now, m.now+backoff(ReprobeBase, ReprobeCap, m.slowLevel))
+	m.slowLevel++
 }
 
-func (m *Machine) startProbe() {
-	m.state = Probing
+// reconnecting leaves any session and resets the carriage state.
+func (m *Machine) reconnecting() {
+	m.state, m.hold, m.up = Reconnecting, "", false
 	m.clearAll()
-	m.set(TimerDial, m.now, m.now+ProbeJitter.Milliseconds())
+	m.attempts, m.failures = 0, 0
 }
 
-func (m *Machine) startReconnect() {
-	m.state = OwnReconnecting
-	m.attempts = 0
-	m.clear(TimerHandover)
-	m.set(TimerFallback, m.now+FallbackAfter.Milliseconds(), m.now+FallbackAfter.Milliseconds())
-	if !m.second {
-		m.act(ActDial)
+// redialSoon leaves HOLD with a jittered dial over TLS.
+func (m *Machine) redialSoon() {
+	m.reconnecting()
+	m.transport, m.second = TLS, false
+	clear(m.noMajor)
+	m.set(TimerDial, m.now, m.now+DialJitter.Milliseconds())
+}
+
+// lost ends the session; an in-flight second dial becomes the redial.
+func (m *Machine) lost() {
+	m.reconnecting()
+	if m.second {
+		m.second = false
+		if m.secondTLS {
+			m.transport = TLS
+		}
+		return
 	}
+	m.act(ActDial)
 }
 
 func (m *Machine) sessionUp() {
-	m.lastRx, m.pinged, m.attempts = m.now, false, 0
-	if !m.v1Deleted {
-		m.v1Deleted = true
-		m.act(ActDeleteV1Copy)
+	m.up, m.hold, m.lastRx, m.pinged = true, "", m.now, false
+	m.attempts, m.failures, m.slowLevel = 0, 0, 0
+	clear(m.noMajor)
+	delete(m.timers, TimerDial)
+	delete(m.timers, TimerRedial)
+	m.state = Own
+	if m.transport == WebSocket {
+		m.state = OwnWS
+		if _, ok := m.timers[TimerProbe]; !ok {
+			m.set(TimerProbe, m.now, m.now+backoff(ReprobeBase, ReprobeCap, m.probeLevel))
+		}
+		return
 	}
+	m.probeLevel = 0
+	delete(m.timers, TimerProbe)
 }
 
 type failure int
 
 const (
 	transient failure = iota
-	terminal
+	carriage
 	auth
+	update
+	maintenance
+	tooManyRoutes
 )
 
 func classify(e Event) failure {
 	switch e.Cause + e.Code {
-	case "alpn", "edge_too_old", "PROTOCOL_DISABLED", "VERSION_TOO_OLD", "TOO_MANY_ROUTES":
-		return terminal
+	case "VERSION_TOO_OLD", "edge_too_old":
+		return update
+	case "PROTOCOL_DISABLED":
+		return maintenance
+	case "TOO_MANY_ROUTES":
+		return tooManyRoutes
 	case "KEY_REVOKED", "ACCOUNT_SUSPENDED", "INVALID_PROOF", "NOT_ENROLLED":
 		return auth
 	}
+	if e.Kind == EvDialFailed {
+		return carriage
+	}
 	return transient
-}
-
-func (m *Machine) failed(f failure) {
-	switch m.state {
-	case Probing:
-		m.toFRPC(false)
-		m.afterFailure(f)
-	case OwnReconnecting:
-		if f == transient {
-			m.attempts++
-			if m.attempts < FallbackAttempts {
-				m.set(TimerRedial, m.now, m.now+backoff(RedialBase, RedialCap, m.attempts-1))
-				return
-			}
-		}
-		m.toFRPC(true)
-		m.afterFailure(f)
-	case Own:
-		m.second = false
-	}
-}
-
-func (m *Machine) afterFailure(f failure) {
-	switch f {
-	case terminal:
-		m.blocked = true
-	case auth:
-		m.act(ActHeartbeat)
-		m.reprobe()
-	default:
-		m.reprobe()
-	}
 }
 
 // Step applies one event and returns the resulting output.
@@ -269,6 +287,12 @@ func (m *Machine) Step(e Event) Output {
 	m.actions = nil
 	m.now = e.At
 	switch e.Kind {
+	case EvStart:
+		if m.modeOn {
+			m.act(ActDial)
+		} else {
+			m.toHold(HoldFlagsOff)
+		}
 	case EvFlags:
 		m.flags(e)
 	case EvTick:
@@ -276,13 +300,10 @@ func (m *Machine) Step(e Event) Output {
 	case EvDialOK:
 		m.dialOK()
 	case EvDialFailed, EvRefused:
-		m.failed(classify(e))
+		m.failed(e)
 	case EvSessionLost:
-		switch m.state {
-		case Own:
-			m.startReconnect()
-		case Probing:
-			m.failed(transient)
+		if m.up {
+			m.lost()
 		}
 	case EvReceived:
 		m.lastRx, m.pinged = m.now, false
@@ -293,22 +314,13 @@ func (m *Machine) Step(e Event) Output {
 	case EvSignedState:
 		m.signedState(e)
 	case EvRepair:
-		m.hold()
-	case EvFRPCRefused:
-		m.frpcRefused(e)
+		m.toHold(HoldRepair)
 	case EvNetwork:
-		if m.state == OwnReconnecting {
-			m.clear(TimerRedial)
+		if m.state == Reconnecting {
+			m.reconnecting()
+			m.transport = TLS
+			clear(m.noMajor)
 			m.act(ActDial)
-		}
-	case EvEnrolled:
-		if m.state == V1 {
-			m.toFRPC(true)
-		}
-		m.v1Live, m.frpcAuthNo = false, false
-		if !m.v1Deleted {
-			m.v1Deleted = true
-			m.act(ActDeleteV1Copy)
 		}
 	}
 	return m.output()
@@ -323,7 +335,7 @@ func (m *Machine) output() Output {
 	if a == nil {
 		a = []string{}
 	}
-	return Output{State: m.state, Actions: a, Timers: t}
+	return Output{State: m.state, Hold: m.hold, Transport: m.transport, Actions: a, Timers: t}
 }
 
 func (m *Machine) flags(e Event) {
@@ -331,57 +343,46 @@ func (m *Machine) flags(e Event) {
 		m.act(ActFlagsRollback)
 		return
 	}
-	m.generation, m.modeOn, m.blocked, m.probeLevel = e.Generation, e.Mode == "ON", false, 0
-	switch m.state {
-	case FRPC:
-		if m.modeOn {
-			m.startProbe()
-		} else {
-			m.clear(TimerProbe)
+	m.generation, m.modeOn = e.Generation, e.Mode == "ON"
+	switch {
+	case m.state == Hold && m.hold != HoldFlagsOff && signedHold(m.hold):
+	case !m.modeOn:
+		if m.hold != HoldFlagsOff {
+			m.toHold(HoldFlagsOff)
 		}
-	case Probing:
-		if !m.modeOn {
-			m.toFRPC(false)
-		}
-	case Own:
-		if !m.modeOn {
-			m.toFRPC(true)
-			m.act(ActCloseAfterFRPC)
-		}
-	case OwnReconnecting:
-		if !m.modeOn {
-			m.toFRPC(true)
-		}
+	case m.state == Hold:
+		m.slowLevel = 0
+		m.redialSoon()
 	}
 }
 
 func (m *Machine) tick() {
-	for _, name := range []string{TimerDial, TimerProbe, TimerHandover, TimerRedial, TimerFallback, TimerHeartbeat} {
+	for _, name := range []string{TimerDial, TimerRedial, TimerProbe, TimerHeartbeat} {
 		w, ok := m.timers[name]
 		if !ok || m.now < w[1] {
 			continue
 		}
 		delete(m.timers, name)
 		switch name {
-		case TimerDial, TimerRedial:
+		case TimerDial:
+			m.act(ActDial)
+		case TimerRedial:
+			if m.state == Hold {
+				m.reconnecting()
+				m.transport = TLS
+			}
 			m.act(ActDial)
 		case TimerProbe:
-			if m.modeOn && !m.blocked {
-				m.state = Probing
-				m.act(ActDial)
+			if !m.second {
+				m.second, m.secondTLS = true, true
+				m.act(ActDialSecond)
 			}
-		case TimerHandover:
-			m.act(ActStopFRPC)
-		case TimerFallback:
-			m.toFRPC(true)
-			m.reprobe()
-			return
 		case TimerHeartbeat:
 			m.act(ActHeartbeat)
 			m.set(TimerHeartbeat, m.now+HoldPoll.Milliseconds(), m.now+HoldPoll.Milliseconds())
 		}
 	}
-	if m.state != Own {
+	if !m.up {
 		return
 	}
 	switch {
@@ -389,63 +390,104 @@ func (m *Machine) tick() {
 		m.pinged, m.pingAt = true, m.now
 		m.act(ActSendPing)
 	case m.pinged && m.now-m.pingAt >= m.pingWithin:
-		m.startReconnect()
+		m.lost()
 	}
 }
 
 func (m *Machine) dialOK() {
-	switch m.state {
-	case Probing:
-		m.state = Own
-		m.clearAll()
-		m.set(TimerHandover, m.now+HandoverDelay.Milliseconds(), m.now+HandoverDelay.Milliseconds())
-		m.sessionUp()
-	case OwnReconnecting:
-		m.state = Own
+	switch {
+	case m.up && m.second:
 		m.second = false
-		m.clear(TimerRedial, TimerFallback)
-		m.sessionUp()
-	case Own:
-		if m.second {
-			m.second = false
-			m.act(ActSwitchSession)
-			m.sessionUp()
-		} else {
-			m.act(ActCloseSession)
+		m.act(ActSwitchSession)
+		if m.secondTLS {
+			m.transport = TLS
 		}
+		m.sessionUp()
+	case !m.up && m.state != Hold:
+		m.sessionUp()
 	default:
 		m.act(ActCloseSession)
 	}
 }
 
+func (m *Machine) failed(e Event) {
+	if m.up {
+		if m.second {
+			m.second = false
+			if m.secondTLS && m.transport == WebSocket {
+				m.probeLevel++
+				m.set(TimerProbe, m.now, m.now+backoff(ReprobeBase, ReprobeCap, m.probeLevel))
+			}
+		}
+		return
+	}
+	if m.state == Hold {
+		return
+	}
+	m.state = Reconnecting
+	switch classify(e) {
+	case update:
+		m.toHold(HoldUpdate)
+	case maintenance:
+		m.toHold(HoldMaintenance)
+	case tooManyRoutes:
+		m.toHold(HoldTooManyRoutes)
+	case auth:
+		m.act(ActHeartbeat)
+		m.slowRedial()
+	case carriage:
+		if e.Cause == "alpn" || e.Cause == "subprotocol" {
+			m.noMajor[m.transport] = true
+			if m.noMajor[TLS] && m.noMajor[WebSocket] {
+				m.toHold(HoldUpdate)
+				return
+			}
+		}
+		m.failures++
+		if m.failures >= CarriageFailures {
+			m.transport, m.failures = other(m.transport), 0
+		}
+		m.redial()
+	default:
+		m.redial()
+	}
+}
+
+func (m *Machine) redial() {
+	m.attempts++
+	m.set(TimerRedial, m.now, m.now+backoff(RedialBase, RedialCap, m.attempts-1))
+}
+
 func (m *Machine) drain(e Event) {
-	if m.state != Own {
+	if !m.up {
 		return
 	}
 	switch {
-	case e.Reason == "SUPERSEDED" && e.Action == "STOP":
-		m.toFRPC(true)
-		m.act(ActCountSupersede)
-		m.set(TimerProbe, m.now+SupersedePause.Milliseconds(), m.now+SupersedePause.Milliseconds())
+	case e.Reason == "SUPERSEDED" && e.Action == "HOLD":
+		m.act(ActCloseSession, ActCountSupersede)
+		m.second = false
+		m.reconnecting()
+		m.set(TimerRedial, m.now+SupersedePause.Milliseconds(), m.now+SupersedePause.Milliseconds())
 	case e.Reason == "KEY_ROTATED" && !e.PendingKey:
 		m.act(ActCloseSession)
-		m.startReconnect()
-	case e.Action == "USE_FRPC" && !m.modeOn:
-		m.toFRPC(true)
-		m.act(ActCloseAfterFRPC)
+		m.second = false
+		m.lost()
 	default:
+		if e.Action == "HOLD" {
+			m.act(ActHeartbeat)
+		}
 		if e.Reason == "KEY_ROTATED" {
 			m.act(ActCommitRotation)
 		}
 		if !m.second {
-			m.second = true
+			m.second, m.secondTLS = true, false
 			m.act(ActDialSecond)
 		}
 	}
 }
 
 func (m *Machine) revoke(e Event) {
-	if m.state != Own {
+	if !m.up {
 		return
 	}
 	switch e.Scope {
@@ -454,56 +496,21 @@ func (m *Machine) revoke(e Event) {
 	case "DEVICE", "ACCOUNT":
 		m.act(ActCloseSession, ActHeartbeat)
 		m.second = false
-		m.startReconnect()
+		m.lost()
 	}
-}
-
-func (m *Machine) hold() {
-	if m.state == V1 {
-		return
-	}
-	m.state = Hold
-	m.second = false
-	m.clearAll()
-	m.act(ActStopTunnels)
-	m.set(TimerHeartbeat, m.now+HoldPoll.Milliseconds(), m.now+HoldPoll.Milliseconds())
 }
 
 func (m *Machine) signedState(e Event) {
-	m.v1Live = e.V1Live
-	holds := e.DeviceStatus == "revoked" || e.DeviceStatus == "compromised" || e.AccountStatus != "active"
-	clears := e.DeviceStatus == "active" && e.AccountStatus == "active"
 	switch {
-	case holds:
-		m.hold()
-	case clears && m.state == Hold:
-		m.toFRPC(true)
-		if m.modeOn && !m.blocked {
-			m.startProbe()
-		}
-	case m.state == FRPC && m.frpcAuthNo && m.v1Live:
-		m.toV1()
+	case e.DeviceStatus == "revoked" || e.DeviceStatus == "compromised":
+		m.toHold(HoldRevoked)
+	case e.AccountStatus != "active":
+		m.toHold(HoldSuspended)
+	case e.DeviceStatus != "active" || m.state != Hold || !signedHold(m.hold) || m.hold == HoldFlagsOff:
+	case m.modeOn:
+		m.slowLevel = 0
+		m.redialSoon()
+	default:
+		m.toHold(HoldFlagsOff)
 	}
-}
-
-func (m *Machine) toV1() {
-	m.state = V1
-	m.clearAll()
-	m.act(ActUseV1)
-}
-
-func (m *Machine) frpcRefused(e Event) {
-	if !e.Authenticated {
-		m.act(ActIgnoredUnsigned)
-		return
-	}
-	if m.state != FRPC {
-		return
-	}
-	m.frpcAuthNo = true
-	if m.v1Live {
-		m.toV1()
-		return
-	}
-	m.act(ActHeartbeat)
 }

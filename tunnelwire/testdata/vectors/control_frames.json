@@ -932,8 +932,8 @@
       "expect": "bad_value"
     },
     {
-      "name": "drain-stop-superseded",
-      "input": "AAAADggBEAGKAQcIAxDoBxgD",
+      "name": "drain-hold-superseded",
+      "input": "AAAADggBEAGKAQcIAxDoBxgE",
       "context": {
         "from": "edge",
         "layer": "message"
@@ -947,8 +947,41 @@
       ]
     },
     {
-      "name": "drain-stop-not-superseded",
-      "input": "AAAADggBEAGKAQcIARDoBxgD",
+      "name": "drain-hold-kill-switch",
+      "input": "AAAADggBEAGKAQcIBRDoBxgE",
+      "context": {
+        "from": "edge",
+        "layer": "message"
+      },
+      "expect": "ok",
+      "result": [
+        {
+          "kind": "drain",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "name": "drain-hold-rollout",
+      "input": "AAAADggBEAGKAQcIARDoBxgE",
+      "context": {
+        "from": "edge",
+        "layer": "message"
+      },
+      "expect": "bad_value"
+    },
+    {
+      "name": "drain-action-2-reserved",
+      "input": "AAAADggBEAGKAQcIBRDoBxgC",
+      "context": {
+        "from": "edge",
+        "layer": "message"
+      },
+      "expect": "bad_value"
+    },
+    {
+      "name": "drain-action-3-reserved",
+      "input": "AAAADggBEAGKAQcIAxDoBxgD",
       "context": {
         "from": "edge",
         "layer": "message"

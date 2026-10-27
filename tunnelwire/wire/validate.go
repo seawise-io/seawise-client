@@ -85,7 +85,7 @@ func validateBody(m *pb.ControlMessage) error {
 		return firstErr(
 			check(d.Reason != pb.DrainReason_DRAIN_UNSPECIFIED, "drain.reason"),
 			check(d.DeadlineMs >= MinDrainMs && d.DeadlineMs <= MaxDrainMs, "drain.deadline_ms"),
-			check(d.Action != pb.DrainAction_STOP || d.Reason == pb.DrainReason_SUPERSEDED, "drain.action"),
+			check(d.Action != pb.DrainAction_HOLD || d.Reason == pb.DrainReason_SUPERSEDED || d.Reason == pb.DrainReason_KILL_SWITCH, "drain.action"),
 		)
 	case *pb.ControlMessage_Revoke:
 		r := b.Revoke

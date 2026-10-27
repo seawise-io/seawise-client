@@ -87,8 +87,8 @@ enum RefuseCode {
   KEY_REVOKED = 2;          // only after the signature verified
   NOT_ENROLLED = 3;
   ACCOUNT_SUSPENDED = 4;
-  PROTOCOL_DISABLED = 5;
-  VERSION_TOO_OLD = 6;
+  PROTOCOL_DISABLED = 5;    // maintenance: flags off for this server or globally
+  VERSION_TOO_OLD = 6;      // update required
   EDGE_NOT_READY = 7;
   OVERLOADED = 8;           // retry_after_ms set
   TOO_MANY_ROUTES = 9;
@@ -138,8 +138,9 @@ enum DrainReason {
 enum DrainAction {           // advisory: Drain is unsigned
   ACTION_UNSPECIFIED = 0;   // treated as RECONNECT
   RECONNECT = 1;
-  USE_FRPC = 2;             // honoured only when the signed flags say OFF
-  STOP = 3;                 // SUPERSEDED only
+  reserved 2, 3;
+  reserved "USE_FRPC", "STOP";
+  HOLD = 4;                 // SUPERSEDED or KILL_SWITCH only
 }
 
 message Revoke {             // unsigned: a session drop plus a signed-heartbeat check
@@ -172,7 +173,7 @@ message PolicyVersion {
 
 enum ProtocolMode {         // result of evaluating the signed flags for one server
   MODE_UNSPECIFIED = 0;     // treated as OFF
-  OFF = 1;
+  OFF = 1;                  // the edge refuses new sessions; the agent holds
   ON = 2;
 }
 

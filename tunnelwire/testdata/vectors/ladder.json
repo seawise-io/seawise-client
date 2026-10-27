@@ -3,38 +3,20 @@
   "note": "TEST ONLY. Every key in this file is derived from a published seed; never use these keys outside tests.",
   "cases": [
     {
-      "name": "probe-success-make-before-break",
+      "name": "start-dials-tls",
       "initial": {
-        "state": "FRPC",
         "generation": 0,
-        "mode_on": false
+        "mode_on": true
       },
       "steps": [
         {
           "event": {
             "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
+            "kind": "start"
           },
           "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
+            "state": "OWN",
+            "transport": "TLS",
             "actions": [
               "dial"
             ],
@@ -43,64 +25,12 @@
         },
         {
           "event": {
-            "at": 31000,
+            "at": 1000,
             "kind": "dial_ok"
           },
           "want": {
             "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "no-flags-ever-stays-frpc",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 3600000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 3600000,
-            "kind": "dial_failed",
-            "cause": "dial"
-          },
-          "want": {
-            "state": "FRPC",
+            "transport": "TLS",
             "actions": [],
             "timers": {}
           }
@@ -108,3516 +38,21 @@
       ]
     },
     {
-      "name": "flags-off-stays-frpc",
+      "name": "start-with-persisted-flags-off-holds",
       "initial": {
-        "state": "FRPC",
-        "generation": 0,
+        "generation": 4,
         "mode_on": false
       },
       "steps": [
         {
           "event": {
             "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "OFF"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 3600000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "probe-transient-failures-double-to-cap",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_failed",
-            "cause": "dial"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {
-              "probe": [
-                31000,
-                931000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 931000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 932000,
-            "kind": "refused",
-            "code": "EDGE_NOT_READY"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {
-              "probe": [
-                932000,
-                2732000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 2732000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 2733000,
-            "kind": "refused",
-            "code": "OVERLOADED"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {
-              "probe": [
-                2733000,
-                6333000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 6334000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 6335000,
-            "kind": "dial_failed",
-            "cause": "tls"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {
-              "probe": [
-                6335000,
-                13535000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 13536000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 13537000,
-            "kind": "dial_failed",
-            "cause": "ack_signature"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {
-              "probe": [
-                13537000,
-                27937000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 27938000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 27939000,
-            "kind": "dial_failed",
-            "cause": "dial"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {
-              "probe": [
-                27939000,
-                42339000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 27940000,
-            "kind": "flags",
-            "generation": 2,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                27940000,
-                27970000
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "probe-terminal-refusal-blocks-until-new-generation",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "refused",
-            "code": "PROTOCOL_DISABLED"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 18000000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 18000000,
-            "kind": "flags",
-            "generation": 2,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                18000000,
-                18030000
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "probe-terminal-VERSION_TOO_OLD",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "refused",
-            "code": "VERSION_TOO_OLD"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 18000000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "probe-terminal-TOO_MANY_ROUTES",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "refused",
-            "code": "TOO_MANY_ROUTES"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 18000000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "probe-terminal-alpn",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_failed",
-            "cause": "alpn"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 18000000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "probe-terminal-edge_too_old",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_failed",
-            "cause": "edge_too_old"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 18000000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "probe-auth-refusal-unconfirmed-stays-frpc",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "refused",
-            "code": "KEY_REVOKED"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [
-              "request_signed_heartbeat"
-            ],
-            "timers": {
-              "probe": [
-                31000,
-                931000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 32000,
-            "kind": "signed_state",
-            "device_status": "active",
-            "account_status": "active"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {
-              "probe": [
-                31000,
-                931000
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "probe-auth-refusal-confirmed-hold",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "refused",
-            "code": "KEY_REVOKED"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [
-              "request_signed_heartbeat"
-            ],
-            "timers": {
-              "probe": [
-                31000,
-                931000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 32000,
-            "kind": "signed_state",
-            "device_status": "revoked",
-            "account_status": "active"
+            "kind": "start"
           },
           "want": {
             "state": "HOLD",
-            "actions": [
-              "stop_tunnels"
-            ],
-            "timers": {
-              "heartbeat": [
-                332000,
-                332000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 332000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "HOLD",
-            "actions": [
-              "request_signed_heartbeat"
-            ],
-            "timers": {
-              "heartbeat": [
-                632000,
-                632000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 333000,
-            "kind": "signed_state",
-            "device_status": "active",
-            "account_status": "active"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "start_frpc"
-            ],
-            "timers": {
-              "dial": [
-                333000,
-                363000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 364000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "probe-invalid-proof-never-hold-alone",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "refused",
-            "code": "INVALID_PROOF"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [
-              "request_signed_heartbeat"
-            ],
-            "timers": {
-              "probe": [
-                31000,
-                931000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 32000,
-            "kind": "refused",
-            "code": "ACCOUNT_SUSPENDED"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {
-              "probe": [
-                31000,
-                931000
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "flapping-within-fallback-timer",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "session_lost"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 51000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 60000,
-            "kind": "session_lost"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                120000,
-                120000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 61000,
-            "kind": "dial_failed",
-            "cause": "dial"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [],
-            "timers": {
-              "fallback": [
-                120000,
-                120000
-              ],
-              "redial": [
-                61000,
-                62000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 62000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                120000,
-                120000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 62000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 70000,
-            "kind": "session_lost"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                130000,
-                130000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 71000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "reconnect-three-failures-fall-back",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "session_lost"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 51000,
-            "kind": "dial_failed",
-            "cause": "dial"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ],
-              "redial": [
-                51000,
-                52000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 52000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 53000,
-            "kind": "dial_failed",
-            "cause": "tls"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ],
-              "redial": [
-                53000,
-                55000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 55000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 56000,
-            "kind": "refused",
-            "code": "OVERLOADED"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [
-              "start_frpc"
-            ],
-            "timers": {
-              "probe": [
-                56000,
-                956000
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "reconnect-60s-fall-back",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "session_lost"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 109000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 110000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [
-              "start_frpc"
-            ],
-            "timers": {
-              "probe": [
-                110000,
-                1010000
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "reconnect-network-change-redials-now",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "session_lost"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 51000,
-            "kind": "dial_failed",
-            "cause": "dial"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ],
-              "redial": [
-                51000,
-                52000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 51500,
-            "kind": "network_change"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "reconnect-terminal-refusal",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "session_lost"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 51000,
-            "kind": "refused",
-            "code": "PROTOCOL_DISABLED"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [
-              "start_frpc"
-            ],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "flapping-across-reprobe-backoff",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "session_lost"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 110000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [
-              "start_frpc"
-            ],
-            "timers": {
-              "probe": [
-                110000,
-                1010000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 1010000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 1011000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {
-              "stop_frpc": [
-                1021000,
-                1021000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 1100000,
-            "kind": "session_lost"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                1160000,
-                1160000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 1160000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [
-              "start_frpc"
-            ],
-            "timers": {
-              "probe": [
-                1160000,
-                2960000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 2960000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "liveness-traffic-without-pong",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "rx"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 65000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 66000,
-            "kind": "rx"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 80000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 81000,
-            "kind": "rx"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 100000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 101000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "send_ping"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 115000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 116000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                176000,
-                176000
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "liveness-ping-answered-by-any-byte",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 61000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "send_ping"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 70000,
-            "kind": "rx"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 76000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "drain-reconnect-same-run-make-before-break",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "drain",
-            "reason": "ROLLOUT",
-            "action": "RECONNECT"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "dial_second_session"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 51000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "switch_session"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 52000,
-            "kind": "rx"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "drain-max-age",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "drain",
-            "reason": "MAX_AGE",
-            "action": "RECONNECT"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "dial_second_session"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 51000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "switch_session"
-            ],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "drain-second-dial-fails-then-old-closes",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "drain",
-            "reason": "REBALANCE",
-            "action": "ACTION_UNSPECIFIED"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "dial_second_session"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 51000,
-            "kind": "dial_failed",
-            "cause": "dial"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 60000,
-            "kind": "session_lost"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                120000,
-                120000
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "drain-superseded-stop",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "drain",
-            "reason": "SUPERSEDED",
-            "action": "STOP"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [
-              "start_frpc",
-              "count_supersede"
-            ],
-            "timers": {
-              "probe": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 100000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {
-              "probe": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 110000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "drain-use-frpc-while-flags-on",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "drain",
-            "reason": "KILL_SWITCH",
-            "action": "USE_FRPC"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "dial_second_session"
-            ],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "kill-switch-signed-flags-off",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "flags",
-            "generation": 2,
-            "mode": "OFF"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [
-              "start_frpc",
-              "close_session_after_frpc_up"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 3600000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "flags-rollback-refused",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "OFF"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "flags_rollback_refused"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 51000,
-            "kind": "flags",
-            "mode": "OFF"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "flags_rollback_refused"
-            ],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "key-rotated-with-pending-key",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "drain",
-            "reason": "KEY_ROTATED",
-            "action": "RECONNECT",
-            "pending_key": true
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "commit_rotation",
-              "dial_second_session"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 51000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "switch_session"
-            ],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "key-rotated-without-pending-key",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "drain",
-            "reason": "KEY_ROTATED",
-            "action": "RECONNECT"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "close_session",
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 51000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "legacy-reactivated-revoke-device-confirmed",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "revoke",
-            "scope": "DEVICE"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "close_session",
-              "request_signed_heartbeat",
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 51000,
-            "kind": "refused",
-            "code": "KEY_REVOKED"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [
-              "start_frpc",
-              "request_signed_heartbeat"
-            ],
-            "timers": {
-              "probe": [
-                51000,
-                951000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 52000,
-            "kind": "signed_state",
-            "device_status": "revoked",
-            "account_status": "active"
-          },
-          "want": {
-            "state": "HOLD",
-            "actions": [
-              "stop_tunnels"
-            ],
-            "timers": {
-              "heartbeat": [
-                352000,
-                352000
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "revoke-device-unconfirmed",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "revoke",
-            "scope": "DEVICE"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "close_session",
-              "request_signed_heartbeat",
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 51000,
-            "kind": "signed_state",
-            "device_status": "active",
-            "account_status": "active"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 52000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "revoke-account-confirmed",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "revoke",
-            "scope": "ACCOUNT"
-          },
-          "want": {
-            "state": "OWN_RECONNECTING",
-            "actions": [
-              "close_session",
-              "request_signed_heartbeat",
-              "dial"
-            ],
-            "timers": {
-              "fallback": [
-                110000,
-                110000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 51000,
-            "kind": "signed_state",
-            "device_status": "active",
-            "account_status": "suspended"
-          },
-          "want": {
-            "state": "HOLD",
-            "actions": [
-              "stop_tunnels"
-            ],
-            "timers": {
-              "heartbeat": [
-                351000,
-                351000
-              ]
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "revoke-app-keeps-session",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [],
-            "timers": {
-              "dial": [
-                0,
-                30000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 30000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "PROBING",
-            "actions": [
-              "dial"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 31000,
-            "kind": "dial_ok"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 41000,
-            "kind": "tick"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "stop_frpc"
-            ],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 50000,
-            "kind": "revoke",
-            "scope": "APP"
-          },
-          "want": {
-            "state": "OWN",
-            "actions": [
-              "end_app_sessions"
-            ],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "repair-needed-hold",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "repair_needed"
-          },
-          "want": {
-            "state": "HOLD",
+            "hold": "flags_off",
+            "transport": "TLS",
             "actions": [
               "stop_tunnels"
             ],
@@ -3636,6 +71,8 @@
           },
           "want": {
             "state": "HOLD",
+            "hold": "flags_off",
+            "transport": "TLS",
             "actions": [
               "request_signed_heartbeat"
             ],
@@ -3646,27 +83,106 @@
               ]
             }
           }
+        },
+        {
+          "event": {
+            "at": 360000,
+            "kind": "flags",
+            "generation": 5,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "dial": [
+                360000,
+                390000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 390000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 420000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
         }
       ]
     },
     {
-      "name": "v1-without-signed-live-token",
+      "name": "no-flags-ever-dials",
       "initial": {
-        "state": "FRPC",
         "generation": 0,
-        "mode_on": false
+        "mode_on": true
       },
       "steps": [
         {
           "event": {
             "at": 0,
-            "kind": "frpc_refused",
-            "authenticated": true
+            "kind": "start"
           },
           "want": {
-            "state": "FRPC",
+            "state": "OWN",
+            "transport": "TLS",
             "actions": [
-              "request_signed_heartbeat"
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 3600000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "tls-blocked-falls-to-websocket",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
             ],
             "timers": {}
           }
@@ -3674,12 +190,31 @@
         {
           "event": {
             "at": 1000,
-            "kind": "frpc_refused"
+            "kind": "dial_failed",
+            "cause": "tls"
           },
           "want": {
-            "state": "FRPC",
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
             "actions": [
-              "ignored_unauthenticated"
+              "dial"
             ],
             "timers": {}
           }
@@ -3688,47 +223,70 @@
           "event": {
             "at": 2000,
             "kind": "dial_failed",
-            "cause": "dial"
+            "cause": "tls"
           },
           "want": {
-            "state": "FRPC",
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
             "actions": [],
+            "timers": {
+              "redial": [
+                2000,
+                4000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
             "timers": {}
           }
         },
         {
           "event": {
-            "at": 3000,
-            "kind": "signed_state",
-            "device_status": "active",
-            "account_status": "active"
+            "at": 4000,
+            "kind": "dial_ok"
           },
           "want": {
-            "state": "FRPC",
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
             "actions": [],
-            "timers": {}
+            "timers": {
+              "probe_tls": [
+                4000,
+                904000
+              ]
+            }
           }
         }
       ]
     },
     {
-      "name": "v1-with-signed-live-token",
+      "name": "websocket-reprobes-tls-and-switches",
       "initial": {
-        "state": "FRPC",
         "generation": 0,
-        "mode_on": false
+        "mode_on": true
       },
       "steps": [
         {
           "event": {
             "at": 0,
-            "kind": "frpc_refused",
-            "authenticated": true
+            "kind": "start"
           },
           "want": {
-            "state": "FRPC",
+            "state": "OWN",
+            "transport": "TLS",
             "actions": [
-              "request_signed_heartbeat"
+              "dial"
             ],
             "timers": {}
           }
@@ -3736,15 +294,31 @@
         {
           "event": {
             "at": 1000,
-            "kind": "signed_state",
-            "device_status": "pending",
-            "account_status": "active",
-            "v1_token_live": true
+            "kind": "dial_failed",
+            "cause": "tls"
           },
           "want": {
-            "state": "V1",
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
             "actions": [
-              "use_v1_token"
+              "dial"
             ],
             "timers": {}
           }
@@ -3752,127 +326,1427 @@
         {
           "event": {
             "at": 2000,
-            "kind": "enrolled"
+            "kind": "dial_failed",
+            "cause": "tls"
           },
           "want": {
-            "state": "FRPC",
-            "actions": [
-              "start_frpc",
-              "delete_v1_token_copy"
-            ],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "v1-unauthenticated-refusal-ignored",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "signed_state",
-            "device_status": "pending",
-            "account_status": "active",
-            "v1_token_live": true
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 1000,
-            "kind": "frpc_refused"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [
-              "ignored_unauthenticated"
-            ],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "unenrolled-v1-enrols",
-      "initial": {
-        "state": "V1",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "signed_state",
-            "device_status": "pending",
-            "account_status": "active",
-            "v1_token_live": true
-          },
-          "want": {
-            "state": "V1",
-            "actions": [],
-            "timers": {}
-          }
-        },
-        {
-          "event": {
-            "at": 1000,
-            "kind": "enrolled"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [
-              "start_frpc",
-              "delete_v1_token_copy"
-            ],
-            "timers": {}
-          }
-        }
-      ]
-    },
-    {
-      "name": "unsigned-statements-never-hold",
-      "initial": {
-        "state": "FRPC",
-        "generation": 0,
-        "mode_on": false
-      },
-      "steps": [
-        {
-          "event": {
-            "at": 0,
-            "kind": "flags",
-            "generation": 1,
-            "mode": "ON"
-          },
-          "want": {
-            "state": "PROBING",
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
             "actions": [],
             "timers": {
-              "dial": [
-                0,
-                30000
+              "redial": [
+                2000,
+                4000
               ]
             }
           }
         },
         {
           "event": {
-            "at": 30000,
+            "at": 4000,
             "kind": "tick"
           },
           "want": {
-            "state": "PROBING",
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                4000,
+                904000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 900000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                4000,
+                904000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 904000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 905000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                905000,
+                2705000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2700000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                905000,
+                2705000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2705000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2706000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "switch_session"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "websocket-reprobe-backoff-doubles-to-cap",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                2000,
+                4000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                4000,
+                904000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 904000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                4000,
+                904000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 904000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 904000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                904000,
+                2704000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2704000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                904000,
+                2704000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2704000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2704000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                2704000,
+                6304000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 6304000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                2704000,
+                6304000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 6304000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 6304000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                6304000,
+                13504000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 13504000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                6304000,
+                13504000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 13504000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 13504000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                13504000,
+                27904000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 27904000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                13504000,
+                27904000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 27904000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 27904000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                27904000,
+                42304000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 42304000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                27904000,
+                42304000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 42304000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 42304000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                42304000,
+                56704000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "websocket-session-lost-stays-websocket",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                2000,
+                4000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                4000,
+                904000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                11000,
+                911000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "alpn-refused-on-both-carriages-update-required",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                2000,
+                4000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "dial_failed",
+            "cause": "subprotocol"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "update_required",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                304000,
+                304000
+              ],
+              "redial": [
+                4000,
+                904000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 904000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 904000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "network-change-resets-carriage",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                2000,
+                4000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2500,
+            "kind": "network_change"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "reconnect-backoff-caps-at-30s",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                11000,
+                12000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 12000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 12000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                12000,
+                14000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 14000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 14000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                14000,
+                18000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 18000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 18000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                18000,
+                26000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 26000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 26000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                26000,
+                42000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 42000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 42000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                42000,
+                72000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 72000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 72000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                72000,
+                102000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 3600000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 3600000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                3600000,
+                4500000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "transient-refusals-keep-carriage",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "EDGE_NOT_READY"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "refused",
+            "code": "OVERLOADED"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                2000,
+                4000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "refused",
+            "code": "BAD_REQUEST"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                4000,
+                8000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "flapping-sessions",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 20000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 21000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                21000,
+                22000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 22000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 22000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
             "actions": [
               "dial"
             ],
@@ -3886,118 +1760,2621 @@
           },
           "want": {
             "state": "OWN",
-            "actions": [
-              "delete_v1_token_copy"
-            ],
-            "timers": {
-              "stop_frpc": [
-                41000,
-                41000
-              ]
-            }
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
           }
-        },
+        }
+      ]
+    },
+    {
+      "name": "refused-VERSION_TOO_OLD-holds-and-redials",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
         {
           "event": {
-            "at": 41000,
-            "kind": "tick"
+            "at": 0,
+            "kind": "start"
           },
           "want": {
             "state": "OWN",
+            "transport": "TLS",
             "actions": [
-              "stop_frpc"
+              "dial"
             ],
             "timers": {}
           }
         },
         {
           "event": {
-            "at": 50000,
-            "kind": "revoke",
-            "scope": "DEVICE"
+            "at": 1000,
+            "kind": "refused",
+            "code": "VERSION_TOO_OLD"
           },
           "want": {
-            "state": "OWN_RECONNECTING",
+            "state": "HOLD",
+            "hold": "update_required",
+            "transport": "TLS",
             "actions": [
-              "close_session",
-              "request_signed_heartbeat",
-              "dial"
+              "stop_tunnels",
+              "request_signed_heartbeat"
             ],
             "timers": {
-              "fallback": [
-                110000,
-                110000
+              "heartbeat": [
+                301000,
+                301000
+              ],
+              "redial": [
+                1000,
+                901000
               ]
             }
+          }
+        },
+        {
+          "event": {
+            "at": 301000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "update_required",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                601000,
+                601000
+              ],
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 901000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 902000,
+            "kind": "refused",
+            "code": "VERSION_TOO_OLD"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "update_required",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                1202000,
+                1202000
+              ],
+              "redial": [
+                902000,
+                2702000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2702000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2703000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "refused-PROTOCOL_DISABLED-holds-and-redials",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "maintenance",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                301000,
+                301000
+              ],
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 301000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "maintenance",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                601000,
+                601000
+              ],
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 901000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 902000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "maintenance",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                1202000,
+                1202000
+              ],
+              "redial": [
+                902000,
+                2702000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2702000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2703000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "refused-TOO_MANY_ROUTES-holds-and-redials",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "TOO_MANY_ROUTES"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "too_many_routes",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                301000,
+                301000
+              ],
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 301000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "too_many_routes",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                601000,
+                601000
+              ],
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 901000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 902000,
+            "kind": "refused",
+            "code": "TOO_MANY_ROUTES"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "too_many_routes",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                1202000,
+                1202000
+              ],
+              "redial": [
+                902000,
+                2702000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2702000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2703000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "edge-too-old-update-required",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_failed",
+            "cause": "edge_too_old"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "update_required",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                311000,
+                311000
+              ],
+              "redial": [
+                11000,
+                911000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "maintenance-hold-left-by-newer-flags-on",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "maintenance",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                301000,
+                301000
+              ],
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "dial": [
+                2000,
+                32000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 3000,
+            "kind": "flags",
+            "generation": 2,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "dial": [
+                2000,
+                32000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 33000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 34000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "maintenance-hold-confirmed-by-flags-off",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "maintenance",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                301000,
+                301000
+              ],
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "flags",
+            "generation": 2,
+            "mode": "OFF"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "flags_off",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                302000,
+                302000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 3600000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "flags_off",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                3900000,
+                3900000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "auth-refusal-unconfirmed-redials-slowly",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "KEY_REVOKED"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 901000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 901000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "auth-refusal-confirmed-hold",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "KEY_REVOKED"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "signed_state",
+            "device_status": "revoked",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "revoked",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                302000,
+                302000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 302000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "revoked",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                602000,
+                602000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 303000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "dial": [
+                303000,
+                333000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 333000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "invalid-proof-never-holds-alone",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "INVALID_PROOF"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 901000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 902000,
+            "kind": "refused",
+            "code": "ACCOUNT_SUSPENDED"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "redial": [
+                902000,
+                2702000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 903000,
+            "kind": "refused",
+            "code": "NOT_ENROLLED"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "redial": [
+                903000,
+                4503000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "liveness-traffic-without-pong",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "send_ping"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
           }
         },
         {
           "event": {
             "at": 51000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 71000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "send_ping"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 85000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 86000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "liveness-ping-answered-by-any-byte",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 21000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "send_ping"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 36000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-reconnect-same-run-make-before-break",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "ROLLOUT",
+            "action": "RECONNECT"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "switch_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 12000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-max-age",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "MAX_AGE",
+            "action": "RECONNECT"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "switch_session"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-second-dial-fails-then-old-closes",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "REBALANCE",
+            "action": "ACTION_UNSPECIFIED"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 20000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-second-dial-in-flight-when-old-closes",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "ROLLOUT",
+            "action": "RECONNECT"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 20000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 21000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-superseded-hold-pauses-60s",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "SUPERSEDED",
+            "action": "HOLD"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "close_session",
+              "count_supersede"
+            ],
+            "timers": {
+              "redial": [
+                70000,
+                70000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 60000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                70000,
+                70000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 70000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 71000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-kill-switch-hold-while-flags-on",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "KILL_SWITCH",
+            "action": "HOLD"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat",
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 70000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 71000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "maintenance",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                371000,
+                371000
+              ],
+              "redial": [
+                71000,
+                971000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 72000,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "OFF"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "flags_off",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                372000,
+                372000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "kill-switch-signed-flags-off",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "flags",
+            "generation": 2,
+            "mode": "OFF"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "flags_off",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                310000,
+                310000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 3600000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "flags_off",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                3900000,
+                3900000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 3601000,
+            "kind": "flags",
+            "generation": 3,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "dial": [
+                3601000,
+                3631000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 3631000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 3632000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "flags-rollback-refused",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "flags",
+            "generation": 2,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "flags",
+            "generation": 2,
+            "mode": "OFF"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "flags_rollback_refused"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 12000,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "OFF"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "flags_rollback_refused"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "key-rotated-with-pending-key",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "KEY_ROTATED",
+            "action": "RECONNECT",
+            "pending_key": true
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "commit_rotation",
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "switch_session"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "key-rotated-without-pending-key",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "KEY_ROTATED",
+            "action": "RECONNECT"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "close_session",
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "legacy-reactivated-revoke-device-confirmed",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "revoke",
+            "scope": "DEVICE"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "close_session",
+              "request_signed_heartbeat",
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
             "kind": "refused",
             "code": "KEY_REVOKED"
           },
           "want": {
-            "state": "FRPC",
+            "state": "RECONNECTING",
+            "transport": "TLS",
             "actions": [
-              "start_frpc",
               "request_signed_heartbeat"
             ],
             "timers": {
-              "probe": [
-                51000,
-                951000
+              "redial": [
+                11000,
+                911000
               ]
             }
           }
         },
         {
           "event": {
-            "at": 52000,
+            "at": 12000,
+            "kind": "signed_state",
+            "device_status": "revoked",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "revoked",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                312000,
+                312000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "revoke-device-unconfirmed",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "revoke",
+            "scope": "DEVICE"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "close_session",
+              "request_signed_heartbeat",
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 12000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "revoke-account-confirmed",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "revoke",
+            "scope": "ACCOUNT"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "close_session",
+              "request_signed_heartbeat",
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "suspended"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "suspended",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                311000,
+                311000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 12000,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "suspended",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "heartbeat": [
+                311000,
+                311000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 13000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "dial": [
+                13000,
+                43000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "revoke-app-keeps-session",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "revoke",
+            "scope": "APP"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "end_app_sessions"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "repair-needed-hold",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "repair_needed"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "repair_needed",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                301000,
+                301000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 301000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "repair_needed",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                601000,
+                601000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 360000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "dial": [
+                360000,
+                390000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "unsigned-statements-never-hold-without-redial",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "revoke",
+            "scope": "DEVICE"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "close_session",
+              "request_signed_heartbeat",
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "refused",
+            "code": "KEY_REVOKED"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "redial": [
+                11000,
+                911000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 12000,
             "kind": "refused",
             "code": "ACCOUNT_SUSPENDED"
           },
           "want": {
-            "state": "FRPC",
-            "actions": [],
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
             "timers": {
-              "probe": [
-                51000,
-                951000
+              "redial": [
+                12000,
+                1812000
               ]
             }
           }
         },
         {
           "event": {
-            "at": 53000,
-            "kind": "drain",
-            "reason": "KILL_SWITCH",
-            "action": "USE_FRPC"
-          },
-          "want": {
-            "state": "FRPC",
-            "actions": [],
-            "timers": {
-              "probe": [
-                51000,
-                951000
-              ]
-            }
-          }
-        },
-        {
-          "event": {
-            "at": 120000,
+            "at": 1812000,
             "kind": "tick"
           },
           "want": {
-            "state": "FRPC",
-            "actions": [],
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1813000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "maintenance",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
             "timers": {
-              "probe": [
-                51000,
-                951000
+              "heartbeat": [
+                2113000,
+                2113000
+              ],
+              "redial": [
+                1813000,
+                5413000
               ]
             }
           }

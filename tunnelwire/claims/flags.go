@@ -3,7 +3,6 @@ package claims
 import (
 	"crypto/sha256"
 	"encoding/base64"
-	"math/big"
 
 	pb "github.com/seawise-io/seawise-client/tunnelwire/tunnelpb"
 	"github.com/seawise-io/seawise-client/tunnelwire/wire"
@@ -78,13 +77,6 @@ func HashedID(salt, serverID []byte) string {
 	return base64.RawURLEncoding.EncodeToString(d[:])
 }
 
-// Bucket returns SHA-256(salt || server_id) as a big-endian integer mod
-// 1000.
-func Bucket(salt, serverID []byte) int64 {
-	d := digest(salt, serverID)
-	return new(big.Int).Mod(new(big.Int).SetBytes(d[:]), big.NewInt(1000)).Int64()
-}
-
 func contains(l []string, s string) bool {
 	for _, x := range l {
 		if x == s {
@@ -94,19 +86,14 @@ func contains(l []string, s string) bool {
 	return false
 }
 
-// Mode evaluates the flags for one server: deny or global off gives OFF,
-// then allow gives ON, then the rollout bucket decides.
+// Mode evaluates the flags for one server: global off or a deny entry gives
+// OFF, anything else ON. allow and rollout_permille are parsed for format
+// compatibility and have no effect.
 func (f *Flags) Mode(serverID []byte) pb.ProtocolMode {
-	h := HashedID(f.salt, serverID)
-	switch {
-	case contains(f.Deny, h) || f.Global == "off":
+	if f.Global == "off" || contains(f.Deny, HashedID(f.salt, serverID)) {
 		return pb.ProtocolMode_OFF
-	case contains(f.Allow, h):
-		return pb.ProtocolMode_ON
-	case Bucket(f.salt, serverID) < f.RolloutPermille:
-		return pb.ProtocolMode_ON
 	}
-	return pb.ProtocolMode_OFF
+	return pb.ProtocolMode_ON
 }
 
 // AcceptNewer refuses a document whose generation is not above the last

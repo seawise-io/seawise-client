@@ -88,10 +88,11 @@ func genLadder() lfile {
 	add(run("websocket-reprobes-tls-and-switches", fresh, with(upWS(),
 		Event{At: 900 * sec, Kind: EvReceived}, ev(904*sec, EvTick), dialFailed(905*sec, "tls"),
 		Event{At: 2700 * sec, Kind: EvReceived}, ev(2705*sec, EvTick), ev(2706*sec, EvDialOK))...))
-	add(run("websocket-reprobe-backoff-doubles-to-cap", fresh, with(upWS(),
-		ev(904*sec, EvTick), dialFailed(904*sec, "tls"), ev(2704*sec, EvTick), dialFailed(2704*sec, "tls"),
-		ev(6304*sec, EvTick), dialFailed(6304*sec, "tls"), ev(13504*sec, EvTick), dialFailed(13504*sec, "tls"),
-		ev(27904*sec, EvTick), dialFailed(27904*sec, "tls"))...))
+	probes := upWS()
+	for _, at := range []int64{904, 2704, 6304, 13504, 27904, 42304} {
+		probes = append(probes, Event{At: at * sec, Kind: EvReceived}, ev(at*sec, EvTick), dialFailed(at*sec, "tls"))
+	}
+	add(run("websocket-reprobe-backoff-doubles-to-cap", fresh, probes...))
 	add(run("websocket-session-lost-stays-websocket", fresh, with(upWS(), ev(10*sec, EvSessionLost), ev(11*sec, EvDialOK))...))
 	add(run("alpn-refused-on-both-carriages-update-required", fresh,
 		ev(0, EvStart), dialFailed(sec, "alpn"), ev(2*sec, EvTick), dialFailed(2*sec, "alpn"), ev(4*sec, EvTick), dialFailed(4*sec, "subprotocol"),
@@ -141,7 +142,8 @@ func genLadder() lfile {
 		drain(10*sec, "ROLLOUT", "RECONNECT", false), ev(20*sec, EvSessionLost), ev(21*sec, EvDialOK))...))
 	add(run("drain-superseded-hold-pauses-60s", fresh, with(up(),
 		drain(10*sec, "SUPERSEDED", "HOLD", false), ev(60*sec, EvTick), ev(70*sec, EvTick), ev(71*sec, EvDialOK))...))
-	add(run("drain-kill-switch-hold-while-flags-on", fresh, with(up(), drain(10*sec, "KILL_SWITCH", "HOLD", false), refused(11*sec, "PROTOCOL_DISABLED"))...))
+	add(run("drain-kill-switch-hold-while-flags-on", fresh, with(up(), drain(10*sec, "KILL_SWITCH", "HOLD", false), refused(11*sec, "PROTOCOL_DISABLED"),
+		ev(70*sec, EvSessionLost), refused(71*sec, "PROTOCOL_DISABLED"), flags(72*sec, 1, "OFF"))...))
 	add(run("kill-switch-signed-flags-off", fresh, with(up(), flags(10*sec, 2, "OFF"), ev(hr, EvTick), flags(hr+sec, 3, "ON"), ev(hr+31*sec, EvTick), ev(hr+32*sec, EvDialOK))...))
 	add(run("flags-rollback-refused", fresh, with(up(), flags(10*sec, 2, "ON"), flags(11*sec, 2, "OFF"), flags(12*sec, 1, "OFF"))...))
 	add(run("key-rotated-with-pending-key", fresh, with(up(),
@@ -158,6 +160,6 @@ func genLadder() lfile {
 	add(run("repair-needed-hold", fresh, ev(0, EvStart), Event{At: sec, Kind: EvRepair}, ev(5*minute+sec, EvTick), state(6*minute, "active", "active")))
 	add(run("unsigned-statements-never-hold-without-redial", fresh, with(up(),
 		revoke(10*sec, "DEVICE"), refused(11*sec, "KEY_REVOKED"), refused(12*sec, "ACCOUNT_SUSPENDED"),
-		ev(12*sec+15*minute, EvTick), refused(13*sec+15*minute, "PROTOCOL_DISABLED"))...))
+		ev(12*sec+30*minute, EvTick), refused(13*sec+30*minute, "PROTOCOL_DISABLED"))...))
 	return lfile{Format: "ladder", Note: vkeys.Note, Cases: cs}
 }
