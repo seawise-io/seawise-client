@@ -205,39 +205,46 @@ func genFlags() vfile {
 func genSignedState() vfile {
 	var cs []vcase
 	n1, n2 := "dGltZS1ub25jZS0wMDAwMDE", "dGltZS1ub25jZS0wMDAwMDI"
+	kid, otherKid := vkeys.KID(fx.DeviceA), vkeys.KID(fx.DeviceB)
 	state := func(server, nonce string, f func(map[string]any)) map[string]any {
-		c := map[string]any{"server_id": server, "time": vecNow, "nonce": nonce, "device_status": "revoked", "account_status": "active"}
+		c := map[string]any{"server_id": server, "key_id": kid, "time": vecNow, "nonce": nonce, "device_status": "revoked", "account_status": "active"}
 		if f != nil {
 			f(c)
 		}
 		return c
 	}
-	add := func(name string, input string, nonce, expect string, result any) {
-		cs = append(cs, vcase{Name: name, Kind: "signed_state", Input: input, Context: map[string]any{"server_id": fx.Server1, "nonce": nonce}, Expect: expect, Result: result})
+	ctx := func(nonce string) map[string]any {
+		return map[string]any{"server_id": fx.Server1, "key_id": kid, "nonce": nonce}
 	}
-	sign := func(c map[string]any) string { return vkeys.SignJWS(vkeys.Key(controlK), TypTime, c) }
-	add("revoked-under-right-nonce", sign(state(fx.Server1, n1, nil)), n1, "ok", map[string]any{"has_state": true, "hold": true, "clears": false})
-	add("compromised", sign(state(fx.Server1, n1, func(c map[string]any) { c["device_status"] = "compromised" })), n1, "ok", map[string]any{"has_state": true, "hold": true, "clears": false})
-	add("suspended-account", sign(state(fx.Server1, n1, func(c map[string]any) { c["device_status"] = "active"; c["account_status"] = "suspended" })), n1, "ok", map[string]any{"has_state": true, "hold": true, "clears": false})
-	add("banned-account", sign(state(fx.Server1, n1, func(c map[string]any) { c["device_status"] = "active"; c["account_status"] = "banned" })), n1, "ok", map[string]any{"has_state": true, "hold": true, "clears": false})
-	add("active-clears", sign(state(fx.Server1, n1, func(c map[string]any) { c["device_status"] = "active" })), n1, "ok", map[string]any{"has_state": true, "hold": false, "clears": true})
-	add("pending-neither", sign(state(fx.Server1, n1, func(c map[string]any) { c["device_status"] = "pending" })), n1, "ok", map[string]any{"has_state": true, "hold": false, "clears": false})
+	add := func(name string, input string, nonce, expect string, result any) {
+		cs = append(cs, vcase{Name: name, Kind: "signed_state", Input: input, Context: ctx(nonce), Expect: expect, Result: result})
+	}
+	sign := func(c map[string]any) string { return vkeys.SignJWS(vkeys.Key(controlK), TypState, c) }
+	res := func(hold, clears bool) map[string]any { return map[string]any{"hold": hold, "clears": clears} }
+	add("revoked-under-right-nonce", sign(state(fx.Server1, n1, nil)), n1, "ok", res(true, false))
+	add("compromised", sign(state(fx.Server1, n1, func(c map[string]any) { c["device_status"] = "compromised" })), n1, "ok", res(true, false))
+	add("suspended-account", sign(state(fx.Server1, n1, func(c map[string]any) { c["device_status"] = "active"; c["account_status"] = "suspended" })), n1, "ok", res(true, false))
+	add("banned-account", sign(state(fx.Server1, n1, func(c map[string]any) { c["device_status"] = "active"; c["account_status"] = "banned" })), n1, "ok", res(true, false))
+	add("active-clears", sign(state(fx.Server1, n1, func(c map[string]any) { c["device_status"] = "active" })), n1, "ok", res(false, true))
+	add("pending-neither", sign(state(fx.Server1, n1, func(c map[string]any) { c["device_status"] = "pending" })), n1, "ok", res(false, false))
+	add("enrol-pending-neither", sign(state(fx.Server1, n1, func(c map[string]any) { c["device_status"] = "enrol_pending" })), n1, "ok", res(false, false))
 	add("v1-token-live-claim-refused", sign(state(fx.Server1, n1, func(c map[string]any) { c["v1_token_live"] = false })), n1, "malformed", nil)
+	add("another-key", sign(state(fx.Server1, n1, func(c map[string]any) { c["key_id"] = otherKid })), n1, "wrong_key", nil)
+	add("key-id-missing", sign(state(fx.Server1, n1, func(c map[string]any) { delete(c, "key_id") })), n1, "malformed", nil)
+	add("key-id-not-thumbprint", sign(state(fx.Server1, n1, func(c map[string]any) { c["key_id"] = kid[:42] })), n1, "malformed", nil)
 	add("replayed-against-later-nonce", sign(state(fx.Server1, n1, nil)), n2, "nonce_mismatch", nil)
 	add("another-servers-token", sign(state(fx.Server2, n1, nil)), n1, "wrong_server", nil)
 	add("missing-nonce", sign(state(fx.Server1, n1, func(c map[string]any) { delete(c, "nonce") })), n1, "malformed", nil)
-	add("time-only-has-no-state", sign(map[string]any{"server_id": fx.Server1, "time": vecNow, "nonce": n1}), n1, "ok", map[string]any{"has_state": false, "hold": false, "clears": false})
-	add("partial-state-claims", sign(state(fx.Server1, n1, func(c map[string]any) { delete(c, "account_status") })), n1, "malformed", nil)
+	add("no-state-refused", sign(map[string]any{"server_id": fx.Server1, "key_id": kid, "time": vecNow, "nonce": n1}), n1, "malformed", nil)
+	add("device-status-only", sign(state(fx.Server1, n1, func(c map[string]any) { delete(c, "account_status") })), n1, "malformed", nil)
+	add("account-status-only", sign(state(fx.Server1, n1, func(c map[string]any) { delete(c, "device_status") })), n1, "malformed", nil)
 	add("unknown-device-status", sign(state(fx.Server1, n1, func(c map[string]any) { c["device_status"] = "deleted" })), n1, "malformed", nil)
 	add("unknown-account-status", sign(state(fx.Server1, n1, func(c map[string]any) { c["account_status"] = "closed" })), n1, "malformed", nil)
 	add("extra-claim", sign(state(fx.Server1, n1, func(c map[string]any) { c["mode"] = "hold" })), n1, "malformed", nil)
-	// A status beside the signed token, not inside it: the token carries no
-	// state, so the outside claim must not count.
-	cs = append(cs, vcase{Name: "status-outside-signed-token", Kind: "signed_state", Input: sign(map[string]any{"server_id": fx.Server1, "time": vecNow, "nonce": n1}),
-		Context: map[string]any{"server_id": fx.Server1, "nonce": n1, "unsigned": map[string]any{"device_status": "revoked"}},
-		Expect:  "ok", Result: map[string]any{"has_state": false, "hold": false, "clears": false}})
-	cs = append(cs, vcase{Name: "signed-by-non-control-key", Kind: "signed_state", Input: vkeys.SignJWS(vkeys.Key(fx.EdgeA), TypTime, state(fx.Server1, n1, nil)),
-		Context: map[string]any{"server_id": fx.Server1, "nonce": n1}, Expect: "unknown_key"})
+	// A time-only token is never read as a state, whatever it carries.
+	add("time-typ-refused", vkeys.SignJWS(vkeys.Key(controlK), TypTime, state(fx.Server1, n1, nil)), n1, "bad_header", nil)
+	add("time-only-token-refused", vkeys.SignJWS(vkeys.Key(controlK), TypTime, map[string]any{"server_id": fx.Server1, "time": vecNow, "nonce": n1}), n1, "bad_header", nil)
+	add("signed-by-non-control-key", vkeys.SignJWS(vkeys.Key(fx.EdgeA), TypState, state(fx.Server1, n1, nil)), n1, "unknown_key", nil)
 	return vfile{Format: "signed_state", Note: vkeys.Note, Keys: vkeys.Infos(controlK, fx.EdgeA), Cases: cs}
 }
 

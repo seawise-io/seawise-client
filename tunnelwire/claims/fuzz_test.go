@@ -43,18 +43,25 @@ func FuzzFlags(f *testing.F) {
 }
 
 func FuzzSignedState(f *testing.F) {
-	n := "dGltZS1ub25jZS0wMDAwMDE"
-	f.Add(vkeys.JSON(map[string]any{"server_id": fx.Server1, "time": 1, "nonce": n, "device_status": "revoked", "account_status": "active"}))
+	n, kid := "dGltZS1ub25jZS0wMDAwMDE", vkeys.KID(fx.DeviceA)
+	f.Add(vkeys.JSON(map[string]any{"server_id": fx.Server1, "key_id": kid, "time": 1, "nonce": n, "device_status": "revoked", "account_status": "active"}))
+	f.Add(vkeys.JSON(map[string]any{"server_id": fx.Server1, "time": 1, "nonce": n}))
 	f.Fuzz(func(t *testing.T, p []byte) {
-		st, err := CheckSignedState(p, fx.Server1, n)
+		st, err := CheckSignedState(p, fx.Server1, kid, n)
 		if err != nil {
 			if CodeOf(err) == "" {
 				t.Fatal("uncoded")
 			}
-			return
-		}
-		if st.Nonce != n || st.ServerID != fx.Server1 || (!st.HasState && st.Holds()) {
+		} else if st.Nonce != n || st.ServerID != fx.Server1 || st.KeyID != kid || st.DeviceStatus == "" || st.AccountStatus == "" {
 			t.Fatal("accepted a bad state")
+		}
+		tm, err := CheckSignedTime(p, fx.Server1, n)
+		if err != nil {
+			if CodeOf(err) == "" {
+				t.Fatal("uncoded")
+			}
+		} else if tm.Nonce != n || tm.ServerID != fx.Server1 {
+			t.Fatal("accepted a bad time")
 		}
 	})
 }

@@ -105,7 +105,7 @@ func TestRouteSetVectors(t *testing.T) {
 				t.Fatal(c.Name, err)
 			}
 			tn, _ := hex.DecodeString(c.Context["time_nonce"].(string))
-			_, err = CheckSignedState(payload, c.Context["server_id"].(string), TimeNonce(tn))
+			_, err = CheckSignedTime(payload, c.Context["server_id"].(string), TimeNonce(tn))
 			expectCase(t, c, codeStr(err), nil)
 		default:
 			t.Fatalf("%s: kind %s", c.Name, c.Kind)
@@ -145,15 +145,15 @@ func TestSignedStateVectors(t *testing.T) {
 	f := load(t, "signed_state.json")
 	control := map[string]ed25519.PublicKey{"control-1": vkeys.Pub("control-1")}
 	for _, c := range f.Cases {
-		payload, _, err := vkeys.VerifyJWS(c.Input, TypTime, control)
+		payload, _, err := vkeys.VerifyJWS(c.Input, TypState, control)
 		if err != nil {
 			expectCase(t, c, err.Error(), nil)
 			continue
 		}
-		st, err := CheckSignedState(payload, c.Context["server_id"].(string), c.Context["nonce"].(string))
+		st, err := CheckSignedState(payload, c.Context["server_id"].(string), c.Context["key_id"].(string), c.Context["nonce"].(string))
 		var res any
 		if err == nil {
-			res = map[string]any{"has_state": st.HasState, "hold": st.Holds(), "clears": st.Clears()}
+			res = map[string]any{"hold": st.Holds(), "clears": st.Clears()}
 		}
 		expectCase(t, c, codeStr(err), res)
 	}
