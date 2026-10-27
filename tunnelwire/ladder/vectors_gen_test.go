@@ -94,9 +94,14 @@ func genLadder() lfile {
 	}
 	add(run("websocket-reprobe-backoff-doubles-to-cap", fresh, probes...))
 	add(run("websocket-session-lost-stays-websocket", fresh, with(upWS(), ev(10*sec, EvSessionLost), ev(11*sec, EvDialOK))...))
-	add(run("alpn-refused-on-both-carriages-update-required", fresh,
-		ev(0, EvStart), dialFailed(sec, "alpn"), ev(2*sec, EvTick), dialFailed(2*sec, "alpn"), ev(4*sec, EvTick), dialFailed(4*sec, "subprotocol"),
-		ev(4*sec+15*minute, EvTick), ev(4*sec+15*minute, EvDialOK)))
+	add(run("subprotocol-refused-twice-update-required", fresh,
+		ev(0, EvStart), dialFailed(sec, "tls"), ev(2*sec, EvTick), dialFailed(2*sec, "tls"), ev(4*sec, EvTick), dialFailed(4*sec, "subprotocol"),
+		ev(8*sec, EvTick), dialFailed(8*sec, "subprotocol"), ev(8*sec+15*minute, EvTick), ev(8*sec+15*minute, EvDialOK)))
+	forged := []Event{ev(0, EvStart)}
+	for _, w := range [][2]int64{{1, 2}, {2, 4}, {4, 8}, {8, 16}, {16, 32}, {32, 64}, {64, 94}, {94, 124}, {124, 154}} {
+		forged = append(forged, dialFailed(w[0]*sec, "alpn"), ev(w[1]*sec, EvTick))
+	}
+	add(run("forged-alerts-on-both-carriages-never-hold", fresh, append(forged, ev(155*sec, EvDialOK))...))
 	add(run("network-change-resets-carriage", fresh,
 		ev(0, EvStart), dialFailed(sec, "tls"), ev(2*sec, EvTick), dialFailed(2*sec, "tls"), ev(2500, EvNetwork)))
 	add(run("reconnect-backoff-caps-at-30s", fresh, with(up(),

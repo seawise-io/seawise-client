@@ -112,39 +112,75 @@ func TestRefusalDoesNotFlipCarriage(t *testing.T) {
 	}
 }
 
+// Only subprotocol refusals, which arrive inside the verified TLS session,
+// count toward update_required; two with no session between are needed.
 func TestNoMajorOnBothCarriagesIsUpdateRequired(t *testing.T) {
-	m := New(1, true)
-	m.Step(Event{Kind: EvStart})
-	m.Step(Event{At: 1, Kind: EvDialFailed, Cause: "alpn"})
-	o := m.Step(Event{At: 2, Kind: EvDialFailed, Cause: "alpn"})
-	if o.State != Reconnecting || o.Transport != WebSocket {
+	m := onWebSocketDialling()
+	if o := m.Step(Event{At: 3, Kind: EvDialFailed, Cause: "subprotocol"}); o.State != Reconnecting {
+		t.Fatal("one subprotocol refusal held", o)
+	}
+	m.Step(Event{At: 4, Kind: EvDialFailed, Cause: "dial"})
+	m.Step(Event{At: 5, Kind: EvDialFailed, Cause: "alpn"})
+	m.Step(Event{At: 6, Kind: EvDialFailed, Cause: "alpn"})
+	o := m.Step(Event{At: 7, Kind: EvDialFailed, Cause: "subprotocol"})
+	if o.State != Hold || o.Hold != HoldUpdate || o.Timers[TimerRedial] != (Window{7, 900007}) {
 		t.Fatal(o)
 	}
-	o = m.Step(Event{At: 3, Kind: EvDialFailed, Cause: "subprotocol"})
-	if o.State != Hold || o.Hold != HoldUpdate || o.Timers[TimerRedial] != (Window{3, 900003}) {
+	m.Step(Event{At: 900007, Kind: EvTick})
+	m.Step(Event{At: 900008, Kind: EvDialFailed, Cause: "tls"})
+	m.Step(Event{At: 900009, Kind: EvDialFailed, Cause: "tls"})
+	if o := m.Step(Event{At: 900010, Kind: EvDialFailed, Cause: "subprotocol"}); o.State != Reconnecting {
+		t.Fatal("hold redial kept the refusal count", o)
+	}
+	m = onWebSocketDialling()
+	m.Step(Event{At: 3, Kind: EvDialFailed, Cause: "subprotocol"})
+	if o := m.Step(Event{At: 4, Kind: EvNetwork}); o.Transport != TLS || !slices.Equal(o.Actions, []string{ActDial}) || o.Timers[TimerRedial] != (Window{}) {
 		t.Fatal(o)
 	}
-	m = New(1, true)
-	m.Step(Event{Kind: EvStart})
-	m.Step(Event{At: 1, Kind: EvDialFailed, Cause: "alpn"})
-	if o := m.Step(Event{At: 2, Kind: EvNetwork}); o.Transport != TLS || !slices.Equal(o.Actions, []string{ActDial}) || o.Timers[TimerRedial] != (Window{}) {
-		t.Fatal(o)
-	}
-	m.Step(Event{At: 3, Kind: EvDialFailed, Cause: "dial"})
-	if o := m.Step(Event{At: 4, Kind: EvDialFailed, Cause: "dial"}); o.Transport != WebSocket {
+	m.Step(Event{At: 5, Kind: EvDialFailed, Cause: "dial"})
+	if o := m.Step(Event{At: 6, Kind: EvDialFailed, Cause: "dial"}); o.Transport != WebSocket {
 		t.Fatal("network change kept the failure count", o)
 	}
-	if o := m.Step(Event{At: 5, Kind: EvDialFailed, Cause: "subprotocol"}); o.State != Reconnecting {
-		t.Fatal("network change kept the ALPN refusal", o)
+	if o := m.Step(Event{At: 7, Kind: EvDialFailed, Cause: "subprotocol"}); o.State != Reconnecting {
+		t.Fatal("network change kept the refusal count", o)
 	}
-	m = New(1, true)
+	m = onWebSocketDialling()
+	m.Step(Event{At: 3, Kind: EvDialFailed, Cause: "subprotocol"})
+	m.Step(Event{At: 4, Kind: EvDialOK})
+	m.Step(Event{At: 5, Kind: EvSessionLost})
+	if o := m.Step(Event{At: 6, Kind: EvDialFailed, Cause: "subprotocol"}); o.State != Reconnecting {
+		t.Fatal("a session kept the refusal count", o)
+	}
+}
+
+// onWebSocketDialling returns a machine whose next dial uses WebSocket
+// after two TLS failures.
+func onWebSocketDialling() *Machine {
+	m := New(1, true)
 	m.Step(Event{Kind: EvStart})
-	m.Step(Event{At: 1, Kind: EvDialFailed, Cause: "alpn"})
-	m.Step(Event{At: 2, Kind: EvDialFailed, Cause: "dial"})
-	m.Step(Event{At: 3, Kind: EvDialOK})
-	m.Step(Event{At: 4, Kind: EvSessionLost})
-	if o := m.Step(Event{At: 5, Kind: EvDialFailed, Cause: "subprotocol"}); o.State != Reconnecting {
-		t.Fatal("a session kept the ALPN refusal", o)
+	m.Step(Event{At: 1, Kind: EvDialFailed, Cause: "tls"})
+	m.Step(Event{At: 2, Kind: EvDialFailed, Cause: "tls"})
+	return m
+}
+
+// Forged plaintext alerts reach the agent before the certificate is
+// verified; however many arrive on either carriage, they never hold it,
+// and it reconnects as soon as they stop.
+func TestForgedAlertsNeverHold(t *testing.T) {
+	m := started()
+	m.Step(Event{At: 0, Kind: EvSessionLost})
+	at := int64(0)
+	for i := 0; i < 40; i++ {
+		o := m.Step(Event{At: at, Kind: EvDialFailed, Cause: "alpn"})
+		w := o.Timers[TimerRedial]
+		if o.State != Reconnecting || o.Hold != "" || w[1]-w[0] > 30000 {
+			t.Fatal(i, o)
+		}
+		at = w[1]
+		m.Step(Event{At: at, Kind: EvTick})
+	}
+	if o := m.Step(Event{At: at, Kind: EvDialOK}); o.State != Own && o.State != OwnWS {
+		t.Fatal("did not recover", o)
 	}
 }
 
