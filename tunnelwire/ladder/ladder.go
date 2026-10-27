@@ -36,7 +36,7 @@ const (
 	HoldRevoked       = "revoked"         // signed heartbeat: key revoked or compromised
 	HoldSuspended     = "suspended"       // signed heartbeat: account suspended or banned
 	HoldRepair        = "repair_needed"   // rotation recovery failed
-	HoldUpdate        = "update_required" // VERSION_TOO_OLD, edge_too_old, or no /1 on either transport
+	HoldUpdate        = "update_required" // VERSION_TOO_OLD, edge_too_old, or two subprotocol refusals
 	HoldMaintenance   = "maintenance"     // PROTOCOL_DISABLED
 	HoldTooManyRoutes = "too_many_routes" // TOO_MANY_ROUTES
 )
@@ -86,6 +86,7 @@ const (
 	RedialBase        = time.Second
 	RedialCap         = 30 * time.Second
 	CarriageFailures  = 2
+	NoMajorRefusals   = 2
 	SupersedePause    = 60 * time.Second
 	HoldPoll          = 5 * time.Minute
 	DefaultPingEvery  = 20 * time.Second
@@ -134,7 +135,7 @@ type Machine struct {
 	secondTLS  bool
 	attempts   int
 	failures   int
-	noMajor    map[string]bool
+	noMajor    int
 	slowLevel  int
 	probeLevel int
 	timers     map[string]Window
@@ -152,7 +153,7 @@ type Machine struct {
 func New(generation int64, modeOn bool) *Machine {
 	return &Machine{
 		state: Own, transport: TLS, generation: generation, modeOn: modeOn,
-		noMajor: map[string]bool{}, timers: map[string]Window{},
+		timers:    map[string]Window{},
 		pingEvery: DefaultPingEvery.Milliseconds(), pingWithin: DefaultPingWithin.Milliseconds(),
 	}
 }
@@ -219,7 +220,7 @@ func (m *Machine) reconnecting() {
 func (m *Machine) redialSoon() {
 	m.reconnecting()
 	m.transport, m.second = TLS, false
-	clear(m.noMajor)
+	m.noMajor = 0
 	m.set(TimerDial, m.now, m.now+DialJitter.Milliseconds())
 }
 
@@ -239,7 +240,7 @@ func (m *Machine) lost() {
 func (m *Machine) sessionUp() {
 	m.up, m.hold, m.lastRx, m.pinged = true, "", m.now, false
 	m.attempts, m.failures, m.slowLevel = 0, 0, 0
-	clear(m.noMajor)
+	m.noMajor = 0
 	delete(m.timers, TimerDial)
 	delete(m.timers, TimerRedial)
 	m.state = Own
@@ -319,7 +320,7 @@ func (m *Machine) Step(e Event) Output {
 		if m.state == Reconnecting {
 			m.reconnecting()
 			m.transport = TLS
-			clear(m.noMajor)
+			m.noMajor = 0
 			m.act(ActDial)
 		}
 	}
@@ -369,7 +370,7 @@ func (m *Machine) tick() {
 		case TimerRedial:
 			if m.state == Hold {
 				m.reconnecting()
-				m.transport = TLS
+				m.transport, m.noMajor = TLS, 0
 			}
 			m.act(ActDial)
 		case TimerProbe:
@@ -436,9 +437,9 @@ func (m *Machine) failed(e Event) {
 		m.act(ActHeartbeat)
 		m.slowRedial()
 	case carriage:
-		if e.Cause == "alpn" || e.Cause == "subprotocol" {
-			m.noMajor[m.transport] = true
-			if m.noMajor[TLS] && m.noMajor[WebSocket] {
+		if e.Cause == "subprotocol" {
+			m.noMajor++
+			if m.noMajor >= NoMajorRefusals {
 				m.toHold(HoldUpdate)
 				return
 			}

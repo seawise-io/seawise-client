@@ -1002,7 +1002,178 @@
       ]
     },
     {
-      "name": "alpn-refused-on-both-carriages-update-required",
+      "name": "subprotocol-refused-twice-update-required",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                2000,
+                4000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "dial_failed",
+            "cause": "subprotocol"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                4000,
+                8000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 8000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 8000,
+            "kind": "dial_failed",
+            "cause": "subprotocol"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "update_required",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                308000,
+                308000
+              ],
+              "redial": [
+                8000,
+                908000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 908000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 908000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "forged-alerts-on-both-carriages-never-hold",
       "initial": {
         "generation": 0,
         "mode_on": true
@@ -1090,31 +1261,55 @@
           "event": {
             "at": 4000,
             "kind": "dial_failed",
-            "cause": "subprotocol"
+            "cause": "alpn"
           },
           "want": {
-            "state": "HOLD",
-            "hold": "update_required",
+            "state": "RECONNECTING",
             "transport": "WEBSOCKET",
-            "actions": [
-              "stop_tunnels",
-              "request_signed_heartbeat"
-            ],
+            "actions": [],
             "timers": {
-              "heartbeat": [
-                304000,
-                304000
-              ],
               "redial": [
                 4000,
-                904000
+                8000
               ]
             }
           }
         },
         {
           "event": {
-            "at": 904000,
+            "at": 8000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 8000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                8000,
+                16000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 16000,
             "kind": "tick"
           },
           "want": {
@@ -1128,7 +1323,167 @@
         },
         {
           "event": {
-            "at": 904000,
+            "at": 16000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                16000,
+                32000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 32000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 32000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                32000,
+                62000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 64000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 64000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                64000,
+                94000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 94000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 94000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                94000,
+                124000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 124000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 124000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                124000,
+                154000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 154000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 155000,
             "kind": "dial_ok"
           },
           "want": {
