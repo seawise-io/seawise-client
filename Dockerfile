@@ -8,6 +8,7 @@ RUN apk add --no-cache git
 
 # Copy dependency files first for caching
 COPY go.mod go.sum ./
+COPY tunnelwire/go.mod tunnelwire/go.sum ./tunnelwire/
 
 # Download dependencies
 RUN go mod download

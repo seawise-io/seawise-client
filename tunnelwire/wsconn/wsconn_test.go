@@ -110,11 +110,98 @@ func TestWriteChunks(t *testing.T) {
 	}
 }
 
-func TestNetConn(t *testing.T) {
-	a := &net.TCPAddr{Port: 1}
-	nc := NetConn{Conn: New(&fakeWS{}), Local: a, Remote: a}
+// deadlineConn records the deadlines set on it.
+type deadlineConn struct {
+	net.Conn
+	read, write time.Time
+}
+
+func (d *deadlineConn) SetDeadline(t time.Time) error      { d.read, d.write = t, t; return nil }
+func (d *deadlineConn) SetReadDeadline(t time.Time) error  { d.read = t; return nil }
+func (d *deadlineConn) SetWriteDeadline(t time.Time) error { d.write = t; return nil }
+
+func TestNetConnForwards(t *testing.T) {
+	a, b := net.Pipe()
+	defer a.Close()
+	defer b.Close()
+	under := &deadlineConn{Conn: a}
+	nc := NetConn{Conn: New(&fakeWS{}), Under: under}
 	var _ net.Conn = nc
-	if nc.LocalAddr() != a || nc.RemoteAddr() != a || nc.SetDeadline(time.Time{}) == nil || nc.SetReadDeadline(time.Time{}) == nil || nc.SetWriteDeadline(time.Time{}) == nil {
-		t.Fatal()
+	if nc.LocalAddr() != a.LocalAddr() || nc.RemoteAddr() != a.RemoteAddr() {
+		t.Fatal("addresses not forwarded")
+	}
+	t1, t2, t3 := time.Unix(1, 0), time.Unix(2, 0), time.Unix(3, 0)
+	if nc.SetWriteDeadline(t1) != nil || !under.write.Equal(t1) || !under.read.IsZero() {
+		t.Fatal("write deadline not forwarded")
+	}
+	if nc.SetReadDeadline(t2) != nil || !under.read.Equal(t2) || !under.write.Equal(t1) {
+		t.Fatal("read deadline not forwarded")
+	}
+	if nc.SetDeadline(t3) != nil || !under.read.Equal(t3) || !under.write.Equal(t3) {
+		t.Fatal("deadline not forwarded")
+	}
+}
+
+// stepReader returns its steps in order, each a byte count and an error.
+type stepReader struct {
+	data  []byte
+	steps []struct {
+		n   int
+		err error
+	}
+}
+
+func (s *stepReader) Read(p []byte) (int, error) {
+	st := s.steps[0]
+	s.steps = s.steps[1:]
+	n := copy(p, s.data[:st.n])
+	s.data = s.data[n:]
+	return n, st.err
+}
+
+type readerWS struct{ rs []io.Reader }
+
+func (r *readerWS) NextReader() (bool, io.Reader, error) {
+	if len(r.rs) == 0 {
+		return false, nil, io.EOF
+	}
+	x := r.rs[0]
+	r.rs = r.rs[1:]
+	return true, x, nil
+}
+func (r *readerWS) WriteBinary([]byte) error { return nil }
+func (r *readerWS) Close() error             { return nil }
+
+func TestReadDataWithEOFAndEmptyReads(t *testing.T) {
+	// Data delivered together with EOF is kept; a (0, nil) read is retried.
+	a := &stepReader{data: []byte("ab"), steps: []struct {
+		n   int
+		err error
+	}{{2, io.EOF}}}
+	b := &stepReader{data: []byte("c"), steps: []struct {
+		n   int
+		err error
+	}{{0, nil}, {1, nil}, {0, io.EOF}}}
+	c := New(&readerWS{rs: []io.Reader{a, b}})
+	p := make([]byte, 8)
+	if n, err := c.Read(p); n != 2 || err != nil || string(p[:2]) != "ab" {
+		t.Fatal(n, err)
+	}
+	if n, err := c.Read(p); n != 1 || err != nil || p[0] != 'c' {
+		t.Fatal(n, err)
+	}
+	got, err := io.ReadAll(io.LimitReader(c, 16))
+	if err != nil || len(got) != 0 {
+		t.Fatal(got, err)
+	}
+}
+
+func TestNetConnWithoutUnder(t *testing.T) {
+	nc := NetConn{Conn: New(&fakeWS{})}
+	if nc.SetDeadline(time.Time{}) == nil || nc.SetReadDeadline(time.Time{}) == nil || nc.SetWriteDeadline(time.Time{}) == nil {
+		t.Fatal("deadline accepted without a connection")
+	}
+	if nc.LocalAddr() != nil || nc.RemoteAddr() != nil {
+		t.Fatal("address without a connection")
 	}
 }

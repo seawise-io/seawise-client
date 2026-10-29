@@ -98,16 +98,50 @@ func (c *Conn) Write(p []byte) (int, error) {
 // Close closes the WebSocket connection.
 func (c *Conn) Close() error { return c.mc.Close() }
 
-// NetConn adapts Conn to net.Conn for yamux, which needs only Read, Write
-// and Close; deadlines are not supported and addresses come from the
-// underlying connection.
+// NetConn adapts Conn to net.Conn for yamux. Deadlines and addresses
+// are those of Under, the connection the WebSocket frames travel on:
+// go-yamux sets a write deadline before its writes and ends the session
+// if that fails. Under is required: without it the deadline setters
+// return ErrNoUnder and the addresses are nil.
 type NetConn struct {
 	*Conn
-	Local, Remote net.Addr
+	Under net.Conn
 }
 
-func (c NetConn) LocalAddr() net.Addr                { return c.Local }
-func (c NetConn) RemoteAddr() net.Addr               { return c.Remote }
-func (c NetConn) SetDeadline(t time.Time) error      { return errors.ErrUnsupported }
-func (c NetConn) SetReadDeadline(t time.Time) error  { return errors.ErrUnsupported }
-func (c NetConn) SetWriteDeadline(t time.Time) error { return errors.ErrUnsupported }
+// ErrNoUnder is returned by the deadline setters of a NetConn without Under.
+var ErrNoUnder = errors.New("tunnelwire: NetConn has no underlying connection")
+
+func (c NetConn) LocalAddr() net.Addr {
+	if c.Under == nil {
+		return nil
+	}
+	return c.Under.LocalAddr()
+}
+
+func (c NetConn) RemoteAddr() net.Addr {
+	if c.Under == nil {
+		return nil
+	}
+	return c.Under.RemoteAddr()
+}
+
+func (c NetConn) SetDeadline(t time.Time) error {
+	if c.Under == nil {
+		return ErrNoUnder
+	}
+	return c.Under.SetDeadline(t)
+}
+
+func (c NetConn) SetReadDeadline(t time.Time) error {
+	if c.Under == nil {
+		return ErrNoUnder
+	}
+	return c.Under.SetReadDeadline(t)
+}
+
+func (c NetConn) SetWriteDeadline(t time.Time) error {
+	if c.Under == nil {
+		return ErrNoUnder
+	}
+	return c.Under.SetWriteDeadline(t)
+}
