@@ -8,6 +8,7 @@ import (
 
 	"github.com/seawise-io/seawise-client/tunnelwire/ladder"
 	pb "github.com/seawise-io/seawise-client/tunnelwire/tunnelpb"
+	"github.com/seawise-io/seawise-client/tunnelwire/wire"
 )
 
 func TestRefusalKinds(t *testing.T) {
@@ -64,5 +65,12 @@ func TestErrorText(t *testing.T) {
 		if k.String() != s {
 			t.Error(k, s)
 		}
+	}
+}
+
+func TestRefusalRetryAfterClamped(t *testing.T) {
+	e := refusal(&pb.HelloRefuse{Code: pb.RefuseCode_OVERLOADED, RetryAfterMs: 1<<32 - 1})
+	if e.RetryAfter != time.Duration(wire.MaxRefuseRetryMs)*time.Millisecond {
+		t.Fatal(e.RetryAfter)
 	}
 }

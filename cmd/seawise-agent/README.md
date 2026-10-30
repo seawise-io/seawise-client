@@ -41,9 +41,9 @@ its own state in `<data folder>/v2`.
   but it is not marked public in this client's admin UI, the app is not
   tunnelled. Apps set up before the upgrade take SeaWise's setting the first
   time it is reported; after that only the local toggle counts.
-- **Kill switch.** "Drop all tunnels" in the admin UI stops frpc, closes
-  every forwarder and removes the generated frpc config at once. It is
-  saved, so it stays on across restarts until you restore the tunnels.
+- **Kill switch.** "Drop all tunnels" in the admin UI closes every
+  forwarder and the tunnel session at once. It is saved, so it stays on
+  across restarts until you restore the tunnels.
 
 ## Access log
 
@@ -58,23 +58,25 @@ newest first.
 
 ## Network
 
+- **Tunnel.** The client connects out to `tunnel-us-east.seawise.dev`
+  (`SEAWISE_TUNNEL_NAME`) on port 443 over TLS 1.3, and only to a name in
+  the SeaWise-signed edge list. If raw TLS is blocked it carries the same
+  protocol over an HTTPS WebSocket on 443, and tries raw TLS again from
+  time to time. It reconnects on its own with backoff (at most 30 s
+  between tries) and after network changes. When SeaWise or the edge says
+  an update is required, the service is in maintenance, the device is
+  revoked or the account suspended, the tunnel is put on hold, the reason
+  is shown in the admin UI, and nothing on this machine is deleted.
 - **HTTP proxy.** `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` (or their
-  lower-case forms) apply to calls to SeaWise and to frpc. frpc gets the
-  proxy in its config (`HTTPS_PROXY` first, then `HTTP_PROXY`) and supports
-  `http://`, `socks5://` and `ntlm://` proxies; any other scheme stops the
-  tunnels with an error instead of connecting directly. Loopback addresses
-  and connections to your apps never use a proxy. The proxy user name and
-  password, like the tunnel token, are masked in frpc's log output.
-- **DNS fallback.** Without a proxy, the client resolves the tunnel server
-  before starting frpc and remembers the result. If DNS fails later, it
-  connects to the last address it resolved within the past 7 days, still
-  verifying the server's certificate against its host name, and switches
-  back to the host name once DNS works again.
+  lower-case forms) apply to calls to SeaWise. The tunnel uses
+  `HTTPS_PROXY` with `CONNECT` (`http://` or `https://` proxies). Loopback
+  addresses and connections to your apps never use a proxy. A proxy that
+  inspects TLS must exempt the tunnel name.
+- **DNS fallback.** If DNS fails, the client connects to the last address
+  the tunnel name resolved to within the past 7 days, still verifying the
+  certificate against the name.
 - **Memory.** A soft memory limit of 64 MiB applies to the agent unless
-  `GOMEMLIMIT` is set, and 48 MiB to frpc unless `SEAWISE_FRPC_GOMEMLIMIT`
-  is set (same format as `GOMEMLIMIT`, for example `96MiB` or `off`; an
-  invalid value stops the agent at start). CI checks resident memory of
-  both, idle and under load, with the frp release the image ships.
+  `GOMEMLIMIT` is set. CI checks resident memory idle and under load.
 
 ## Update notices
 
@@ -147,6 +149,6 @@ stay on the current client.
 | `SEAWISE_TLS` | `auto` serves the admin UI over HTTPS only, with a self-signed certificate |
 | `SEAWISE_NAT64_PREFIXES` | Extra NAT64 prefixes used on this network, comma separated |
 | `SEAWISE_CONTAINER` | `1` treats the process as running in a container |
-| `SEAWISE_FRPC_PATH`, `SEAWISE_TRUSTED_CA_FILE` | frpc binary and CA bundle |
+| `SEAWISE_TUNNEL_NAME` | Tunnel name to dial (default `tunnel-us-east.seawise.dev`); must be in the signed edge list |
 | `SEAWISE_UPDATE_CHANNEL` | `stable` (default) or `beta`: which releases update notices follow |
 | `SEAWISE_UPDATE_CHECK` | `0` turns update checks off |

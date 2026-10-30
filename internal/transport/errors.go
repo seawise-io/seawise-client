@@ -6,6 +6,7 @@ import (
 
 	"github.com/seawise-io/seawise-client/tunnelwire/ladder"
 	pb "github.com/seawise-io/seawise-client/tunnelwire/tunnelpb"
+	"github.com/seawise-io/seawise-client/tunnelwire/wire"
 )
 
 // Kind tells the session manager what a failed dial means.
@@ -122,7 +123,7 @@ func blocked(cause, reason string, err error) *Error {
 // refusal classifies a HelloRefuse.
 func refusal(r *pb.HelloRefuse) *Error {
 	e := &Error{Kind: Transient, Reason: "hello_refused", Code: r.GetCode(),
-		RetryAfter: time.Duration(r.GetRetryAfterMs()) * time.Millisecond}
+		RetryAfter: time.Duration(min(r.GetRetryAfterMs(), wire.MaxRefuseRetryMs)) * time.Millisecond}
 	switch r.GetCode() {
 	case pb.RefuseCode_INVALID_PROOF, pb.RefuseCode_KEY_REVOKED, pb.RefuseCode_NOT_ENROLLED, pb.RefuseCode_ACCOUNT_SUSPENDED:
 		e.Kind = Auth

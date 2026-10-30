@@ -12,7 +12,6 @@ import (
 	"io"
 	"io/fs"
 	"net"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
@@ -89,21 +88,6 @@ const HoldKillSwitch = "kill_switch"
 
 var persistedHolds = map[string]bool{HoldKillSwitch: true}
 
-// EdgeDNS is the last successful resolution of the frps host.
-type EdgeDNS struct {
-	Host       string    `json:"host"`
-	Addrs      []string  `json:"addrs"`
-	ResolvedAt time.Time `json:"resolved_at"`
-}
-
-const (
-	maxEdgeAddrs = 4
-	// An edge cache resolved in the future or longer ago than this is
-	// ignored at load; it can only come from a wrong clock or a stale file.
-	maxEdgeAge    = 365 * 24 * time.Hour
-	maxEdgeFuture = time.Hour
-)
-
 type ImportedFile struct {
 	Name   string `json:"name"`
 	Size   int64  `json:"size"`
@@ -130,8 +114,7 @@ type State struct {
 	// recorded, for the rolling cap.
 	ServerDisableLog []time.Time `json:"server_disable_log,omitempty"`
 	// Holds are hold reasons that survive restarts, such as the kill switch.
-	Holds   []string `json:"holds,omitempty"`
-	EdgeDNS *EdgeDNS `json:"edge_dns,omitempty"`
+	Holds []string `json:"holds,omitempty"`
 }
 
 // HasHold reports whether reason is persisted.
@@ -189,7 +172,6 @@ func (s *Store) open(dataDir string, now func() time.Time) error {
 		return err
 	}
 	if loaded {
-		s.dropImplausibleEdge(now().UTC())
 		return nil
 	}
 	return s.importV1(dataDir, now().UTC())
@@ -208,16 +190,6 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) Dir() string { return s.dir }
-
-func (s *Store) dropImplausibleEdge(now time.Time) {
-	e := s.state.EdgeDNS
-	if e == nil {
-		return
-	}
-	if e.ResolvedAt.IsZero() || e.ResolvedAt.After(now.Add(maxEdgeFuture)) || now.Sub(e.ResolvedAt) > maxEdgeAge {
-		s.state.EdgeDNS = nil
-	}
-}
 
 // CheckDir refuses a directory that is a symlink, owned by another user or
 // accessible to group or others.
@@ -480,16 +452,6 @@ func validateState(st *State) error {
 		}
 		seenHold[h] = true
 	}
-	if e := st.EdgeDNS; e != nil {
-		if e.Host == "" || len(e.Addrs) == 0 || len(e.Addrs) > maxEdgeAddrs {
-			return fmt.Errorf("%w: edge_dns", ErrInvalid)
-		}
-		for _, a := range e.Addrs {
-			if ip, err := netip.ParseAddr(a); err != nil || ip.Zone() != "" {
-				return fmt.Errorf("%w: edge_dns address", ErrInvalid)
-			}
-		}
-	}
 	if len(st.Targets) > MaxTargets {
 		return fmt.Errorf("%w: too many targets", ErrInvalid)
 	}
@@ -562,11 +524,6 @@ func cloneState(st State) State {
 	out.Targets = append([]Target(nil), st.Targets...)
 	out.ServerDisableLog = append([]time.Time(nil), st.ServerDisableLog...)
 	out.Holds = append([]string(nil), st.Holds...)
-	if st.EdgeDNS != nil {
-		e := *st.EdgeDNS
-		e.Addrs = append([]string(nil), st.EdgeDNS.Addrs...)
-		out.EdgeDNS = &e
-	}
 	if out.Targets == nil {
 		out.Targets = []Target{}
 	}

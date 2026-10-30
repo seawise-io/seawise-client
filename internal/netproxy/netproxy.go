@@ -1,11 +1,10 @@
 // Package netproxy picks the outbound proxy for a host from the usual
 // HTTPS_PROXY, HTTP_PROXY and NO_PROXY variables. It is shared by the
-// control-plane client and the frpc config, so both follow one rule.
+// control-plane client and the tunnel dialer, so both follow one rule.
 package netproxy
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/netip"
@@ -20,11 +19,7 @@ type Getenv func(string) string
 var (
 	HTTPS = []string{"HTTPS_PROXY", "https_proxy"}
 	HTTP  = []string{"HTTP_PROXY", "http_proxy"}
-	// Tunnel is for non-HTTP connections such as frpc to frps.
-	Tunnel = []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"}
 )
-
-var ErrScheme = errors.New("unsupported proxy scheme")
 
 // ForHost returns the proxy for host:port from the first set variable in
 // vars, or nil when none is set or NO_PROXY matches.
@@ -40,16 +35,6 @@ func ForHost(getenv Getenv, host string, port int, vars ...string) (*url.URL, er
 		return nil, nil
 	}
 	return parse(raw)
-}
-
-// CheckScheme refuses a proxy whose scheme is not in allowed.
-func CheckScheme(u *url.URL, allowed ...string) error {
-	for _, s := range allowed {
-		if u.Scheme == s {
-			return nil
-		}
-	}
-	return fmt.Errorf("%w %q", ErrScheme, u.Scheme)
 }
 
 // Func is an http.Transport Proxy function that reads the environment on

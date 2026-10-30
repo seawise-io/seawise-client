@@ -39,7 +39,7 @@ const (
 const budgetServerID = "11111111-2222-4333-8444-555555555555"
 
 // TestMemoryBudget builds seawise-agent without the race detector, runs it
-// with a stand-in frpc, a fake control plane and a local signed update
+// with a fake control plane and a local signed update
 // repository, and checks resident memory when idle (after a verified update
 // check) and while forwarding many connections.
 func TestMemoryBudget(t *testing.T) {
@@ -51,14 +51,6 @@ func TestMemoryBudget(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	bin := buildAgent(t, tmp)
-	frpc := filepath.Join(tmp, "frpc")
-	if err := os.WriteFile(frpc, []byte("#!/bin/sh\nexec sleep 3600\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	ca := filepath.Join(tmp, "ca.pem")
-	if err := os.WriteFile(ca, []byte("placeholder\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	echoPort := echoTarget(t)
 	api := fakeControlPlane(t)
 	dataDir := filepath.Join(tmp, "data")
@@ -68,15 +60,14 @@ func TestMemoryBudget(t *testing.T) {
 	pairedDataDir(t, dataDir, api.URL, echoPort)
 	tufDir := updateRepo(t)
 
+	adminPort := freePort(t)
 	cmd := exec.Command(bin)
 	cmd.Env = []string{
 		"SEAWISE_DATA_DIR=" + dataDir,
-		"SEAWISE_FRPC_PATH=" + frpc,
-		"SEAWISE_TRUSTED_CA_FILE=" + ca,
-		"SEAWISE_PORT=" + strconv.Itoa(freePort(t)),
+		"SEAWISE_PORT=" + strconv.Itoa(adminPort),
 		"SEAWISE_BIND_ADDR=127.0.0.1",
 		"PATH=/usr/bin:/bin",
-		// Keep DNS lookups of the tunnel server off the network.
+		// Keep the control plane and tunnel off the network.
 		"HTTPS_PROXY=http://127.0.0.1:9",
 		"NO_PROXY=127.0.0.1,localhost",
 		"SEAWISE_TEST_TUF_DIR=" + tufDir,
@@ -94,7 +85,7 @@ func TestMemoryBudget(t *testing.T) {
 		}
 	}()
 
-	ports := waitForwarderPorts(t, filepath.Join(dataDir, store.SubDir, "frpc.toml"), budgetApps)
+	ports := waitForwarderPorts(t, cmd.Process.Pid, adminPort, budgetApps)
 	waitFile(t, filepath.Join(dataDir, store.SubDir, "tuf", "state.json"))
 	time.Sleep(settleDuration)
 	idle := maxRSS(t, cmd.Process.Pid, 2*time.Second)
@@ -270,27 +261,48 @@ func pairedDataDir(t *testing.T, dir, apiURL string, port int) {
 	}
 }
 
-func waitForwarderPorts(t *testing.T, conf string, n int) []int {
+func waitForwarderPorts(t *testing.T, pid, adminPort, n int) []int {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
-		var ports []int
-		if b, err := os.ReadFile(conf); err == nil {
-			for _, line := range strings.Split(string(b), "\n") {
-				if v, ok := strings.CutPrefix(line, "localPort = "); ok {
-					if p, err := strconv.Atoi(v); err == nil {
-						ports = append(ports, p)
-					}
-				}
-			}
-		}
-		if len(ports) == n {
+		if ports := loopbackListeners(pid, adminPort); len(ports) == n {
 			return ports
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	t.Fatalf("agent did not render %d forwarders", n)
+	t.Fatalf("agent did not open %d forwarders", n)
 	return nil
+}
+
+// loopbackListeners lists the 127.0.0.1 ports the process listens on,
+// other than skip, from its socket inodes and /proc/<pid>/net/tcp.
+func loopbackListeners(pid, skip int) []int {
+	fds, _ := os.ReadDir(fmt.Sprintf("/proc/%d/fd", pid))
+	inodes := map[string]bool{}
+	for _, fd := range fds {
+		l, _ := os.Readlink(fmt.Sprintf("/proc/%d/fd/%s", pid, fd.Name()))
+		if ino, ok := strings.CutPrefix(l, "socket:["); ok {
+			inodes[strings.TrimSuffix(ino, "]")] = true
+		}
+	}
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/net/tcp", pid))
+	if err != nil {
+		return nil
+	}
+	var ports []int
+	for _, line := range strings.Split(string(b), "\n")[1:] {
+		f := strings.Fields(line)
+		if len(f) < 10 || f[3] != "0A" || !inodes[f[9]] {
+			continue
+		}
+		addr, port, ok := strings.Cut(f[1], ":")
+		p, err := strconv.ParseInt(port, 16, 32)
+		if !ok || err != nil || addr != "0100007F" || int(p) == skip {
+			continue
+		}
+		ports = append(ports, int(p))
+	}
+	return ports
 }
 
 // drive streams data through every forwarder port and returns the bytes

@@ -76,6 +76,11 @@
     if (s.agent && Array.isArray(s.agent.Holds)) return s.agent.Holds;
     return findHolds(s.status);
   }
+  function findTunnel(s) {
+    if (!s || typeof s !== "object") return null;
+    if (s.agent && s.agent.Tunnel && typeof s.agent.Tunnel === "object") return s.agent.Tunnel;
+    return findTunnel(s.status);
+  }
   function findUpdates(s) {
     if (!s || typeof s !== "object") return null;
     if (s.updates && typeof s.updates === "object") return s.updates;
@@ -96,9 +101,12 @@
   }
   function renderTunnels(status) {
     killed = findHolds(status).indexOf("kill_switch") >= 0;
-    $("tunnels").textContent = killed ?
-      "All tunnels are dropped on this machine. Nothing is shared until you restore them." :
-      "Tunnels run for the apps listed in the status below.";
+    var tunnel = findTunnel(status);
+    var text = "Tunnels run for the apps listed in the status below.";
+    if (killed) text = "All tunnels are dropped on this machine. Nothing is shared until you restore them.";
+    else if (tunnel && tunnel.hold_text) text = "The tunnel is on hold: " + tunnel.hold_text + ". Nothing on this machine was changed.";
+    else if (tunnel && !tunnel.up) text = "The tunnel is reconnecting.";
+    $("tunnels").textContent = text;
     $("kill-switch").textContent = killed ? "Restore tunnels" : "Drop all tunnels";
   }
   function cell(tr, text) {

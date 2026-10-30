@@ -676,35 +676,6 @@ func TestHoldsPersistAcrossReopen(t *testing.T) {
 	}
 }
 
-func TestEdgeDNSValidated(t *testing.T) {
-	s, err := Open(t.TempDir(), clock)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	bad := []*EdgeDNS{
-		{Host: "", Addrs: []string{"203.0.113.7"}},
-		{Host: "frp.example", Addrs: nil},
-		{Host: "frp.example", Addrs: []string{"not-an-ip"}},
-		{Host: "frp.example", Addrs: []string{"fe80::1%eth0"}},
-		{Host: "frp.example", Addrs: []string{"203.0.113.1", "203.0.113.2", "203.0.113.3", "203.0.113.4", "203.0.113.5"}},
-	}
-	for i, e := range bad {
-		if err := s.Update(func(st *State) error { st.EdgeDNS = e; return nil }); !errors.Is(err, ErrInvalid) {
-			t.Fatalf("case %d: err = %v", i, err)
-		}
-	}
-	good := &EdgeDNS{Host: "frp.example", Addrs: []string{"203.0.113.7", "2001:db8::7"}, ResolvedAt: fixedNow}
-	if err := s.Update(func(st *State) error { st.EdgeDNS = good; return nil }); err != nil {
-		t.Fatal(err)
-	}
-	st := s.State()
-	st.EdgeDNS.Addrs[0] = "mutated"
-	if s.State().EdgeDNS.Addrs[0] != "203.0.113.7" {
-		t.Fatal("State() shares edge addresses")
-	}
-}
-
 func TestPublicToggleIsCopied(t *testing.T) {
 	s, err := Open(t.TempDir(), clock)
 	if err != nil {
@@ -726,45 +697,32 @@ func TestPublicToggleIsCopied(t *testing.T) {
 	}
 }
 
-func TestImplausibleEdgeDNSDroppedAtLoad(t *testing.T) {
-	for name, at := range map[string]time.Time{
-		"future": fixedNow.Add(48 * time.Hour),
-		"old":    fixedNow.Add(-400 * 24 * time.Hour),
-		"zero":   {},
-	} {
-		t.Run(name, func(t *testing.T) {
-			dir := t.TempDir()
-			s, err := Open(dir, clock)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := s.Update(func(st *State) error {
-				st.EdgeDNS = &EdgeDNS{Host: "frp.example", Addrs: []string{"93.184.216.10"}, ResolvedAt: at}
-				return nil
-			}); err != nil {
-				t.Fatal(err)
-			}
-			s.Close()
-			s, err = Open(dir, clock)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer s.Close()
-			if s.State().EdgeDNS != nil {
-				t.Fatalf("kept edge cache resolved at %v", at)
-			}
-		})
-	}
+func TestOldEdgeCacheMemberIgnored(t *testing.T) {
 	dir := t.TempDir()
-	s, _ := Open(dir, clock)
-	_ = s.Update(func(st *State) error {
-		st.EdgeDNS = &EdgeDNS{Host: "frp.example", Addrs: []string{"93.184.216.10"}, ResolvedAt: fixedNow.Add(-time.Hour)}
-		return nil
-	})
+	s, err := Open(dir, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(s.Dir(), StateFile)
 	s.Close()
-	s, _ = Open(dir, clock)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := strings.Replace(string(raw), "{", `{"edge_dns":{"host":"frp.example","addrs":["93.184.216.10"],"resolved_at":"2026-10-01T00:00:00Z"},`, 1)
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err = Open(dir, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer s.Close()
-	if s.State().EdgeDNS == nil {
-		t.Fatal("plausible edge cache dropped")
+	if err := s.Update(func(st *State) error { st.MachineName = "renamed"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = os.ReadFile(path)
+	if strings.Contains(string(raw), "edge_dns") {
+		t.Fatal("old member written back")
 	}
 }

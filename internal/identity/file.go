@@ -238,7 +238,7 @@ func (ks *FileKeystore) BeginRotation() (*Key, error) {
 	return k, err
 }
 
-func (ks *FileKeystore) CommitRotation() error {
+func (ks *FileKeystore) CommitRotation(kid string) error {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 	switch {
@@ -246,6 +246,8 @@ func (ks *FileKeystore) CommitRotation() error {
 		return ErrClosed
 	case ks.pending == nil:
 		return ErrNoKey
+	case ks.pending.KeyID() != kid:
+		return ErrKeyMismatch
 	}
 	err := ks.persist(ks.pending, nil)
 	if !written(err) {

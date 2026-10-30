@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
@@ -163,13 +162,8 @@ func (s *Syncer) heartbeatRequest(ctx context.Context, st store.State) Heartbeat
 			req.ServiceCount++
 		}
 	}
-	if as, err := s.cfg.Agent.Status(ctx); err == nil && as.Running {
-		for _, p := range as.Proxies {
-			if strings.EqualFold(p.Status, "running") {
-				req.FRPConnected = true
-				break
-			}
-		}
+	if as, err := s.cfg.Agent.Status(ctx); err == nil {
+		req.FRPConnected = as.Connected
 	}
 	return req
 }

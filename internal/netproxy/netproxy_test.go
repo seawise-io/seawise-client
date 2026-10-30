@@ -1,9 +1,7 @@
 package netproxy
 
 import (
-	"errors"
 	"net/http"
-	"net/url"
 	"testing"
 )
 
@@ -18,10 +16,8 @@ func TestForHostOrder(t *testing.T) {
 		{map[string]string{"HTTPS_PROXY": "http://a:1", "https_proxy": "http://b:1"}, HTTPS, "http://a:1"},
 		{map[string]string{"https_proxy": "http://b:1"}, HTTPS, "http://b:1"},
 		{map[string]string{"HTTP_PROXY": "http://c:1"}, HTTPS, ""},
-		{map[string]string{"HTTP_PROXY": "http://c:1"}, Tunnel, "http://c:1"},
-		{map[string]string{"HTTPS_PROXY": "http://a:1", "HTTP_PROXY": "http://c:1"}, Tunnel, "http://a:1"},
 		{map[string]string{"HTTPS_PROXY": "proxy.lan:3128"}, HTTPS, "http://proxy.lan:3128"},
-		{map[string]string{}, Tunnel, ""},
+		{map[string]string{}, HTTPS, ""},
 	}
 	for i, c := range cases {
 		u, err := ForHost(env(c.env), "frp-1.seawise.dev", 7000, c.vars...)
@@ -84,17 +80,6 @@ func TestBadProxyURL(t *testing.T) {
 		if _, err := ForHost(env(map[string]string{"HTTPS_PROXY": v}), "h", 1, HTTPS...); err == nil {
 			t.Errorf("%q accepted", v)
 		}
-	}
-}
-
-func TestCheckScheme(t *testing.T) {
-	u, _ := url.Parse("https://p:1")
-	if err := CheckScheme(u, "http", "socks5"); !errors.Is(err, ErrScheme) {
-		t.Fatalf("err = %v", err)
-	}
-	u, _ = url.Parse("socks5://p:1")
-	if err := CheckScheme(u, "http", "socks5"); err != nil {
-		t.Fatal(err)
 	}
 }
 

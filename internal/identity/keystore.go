@@ -23,6 +23,7 @@ var (
 	ErrClosed      = errors.New("keystore is closed")
 	ErrUnsupported = fmt.Errorf("keystore backend not available in this build: %w", errors.ErrUnsupported)
 	ErrTestKey     = errors.New("device key is a published test key")
+	ErrKeyMismatch = errors.New("pending key is not the key named")
 )
 
 // Keystore holds the current device key and, during a rotation, the
@@ -39,8 +40,9 @@ type Keystore interface {
 	// BeginRotation creates the pending key, or returns the existing one so
 	// a retried rotation uses the same key.
 	BeginRotation() (*Key, error)
-	// CommitRotation makes the pending key current and destroys the old one.
-	CommitRotation() error
+	// CommitRotation makes the pending key current and destroys the old
+	// one, only if the pending key is the one named by kid.
+	CommitRotation(kid string) error
 	// AbortRotation destroys the pending key, if any.
 	AbortRotation() error
 	// Close destroys keys held in memory.
@@ -101,7 +103,7 @@ func RecoverRevoked(ks Keystore, probe func(*Key) error) error {
 	if err := probe(next); err != nil {
 		return fmt.Errorf("%w: pending key not accepted: %w", ErrRepairNeeded, err)
 	}
-	return ks.CommitRotation()
+	return ks.CommitRotation(next.KeyID())
 }
 
 // EnsureKey returns the current key, creating one only for an agent that

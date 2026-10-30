@@ -402,7 +402,7 @@ func TestRotation(t *testing.T) {
 		t.Fatal("retried rotation differs")
 	}
 
-	if err := ks.CommitRotation(); err != nil {
+	if err := ks.CommitRotation(pend.KeyID()); err != nil {
 		t.Fatal(err)
 	}
 	cur, _ := ks.Current()
@@ -436,7 +436,7 @@ func TestAbortRotation(t *testing.T) {
 	if _, err := pend.Sign(nil, []byte("m"), crypto.Hash(0)); !errors.Is(err, ErrDestroyed) {
 		t.Fatal("aborted key still signs")
 	}
-	if err := ks.CommitRotation(); !errors.Is(err, ErrNoKey) {
+	if err := ks.CommitRotation(pend.KeyID()); !errors.Is(err, ErrNoKey) {
 		t.Fatalf("commit without pending: %v", err)
 	}
 	ks.Close()
@@ -576,5 +576,24 @@ func TestRefusesTestVectorKey(t *testing.T) {
 	})
 	if _, err := OpenFile(dir, fixedNow); !errors.Is(err, ErrTestKey) {
 		t.Fatalf("got %v, want ErrTestKey", err)
+	}
+}
+
+func TestCommitRotationNamesThePendingKey(t *testing.T) {
+	dir := stateDir(t)
+	ks := openFile(t, dir)
+	old := create(t, ks)
+	pend, _ := ks.BeginRotation()
+	if err := ks.CommitRotation(old.KeyID()); !errors.Is(err, ErrKeyMismatch) {
+		t.Fatalf("commit for another key: %v", err)
+	}
+	if cur, _ := ks.Current(); cur.KeyID() != old.KeyID() {
+		t.Fatal("current key changed")
+	}
+	if p, err := ks.Pending(); err != nil || p.KeyID() != pend.KeyID() {
+		t.Fatal("pending key lost", err)
+	}
+	if err := ks.CommitRotation(pend.KeyID()); err != nil {
+		t.Fatal(err)
 	}
 }

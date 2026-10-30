@@ -46,7 +46,7 @@ func (a *fakeAgent) Reconcile(context.Context) error {
 }
 
 func (a *fakeAgent) Status(context.Context) (agent.Status, error) {
-	return agent.Status{Running: true, Proxies: []agent.ProxyStatus{{Name: "x", Status: "running"}}}, nil
+	return agent.Status{Running: true, Connected: true}, nil
 }
 
 func (a *fakeAgent) ConnectionID() string { return "conn-1" }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/netip"
 	"os"
 	"os/signal"
@@ -23,6 +24,7 @@ import (
 	"github.com/seawise/client/internal/agent"
 	"github.com/seawise/client/internal/constants"
 	"github.com/seawise/client/internal/controlplane"
+	"github.com/seawise/client/internal/identity"
 	"github.com/seawise/client/internal/paths"
 	"github.com/seawise/client/internal/store"
 	"github.com/seawise/client/internal/targetpolicy"
@@ -80,23 +82,23 @@ func main() {
 		}
 	}
 
+	keys, err := identity.Open(identity.BackendFile, st.Dir(), time.Now)
+	if err != nil {
+		log.Warn("device keystore unavailable; the tunnel waits", "error", err)
+		keys = nil
+	} else {
+		defer keys.Close()
+	}
 	cfg := agent.Config{
-		Store:           st,
-		FRPCPath:        envOr("SEAWISE_FRPC_PATH", "/app/frpc"),
-		FRPCMemoryLimit: os.Getenv("SEAWISE_FRPC_GOMEMLIMIT"),
-		TrustedCAFile:   envOr("SEAWISE_TRUSTED_CA_FILE", agent.DefaultTrustedCA),
-		Logger:          log,
-		Gateways:        targetpolicy.Gateways(),
+		Store:    st,
+		Logger:   log,
+		Gateways: targetpolicy.Gateways(),
+		Tunnel: tunnelFactory(tunnelSetup{
+			log: log, st: st, keys: keys, keySet: verifiedKeySet, name: envOr("SEAWISE_TUNNEL_NAME", defaultTunnelName),
+			client: &http.Client{Transport: controlplane.NewTransport(os.Getenv, nil), Timeout: 30 * time.Second},
+		}),
 	}
 	cfg.Forward.Record = accessLog.Record
-	if v := os.Getenv("SEAWISE_FRPC_ADMIN_PORT"); v != "" {
-		p, err := strconv.Atoi(v)
-		if err != nil {
-			log.Error("invalid SEAWISE_FRPC_ADMIN_PORT", "value", v)
-			os.Exit(1)
-		}
-		cfg.AdminPort = p
-	}
 	a, err := agent.New(cfg)
 	if err != nil {
 		log.Error("start agent", "error", err)

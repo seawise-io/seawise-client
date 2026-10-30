@@ -187,6 +187,7 @@ type Session struct {
 	Hello     *pb.HelloBody // as sent; TimeNonce is the signed-time nonce
 
 	conn net.Conn
+	rx   *rxConn
 	rd   *wire.ControlReader
 	wmu  sync.Mutex
 	out  wire.SeqOut
@@ -213,6 +214,15 @@ func (s *Session) Next() (*pb.ControlMessage, error) {
 		}
 	}
 	return m, err
+}
+
+// LastReceived is when the last byte arrived on the carrying connection,
+// on any stream or frame: protocol liveness.
+func (s *Session) LastReceived() time.Time {
+	if s.rx == nil {
+		return time.Time{}
+	}
+	return time.Unix(0, s.rx.last.Load())
 }
 
 // Close ends the session.
@@ -421,8 +431,10 @@ func (d *Dialer) handshake(ctx context.Context, s *Session, raw net.Conn, edges 
 	if d.cfg.KillSwitch != nil && d.cfg.KillSwitch() {
 		return local("kill_switch", ErrKillSwitch)
 	}
+	rx := &rxConn{Conn: carrier, now: d.cfg.Now}
+	rx.last.Store(d.cfg.Now().UnixNano())
 	ycfg, _ := caps.YamuxConfig(d.cfg.MaxStreams)
-	mux, err := yamux.Client(carrier, ycfg, caps.NewAgentGate(caps.AgentBudget, d.cfg.MaxStreams).NewSpan)
+	mux, err := yamux.Client(rx, ycfg, caps.NewAgentGate(caps.AgentBudget, d.cfg.MaxStreams).NewSpan)
 	if err != nil {
 		return blocked(CauseAckSignature, "yamux", err)
 	}
@@ -474,9 +486,24 @@ func (d *Dialer) handshake(ctx context.Context, s *Session, raw net.Conn, edges 
 	}
 	_ = s0.SetDeadline(time.Time{})
 	_ = tc.SetReadDeadline(time.Time{})
-	s.Mux, s.Stream0, s.Accepted, s.Hello, s.conn, s.rd = mux, s0, acc, body, tc, rd
+	s.Mux, s.Stream0, s.Accepted, s.Hello, s.conn, s.rd, s.rx = mux, s0, acc, body, tc, rd, rx
 	ok = true
 	return nil
+}
+
+// rxConn records when bytes arrive under yamux.
+type rxConn struct {
+	net.Conn
+	now  func() time.Time
+	last atomic.Int64
+}
+
+func (c *rxConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	if n > 0 {
+		c.last.Store(c.now().UnixNano())
+	}
+	return n, err
 }
 
 // noALPN reports the no_application_protocol alert (120). crypto/tls

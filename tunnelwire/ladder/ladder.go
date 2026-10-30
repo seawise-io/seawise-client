@@ -56,6 +56,9 @@ const (
 	EvSignedState = "signed_state"  // verified heartbeat: DeviceStatus, AccountStatus
 	EvRepair      = "repair_needed" // rotation recovery failed
 	EvNetwork     = "network_change"
+	// EvTimer fires the timer named by Reason at a caller-chosen point
+	// inside its window (full jitter); EvTick fires it at the window's end.
+	EvTimer = "timer"
 )
 
 // Actions the caller performs. Dials use Output.Transport.
@@ -298,6 +301,10 @@ func (m *Machine) Step(e Event) Output {
 		m.flags(e)
 	case EvTick:
 		m.tick()
+	case EvTimer:
+		if w, ok := m.timers[e.Reason]; ok && m.now >= w[0] {
+			m.fire(e.Reason)
+		}
 	case EvDialOK:
 		m.dialOK()
 	case EvDialFailed, EvRefused:
@@ -363,25 +370,7 @@ func (m *Machine) tick() {
 		if !ok || m.now < w[1] {
 			continue
 		}
-		delete(m.timers, name)
-		switch name {
-		case TimerDial:
-			m.act(ActDial)
-		case TimerRedial:
-			if m.state == Hold {
-				m.reconnecting()
-				m.transport, m.noMajor = TLS, 0
-			}
-			m.act(ActDial)
-		case TimerProbe:
-			if !m.second {
-				m.second, m.secondTLS = true, true
-				m.act(ActDialSecond)
-			}
-		case TimerHeartbeat:
-			m.act(ActHeartbeat)
-			m.set(TimerHeartbeat, m.now+HoldPoll.Milliseconds(), m.now+HoldPoll.Milliseconds())
-		}
+		m.fire(name)
 	}
 	if !m.up {
 		return
@@ -392,6 +381,28 @@ func (m *Machine) tick() {
 		m.act(ActSendPing)
 	case m.pinged && m.now-m.pingAt >= m.pingWithin:
 		m.lost()
+	}
+}
+
+func (m *Machine) fire(name string) {
+	delete(m.timers, name)
+	switch name {
+	case TimerDial:
+		m.act(ActDial)
+	case TimerRedial:
+		if m.state == Hold {
+			m.reconnecting()
+			m.transport, m.noMajor = TLS, 0
+		}
+		m.act(ActDial)
+	case TimerProbe:
+		if !m.second {
+			m.second, m.secondTLS = true, true
+			m.act(ActDialSecond)
+		}
+	case TimerHeartbeat:
+		m.act(ActHeartbeat)
+		m.set(TimerHeartbeat, m.now+HoldPoll.Milliseconds(), m.now+HoldPoll.Milliseconds())
 	}
 }
 
