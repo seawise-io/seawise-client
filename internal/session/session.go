@@ -463,7 +463,7 @@ func (m *Manager) becomeActive(l *live) {
 	l.lastRx = l.conn.LastReceived()
 	m.m.SetPing(l.info.PingInterval, l.info.PingTimeout)
 	m.localRetry = time.Time{}
-	m.cur.LastError = ""
+	m.cur.LastError, m.cur.LocalHold, m.cur.LocalHoldText = "", "", ""
 	if l.routes != nil && m.cfg.OnRoutes != nil {
 		m.cfg.OnRoutes(l.routes)
 	}
@@ -543,9 +543,18 @@ func (m *Manager) onDial(ctx context.Context, ev evDial) {
 	}
 	if ev.err != nil {
 		m.cur.LastError = dialReason(ev.err)
+		held := m.cur.LocalHold
+		m.cur.LocalHold, m.cur.LocalHoldText = "", ""
 		var te *transport.Error
 		if errors.As(ev.err, &te) && te.Kind == transport.Local && !d.second {
-			m.log.Warn("tunnel not dialled", "reason", te.Reason, "error", te)
+			if text, ok := localHolds[te.Reason]; ok {
+				if held != te.Reason {
+					m.log.Warn("tunnel on hold: "+text, "hold", te.Reason)
+				}
+				m.cur.LocalHold, m.cur.LocalHoldText = te.Reason, text
+			} else {
+				m.log.Warn("tunnel not dialled", "reason", te.Reason, "error", te)
+			}
 			m.localRetry = m.cfg.Clock.Now().Add(LocalRetry)
 			m.localCar = carriageOf(m.out.Transport)
 			return

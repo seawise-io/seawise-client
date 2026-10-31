@@ -89,10 +89,13 @@ Release information and the signing key set are verified with
 [TUF](https://theupdateframework.io) against a root built into the agent
 (at least two of three root keys sign any change to it), with rollback,
 freeze and mix-and-match protection, HTTPS only, no redirects, size limits and
-timeouts. Verified metadata is kept in `<data folder>/v2/tuf`. If the
-signed metadata expires, update notices stop until it can be refreshed;
-tunnels keep running with the last verified key set. Builds without a
-production root make no update checks (the status shows
+timeouts. Verified metadata is kept in `<data folder>/v2/tuf`, and no role
+version below the highest one verified is accepted again. If the signed
+metadata expires, update notices and signed instructions stop until it can
+be refreshed. The key set (`<data folder>/v2/keyset`, signed by one of two
+pinned roots, never rolled back) never expires: the last verified one stays
+in use through outages of any length, and nothing stored is deleted.
+Builds without a production root make no update checks (the status shows
 `not_configured`). The repository layout and signing tool are described in
 `tools/tuf/README.md`.
 
@@ -151,4 +154,4 @@ stay on the current client.
 | `SEAWISE_CONTAINER` | `1` treats the process as running in a container |
 | `SEAWISE_TUNNEL_NAME` | Tunnel name to dial (default `tunnel-us-east.seawise.dev`); must be in the signed edge list |
 | `SEAWISE_UPDATE_CHANNEL` | `stable` (default) or `beta`: which releases update notices follow |
-| `SEAWISE_UPDATE_CHECK` | `0` turns update checks off |
+| `SEAWISE_UPDATE_CHECK` | `0` hides release notices; the signed metadata and the signing key set are still fetched |

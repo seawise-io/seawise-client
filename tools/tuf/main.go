@@ -31,12 +31,12 @@ offline (root and targets keys):
   sign-targets  -dir D -key K [-add NAME=FILE ...] [-remove NAME ...] [-expires 120d]
   rotate-root   -dir D -sign K ... [-role-key ROLE=P.pub ...] [-threshold ROLE=N ...] [-expires 365d]
 
-online (snapshot and timestamp keys):
+published repository:
   pull          -url URL -dir D -root ROOT.json
-  refresh       -dir D -root ROOT.json -snapshot-key K -timestamp-key K [-expires 14d] [-min-remaining 7d]
 
-pull and refresh verify the repository from ROOT.json (the pinned root)
-before writing or signing anything.
+pull verifies the repository from ROOT.json (the pinned root) before
+writing anything. Snapshot and timestamp are signed by the SeaWise
+publishing job, the only online signer.
 
 anywhere:
   verify        -dir D -root ROOT.json [-at RFC3339] [-metadata-only]
@@ -256,45 +256,6 @@ func run(args []string, out io.Writer, getenv func(string) string, now func() ti
 			return err
 		}
 		fmt.Fprintf(out, "wrote %s/metadata/%d.root.json\n", *dir, v)
-		return nil
-
-	case "refresh":
-		rootPath := fs.String("root", "", "pinned root to verify the repository from")
-		snapKey := fs.String("snapshot-key", "", "snapshot private key")
-		tsKey := fs.String("timestamp-key", "", "timestamp private key")
-		exp := fs.String("expires", "14d", "snapshot and timestamp lifetime")
-		minRem := fs.String("min-remaining", "7d", "renew the snapshot when less than this is left")
-		if err := fs.Parse(args); err != nil {
-			return err
-		}
-		d, err := tufrepo.ParseDuration(*exp)
-		if err != nil {
-			return err
-		}
-		m, err := tufrepo.ParseDuration(*minRem)
-		if err != nil {
-			return err
-		}
-		root, err := readRoot(*rootPath)
-		if err != nil {
-			return err
-		}
-		sk, err := tufrepo.LoadPrivateKey(*snapKey, getenv)
-		if err != nil {
-			return err
-		}
-		tk, err := tufrepo.LoadPrivateKey(*tsKey, getenv)
-		if err != nil {
-			return err
-		}
-		res, err := tufrepo.Refresh(*dir, root, sk, tk, now(), d, m)
-		if err != nil {
-			return err
-		}
-		if res.NewSnapshot {
-			fmt.Fprintf(out, "wrote metadata/%d.snapshot.json\n", res.SnapshotVersion)
-		}
-		fmt.Fprintf(out, "wrote metadata/timestamp.json version %d; upload it after every other file\n", res.TimestampVersion)
 		return nil
 
 	case "pull":

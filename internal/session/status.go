@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"github.com/seawise-io/seawise-client/tunnelwire/ladder"
+
+	"github.com/seawise/client/internal/transport"
 )
 
 // Status is the tunnel as the local UI and status API show it.
@@ -19,14 +21,23 @@ type Status struct {
 	LastKnown bool      `json:"last_known_address,omitempty"`
 	Since     time.Time `json:"since"`
 	// NextDial is the latest time of the next scheduled dial, if any.
-	NextDial        time.Time `json:"next_dial,omitzero"`
-	LastError       string    `json:"last_error,omitempty"`
-	FlagsGeneration int64     `json:"flags_generation"`
-	FlagsMode       string    `json:"flags_mode"`
-	SignedTime      int64     `json:"signed_time,omitempty"`
-	MinVersion      string    `json:"min_version,omitempty"`
-	Supersedes      int       `json:"supersedes,omitempty"`
-	FlagsRollbacks  int       `json:"flags_rollbacks,omitempty"`
+	NextDial  time.Time `json:"next_dial,omitzero"`
+	LastError string    `json:"last_error,omitempty"`
+	// LocalHold is a local reason no session is dialled; NextDial is when
+	// the agent looks again.
+	LocalHold       string `json:"local_hold,omitempty"`
+	LocalHoldText   string `json:"local_hold_text,omitempty"`
+	FlagsGeneration int64  `json:"flags_generation"`
+	FlagsMode       string `json:"flags_mode"`
+	SignedTime      int64  `json:"signed_time,omitempty"`
+	MinVersion      string `json:"min_version,omitempty"`
+	Supersedes      int    `json:"supersedes,omitempty"`
+	FlagsRollbacks  int    `json:"flags_rollbacks,omitempty"`
+}
+
+// localHolds are the local dial refusals shown as holds.
+var localHolds = map[string]string{
+	transport.HoldKeySetMissing: "waiting for signing keys",
 }
 
 // HoldText is what the UI shows for a hold reason.

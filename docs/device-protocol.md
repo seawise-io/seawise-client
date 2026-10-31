@@ -137,7 +137,7 @@ The keys the agent trusts for SeaWise signatures are published as a key set sign
 - `status` is `active`, `next` (announced ahead of use) or `revoked`.
 - `name` is required for `edge` keys and not allowed for others: 1 to 63 characters of lower-case letters, digits and `-`, not starting or ending with `-`.
 
-**Verification:** the header `kid` is a pinned root (`unknown_key`); the signature verifies; `version` is not lower than the last accepted version, and an equal version has an identical payload (`rollback`). The key set does not expire: update freshness is provided separately, and a running agent keeps its last key set through outages.
+**Verification:** the header `kid` is a pinned root (`unknown_key`); the signature verifies; `version` is not lower than the last accepted version, and an equal version has an identical payload (`rollback`). The key set does not expire: update freshness is provided separately, and a running agent keeps its last key set through outages. A verified key set is never deleted.
 
 **Key lookup.** A token signed with a key from the set is accepted only if the key ID is in the set (`unknown_key`), its role matches the format (`wrong_key_role`), and its status is `active` or `next` (`key_revoked`).
 
@@ -158,7 +158,7 @@ SeaWise asks the agent to do something it cannot undo (unpair, delete or disable
 
 **Verification:** key lookup with role `control`; signature; `server_id` is this agent's (`wrong_server`); `iat` not more than 300 seconds ahead (`not_yet_valid`) and `exp` not more than 300 seconds behind (`expired`) the agent's corrected clock (§9); `ins_id` not already executed (`replayed`).
 
-**Repetition.** The agent acts on an instruction only after it holds two valid copies with the same `ins_id`, `op` and `args` whose `iat` values are at least 600 seconds apart. It remembers executed `ins_id` values and ignores later copies.
+**Repetition.** The agent acts on an instruction only after it holds two valid copies with the same `ins_id`, `op` and `args` whose `iat` values are at least 600 seconds apart. It acts only while its signed update metadata is unexpired. It binds each `ins_id` to its first `op` and `args` (another content is refused), keeps at most 24 copies of one `ins_id`, and remembers executed `ins_id` values, answering later copies as replays. An `op` outside the table is refused, never ignored. `disable_app` and `set_visitor_enforcement` are answered `unsupported` until the agent holds the state they change.
 
 ## 9. Signed time
 

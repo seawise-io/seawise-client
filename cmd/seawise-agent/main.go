@@ -89,12 +89,13 @@ func main() {
 	} else {
 		defer keys.Close()
 	}
+	tr := startTrust(log, st)
 	cfg := agent.Config{
 		Store:    st,
 		Logger:   log,
 		Gateways: targetpolicy.Gateways(),
 		Tunnel: tunnelFactory(tunnelSetup{
-			log: log, st: st, keys: keys, keySet: verifiedKeySet, name: envOr("SEAWISE_TUNNEL_NAME", defaultTunnelName),
+			log: log, st: st, keys: keys, keySet: tr.current, keySetHold: tr.hold, name: envOr("SEAWISE_TUNNEL_NAME", defaultTunnelName),
 			client: &http.Client{Transport: controlplane.NewTransport(os.Getenv, nil), Timeout: 30 * time.Second},
 		}),
 	}
@@ -124,11 +125,12 @@ func main() {
 	}
 	go func() { _ = syncer.Run(ctx) }()
 
-	updates := startUpdateCheck(ctx, log, st)
+	updates, fresh := startUpdateCheck(ctx, log, st, tr)
+	instructions := newInstructions(log, st, tr, fresh, a.Reconcile)
 
 	ui, err := startAdminUI(ctx, log, st, a, accessLog, func(ctx context.Context) any {
 		as, _ := a.Status(ctx)
-		return map[string]any{"agent": as, "control_plane": syncer.Status(), "access_log": accessLog.Status(), "updates": updates()}
+		return map[string]any{"agent": as, "control_plane": syncer.Status(), "access_log": accessLog.Status(), "updates": updates(), "keyset": tr.status(), "instructions": instructions.status()}
 	})
 	if err != nil {
 		log.Error("admin UI", "error", err)
@@ -146,17 +148,21 @@ func main() {
 // local test repository; it does nothing in release builds.
 var testUpdateConfig = func(*updatecheck.Config) {}
 
-// startUpdateCheck starts the signed update check and returns its status.
-// Update checks only show notices; they never change the running client.
-func startUpdateCheck(ctx context.Context, log *slog.Logger, st *store.Store) func() updatecheck.Status {
-	fixed := func(s updatecheck.Status) func() updatecheck.Status { return func() updatecheck.Status { return s } }
-	if os.Getenv("SEAWISE_UPDATE_CHECK") == "0" {
-		return fixed(updatecheck.Status{State: updatecheck.StateDisabled})
+// startUpdateCheck starts the signed update check and returns its status
+// and whether its metadata is fresh. It hands each verified key set and
+// floor to tr and shows release notices unless SEAWISE_UPDATE_CHECK=0; it
+// never changes the running client.
+func startUpdateCheck(ctx context.Context, log *slog.Logger, st *store.Store, tr *trust) (func() updatecheck.Status, func(time.Time) bool) {
+	never := func(time.Time) bool { return false }
+	fixed := func(s updatecheck.Status) (func() updatecheck.Status, func(time.Time) bool) {
+		return func() updatecheck.Status { return s }, never
 	}
 	root, url := updatecheck.Pinned()
 	cfg := updatecheck.Config{
 		Root: root, URL: url, Dir: filepath.Join(st.Dir(), "tuf"),
 		Channel: envOr("SEAWISE_UPDATE_CHANNEL", "stable"), Version: constants.Version, Logger: log,
+		OnKeySet: tr.offer, AcceptedKeySet: tr.accepted, FloorBackup: tr.tufFloor, OnVerified: tr.setTUFFloor,
+		HideNotices: os.Getenv("SEAWISE_UPDATE_CHECK") == "0",
 	}
 	testUpdateConfig(&cfg)
 	c, err := updatecheck.New(cfg)
@@ -169,7 +175,7 @@ func startUpdateCheck(ctx context.Context, log *slog.Logger, st *store.Store) fu
 		return fixed(updatecheck.Status{State: updatecheck.StateError, Error: "update checks are off: " + err.Error()})
 	}
 	go c.Run(ctx)
-	return c.Status
+	return c.Status, c.Fresh
 }
 
 // startAdminUI serves the admin UI on the admin port (plain HTTP, or HTTPS

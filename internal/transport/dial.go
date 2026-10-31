@@ -86,6 +86,8 @@ type Config struct {
 	RoutesHeld   func() uint32 // nil: 0
 	// KillSwitch reports the persisted local kill switch.
 	KillSwitch func() bool
+	// KeySetHold names why the key set allows no new session, or "".
+	KeySetHold func() string
 	// DataDir holds the last-known edge addresses ("" keeps none).
 	DataDir string
 	// Getenv supplies HTTPS_PROXY and NO_PROXY (nil: the environment).
@@ -253,6 +255,11 @@ func (d *Dialer) Dial(ctx context.Context, name string, c Carriage) (*Session, e
 	}
 	if d.cfg.KillSwitch != nil && d.cfg.KillSwitch() {
 		return nil, local("kill_switch", ErrKillSwitch)
+	}
+	if d.cfg.KeySetHold != nil {
+		if reason := d.cfg.KeySetHold(); reason != "" {
+			return nil, local(reason, ErrKeySetHeld)
+		}
 	}
 	edges := d.cfg.Edges()
 	if edges == nil {

@@ -29,8 +29,6 @@ import (
 	"github.com/seawise/client/internal/controlplane"
 	"github.com/seawise/client/internal/store"
 	"github.com/theupdateframework/go-tuf/v2/metadata"
-	"github.com/theupdateframework/go-tuf/v2/metadata/config"
-	"github.com/theupdateframework/go-tuf/v2/metadata/updater"
 )
 
 const (
@@ -73,6 +71,21 @@ type Config struct {
 	Interval       time.Duration
 	RetryInterval  time.Duration
 
+	// HideNotices keeps release notices out of the status and the log;
+	// the key set is still fetched.
+	HideNotices bool
+	// FloorBackup returns a copy of the rollback floor kept outside this
+	// folder; the higher of it and the sealed floor applies. OnVerified
+	// stores the new floor there before the state is written; an error
+	// fails the check.
+	FloorBackup func() Versions
+	OnVerified  func(Versions) error
+	// OnKeySet receives the key set of every verified check.
+	OnKeySet func(token []byte)
+	// AcceptedKeySet returns the SHA-256 (hex) of the key set the agent
+	// accepted; nil uses the last one fetched.
+	AcceptedKeySet func() string
+
 	Now    func() time.Time
 	Logger *slog.Logger
 }
@@ -88,7 +101,9 @@ type Status struct {
 	Fresh        bool       `json:"fresh"`
 	Available    *Release   `json:"available"`
 	KeySetSHA256 string     `json:"keyset_sha256,omitempty"`
-	Error        string     `json:"error,omitempty"`
+	// ClockAhead means the clock is, or was, ahead of the signed metadata.
+	ClockAhead bool   `json:"clock_ahead,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 // saved is the verified result kept across restarts.
@@ -98,6 +113,17 @@ type saved struct {
 	TargetsVersion int64     `json:"targets_version"`
 	Release        *Release  `json:"release,omitempty"`
 	KeySetSHA256   string    `json:"keyset_sha256,omitempty"`
+	// Floor and RootSHA256 are the rollback floor and the stored root the
+	// next check starts from.
+	Floor      Versions `json:"floor"`
+	RootSHA256 string   `json:"root_sha256,omitempty"`
+	// KeySetListed and ListedKeySetSHA256 describe the key set the
+	// verified targets list.
+	KeySetListed       bool   `json:"keyset_listed,omitempty"`
+	ListedKeySetSHA256 string `json:"listed_keyset_sha256,omitempty"`
+	// ClockAhead records that a verification time past the timestamp's
+	// expiry was dropped: the clock had run ahead.
+	ClockAhead bool `json:"clock_ahead,omitempty"`
 }
 
 // Checker runs TUF update checks.
@@ -223,17 +249,35 @@ func (c *Checker) Check(ctx context.Context) error {
 	defer cancel()
 	now := c.cfg.Now()
 	res, err := c.check(ctx, now)
+	handOver, err := c.record(now, res, err)
+	if handOver != nil && c.cfg.OnKeySet != nil {
+		c.cfg.OnKeySet(handOver)
+	}
+	return err
+}
 
+// record keeps a check's result and returns the key set to hand over.
+func (c *Checker) record(now time.Time, res *result, err error) ([]byte, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.checkedAt = now
-	if res != nil {
-		c.saved = res.saved
-		if res.keySet != nil {
-			c.keySet = res.keySet
+	var handOver []byte
+	if res != nil && c.cfg.OnVerified != nil {
+		if werr := c.cfg.OnVerified(res.saved.Floor); werr != nil {
+			err, res = errors.Join(err, fmt.Errorf("store the floor copy: %w", werr)), nil
 		}
-		if werr := c.persist(); werr != nil {
+	}
+	if res != nil {
+		if werr := c.storeMetadata(res.files); werr != nil {
 			err = errors.Join(err, werr)
+		} else {
+			c.saved = res.saved
+			if res.keySet != nil {
+				c.keySet, handOver = res.keySet, res.keySet
+			}
+			if werr := c.persist(); werr != nil {
+				err = errors.Join(err, werr)
+			}
 		}
 	}
 	switch {
@@ -250,68 +294,67 @@ func (c *Checker) Check(ctx context.Context) error {
 		c.announced = r.Version
 		c.log.Info("a newer release is available", "version", r.Version, "channel", r.Channel, "image", r.Ref)
 	}
-	return err
+	return bytes.Clone(handOver), err
+}
+
+func laterOf(a, b time.Time) time.Time {
+	if b.After(a) {
+		return b
+	}
+	return a
 }
 
 type result struct {
 	saved  saved
 	keySet []byte
+	files  map[string][]byte
 }
 
 func (c *Checker) check(ctx context.Context, now time.Time) (*result, error) {
-	// Always start from the pinned root; go-tuf walks every rotation from
-	// there. Metadata on disk only sets the rollback floor.
-	ucfg, err := config.New(c.metaURL, c.cfg.Root)
+	c.mu.Lock()
+	floor, rootSum, prevKeySet, prevVerified := c.saved.Floor, c.saved.RootSHA256, c.saved.KeySetSHA256, c.saved.VerifiedAt
+	c.mu.Unlock()
+	if c.cfg.FloorBackup != nil {
+		floor = mergeFloor(floor, c.cfg.FloorBackup())
+	}
+	f := &fetcher{ctx: ctx, client: c.client, ua: "seawise-agent/" + c.cfg.Version}
+	repo, err := c.refresh(f, now, floor, rootSum)
 	if err != nil {
 		return nil, err
 	}
-	ucfg.RemoteTargetsURL = c.targetsURL
-	ucfg.LocalMetadataDir = filepath.Join(c.cfg.Dir, "metadata")
-	ucfg.LocalTargetsDir = filepath.Join(c.cfg.Dir, "targets")
-	ucfg.MaxRootRotations = maxRootRotations
-	ucfg.RootMaxLength = maxRootSize
-	ucfg.TimestampMaxLength = maxTimestampSize
-	ucfg.SnapshotMaxLength = maxSnapshotSize
-	ucfg.TargetsMaxLength = maxTargetsSize
-	ucfg.Fetcher = &fetcher{ctx: ctx, client: c.client, ua: "seawise-agent/" + c.cfg.Version}
-	up, err := updater.New(ucfg)
-	if err != nil {
-		return nil, err
-	}
-	up.UnsafeSetRefTime(now)
-	if err := up.Refresh(); err != nil {
-		return nil, err
-	}
-	tm := up.GetTrustedMetadataSet()
-	if err := checkRootThreshold(tm.Root); err != nil {
-		return nil, err
-	}
-	targets := tm.Targets[metadata.TARGETS]
-	fresh := tm.Root.Signed.Expires
-	for _, e := range []time.Time{tm.Timestamp.Signed.Expires, tm.Snapshot.Signed.Expires, targets.Signed.Expires} {
+	targets := repo.tm.Targets[metadata.TARGETS]
+	fresh := repo.tm.Root.Signed.Expires
+	for _, e := range []time.Time{repo.tm.Timestamp.Signed.Expires, repo.tm.Snapshot.Signed.Expires, targets.Signed.Expires} {
 		if e.Before(fresh) {
 			fresh = e
 		}
 	}
-	res := &result{saved: saved{VerifiedAt: now, FreshUntil: fresh, TargetsVersion: targets.Signed.Version}}
+	clockAhead := prevVerified.After(repo.tm.Timestamp.Signed.Expires)
+	if clockAhead {
+		c.log.Warn("the last verification time is past the signed timestamp's expiry; the clock had run ahead", "verified_at", prevVerified)
+		prevVerified = time.Time{}
+	}
+	res := &result{
+		saved: saved{VerifiedAt: laterOf(now, prevVerified), ClockAhead: clockAhead, FreshUntil: fresh, TargetsVersion: targets.Signed.Version,
+			Floor: repo.versions, RootSHA256: sum(repo.files["root.json"]), KeySetSHA256: prevKeySet},
+		files: repo.files,
+	}
 
 	var errs []error
 	// Without a key set in the targets, the last verified one stays in use.
-	c.mu.Lock()
-	res.saved.KeySetSHA256 = c.saved.KeySetSHA256
-	c.mu.Unlock()
 	if tf := targets.Signed.Targets[keySetTarget]; tf != nil {
-		data, err := c.target(up, tf, maxKeySetSize)
+		res.saved.KeySetListed = true
+		res.saved.ListedKeySetSHA256 = hex.EncodeToString(tf.Hashes["sha256"])
+		data, err := c.fetchTarget(f, tf, maxKeySetSize)
 		if err != nil {
 			errs = append(errs, err)
 		} else {
-			sum := sha256.Sum256(data)
-			res.saved.KeySetSHA256 = hex.EncodeToString(sum[:])
+			res.saved.KeySetSHA256 = sum(data)
 			res.keySet = data
 		}
 	}
 	if tf := targets.Signed.Targets["release/"+c.cfg.Channel+".json"]; tf != nil {
-		data, err := c.target(up, tf, maxReleaseSize)
+		data, err := c.fetchTarget(f, tf, maxReleaseSize)
 		if err == nil {
 			res.saved.Release, err = parseManifest(data, c.cfg.Channel)
 		}
@@ -320,20 +363,6 @@ func (c *Checker) check(ctx context.Context, now time.Time) (*result, error) {
 		}
 	}
 	return res, errors.Join(errs...)
-}
-
-func (c *Checker) target(up *updater.Updater, tf *metadata.TargetFiles, max int64) ([]byte, error) {
-	if tf.Length > max {
-		return nil, fmt.Errorf("target %s too large (%d bytes, limit %d)", tf.Path, tf.Length, max)
-	}
-	if path, data, err := up.FindCachedTarget(tf, ""); err == nil && path != "" {
-		return data, nil
-	}
-	_, data, err := up.DownloadTarget(tf, "", "")
-	if err != nil {
-		return nil, fmt.Errorf("target %s: %w", tf.Path, err)
-	}
-	return data, nil
 }
 
 // persist writes the key set first, then the record naming its hash, so a
@@ -374,9 +403,13 @@ func mac(key, data []byte) string {
 // macKey returns the state key, creating it on first use.
 func (c *Checker) macKey() ([]byte, error) {
 	path := filepath.Join(c.cfg.Dir, "state.key")
-	if b, err := store.ReadOwned(path); err == nil && len(b) == 32 {
+	b, err := store.ReadOwned(path)
+	switch {
+	case err == nil && len(b) == 32:
 		return b, nil
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+	case err == nil:
+		return nil, errors.New("state.key has the wrong length")
+	case !errors.Is(err, os.ErrNotExist):
 		return nil, err
 	}
 	key := make([]byte, 32)
@@ -444,8 +477,23 @@ func (c *Checker) Fresh(now time.Time) bool {
 
 // fresh also refuses times before the verification, so a clock moved
 // back cannot stretch the window.
+// It also needs the key set the verified targets list to be the one in
+// use, so a refused or unfetched set cannot sit beside fresh metadata.
 func (c *Checker) fresh(now time.Time) bool {
-	return !c.saved.FreshUntil.IsZero() && now.Before(c.saved.FreshUntil) && !now.Before(c.saved.VerifiedAt)
+	if c.saved.FreshUntil.IsZero() || !now.Before(c.saved.FreshUntil) || now.Before(c.saved.VerifiedAt) {
+		return false
+	}
+	if !c.saved.KeySetListed {
+		return true
+	}
+	if c.saved.ListedKeySetSHA256 == "" {
+		return false
+	}
+	held := c.saved.KeySetSHA256
+	if c.cfg.AcceptedKeySet != nil {
+		held = c.cfg.AcceptedKeySet()
+	}
+	return held == c.saved.ListedKeySetSHA256
 }
 
 // KeySet returns the last verified key set, or nil. It stays available
@@ -458,7 +506,7 @@ func (c *Checker) KeySet() []byte {
 
 func (c *Checker) available(now time.Time) *Release {
 	r := c.saved.Release
-	if r == nil || !c.fresh(now) || !now.Before(r.Expires) || !newer(c.cfg.Version, r.Version) {
+	if c.cfg.HideNotices || r == nil || !c.fresh(now) || !now.Before(r.Expires) || !newer(c.cfg.Version, r.Version) {
 		return nil
 	}
 	cp := *r
@@ -474,6 +522,7 @@ func (c *Checker) Status() Status {
 	st := Status{
 		State: c.state, Channel: c.cfg.Channel, Current: c.cfg.Version, Error: c.errMsg,
 		Fresh: c.fresh(now), Available: c.available(now), KeySetSHA256: c.saved.KeySetSHA256,
+		ClockAhead: c.saved.ClockAhead || now.Before(c.saved.VerifiedAt),
 	}
 	if st.State == StateOK && !st.Fresh {
 		st.State = StateExpired

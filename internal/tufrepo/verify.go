@@ -203,7 +203,7 @@ func Pull(ctx context.Context, hc *http.Client, base, dir string, trustedRoot []
 		return err
 	}
 	for name, b := range v.files {
-		if err := writeFile(filepath.Join(dir, "metadata", name), b); err != nil {
+		if err := writeRepoFile(filepath.Join(dir, "metadata", name), b); err != nil {
 			return err
 		}
 	}

@@ -52,10 +52,14 @@ const (
 	CauseEdgeTooOld   = "edge_too_old"
 )
 
+// HoldKeySetMissing is the local reason while no key set is verified.
+const HoldKeySetMissing = "keyset_missing"
+
 // Local failures.
 var (
 	ErrKillSwitch   = errors.New("transport: kill switch is on")
 	ErrNoEdgeList   = errors.New("transport: no verified edge list")
+	ErrKeySetHeld   = errors.New("transport: the key set allows no new session")
 	ErrEdgeUnlisted = errors.New("transport: tunnel name is not in the signed edge list")
 	ErrProxy        = errors.New("transport: unusable proxy setting")
 )

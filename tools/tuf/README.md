@@ -32,8 +32,8 @@ as `release/stable.json` described in `release/README.md`).
 |---|---|---|---|
 | root | three, threshold 2 (at least threshold + 1) | offline, apart | 365 days |
 | targets | one | offline | 120 days |
-| snapshot | one | CI environment `tuf-online` | 14 days |
-| timestamp | one | CI environment `tuf-online` | 14 days |
+| snapshot | one | SeaWise publishing job | 14 days |
+| timestamp | one | SeaWise publishing job | 14 days |
 
 Two of the three root keys sign every new root, so a single stolen root key
 cannot, and losing one root key does not need a client release. The tool
@@ -41,8 +41,9 @@ and the agent refuse a root threshold below 2 and a root role without at
 least one key more than its threshold. A new root must be signed by a
 threshold of the current root keys and of its own root keys.
 
-Expired metadata only stops update notices and actions the agent cannot
-verify freshly. It never stops running tunnels.
+Expired metadata only stops update notices and signed instructions. It
+never stops tunnels: the last verified key set stays in use, and nothing
+stored is deleted.
 
 ## Commands
 
@@ -58,26 +59,23 @@ tuf sign-targets -dir repo -key targets.pem -add keyset.json=keyset.json -add re
 tuf rotate-root -dir repo -sign root-2.pem -sign root-3.pem -role-key timestamp=timestamp2.pem.pub
 ```
 
-Online (scheduled workflow, or by hand):
+Published repository:
 
 ```
 tuf pull -url https://<host> -dir repo -root internal/updatecheck/root/production.json
-tuf refresh -dir repo -root internal/updatecheck/root/production.json \
-  -snapshot-key env:TUF_SNAPSHOT_KEY -timestamp-key env:TUF_TIMESTAMP_KEY
 tuf verify -metadata-only -dir repo -root internal/updatecheck/root/production.json
 ```
 
 `init` needs `-production` and an allowlist file of the key IDs printed by
 `keygen` (one per line), and refuses keys from a test key folder.
 
-`pull` and `refresh` verify the repository from the pinned root (`-root`)
-before writing or signing: the root chain, signatures, thresholds,
-versions, lengths and hashes. Expired snapshot or timestamp metadata is
-accepted there, since a refresh is what renews it; new versions always
-follow the verified ones. `refresh` always signs a new timestamp and signs a new snapshot when
-targets changed or the snapshot has less than 7 days left, so a weekly run
-keeps a 14-day expiry valid. Keys are files (`0600`) or `env:NAME` with the
-PEM in an environment variable. Private keys are never printed.
+`pull` verifies the repository from the pinned root (`-root`) before
+writing: the root chain, signatures, thresholds, versions, lengths and
+hashes. Snapshot and timestamp metadata are signed only by the SeaWise
+publishing job; this tool holds no online key. Versioned and
+content-addressed files are created once and never replaced; only
+`metadata/timestamp.json` is. Keys are files (`0600`) or `env:NAME` with
+the PEM in an environment variable. Private keys are never printed.
 
 `verify` runs the full client workflow from a trusted root and prints each
 role's version and expiry.
@@ -97,13 +95,3 @@ yearly with a test restore that signs a dummy key set. Until then
 `internal/updatecheck/root/production.json` is empty and the agent makes
 no update checks. Hardware-token signing is not built in; sign on the
 offline machine.
-
-## Scheduled refresh
-
-`.github/workflows/tuf-refresh.yml` runs weekly and on dispatch, only when
-the repository variable `TUF_REFRESH_ENABLED` is `true`, and refuses to
-run outside `main`. It needs the environment `tuf-online` with secrets
-`TUF_SNAPSHOT_KEY` and `TUF_TIMESTAMP_KEY` and the variable
-`TUF_REPO_URL`. Before adding any secret, limit `tuf-online` to the `main`
-branch and require a reviewer (see `release/README.md`). The publish step
-fails until a host is chosen.

@@ -12,11 +12,13 @@
 package tufrepo
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -296,7 +298,7 @@ func writeTarget(dir, name string, data []byte) error {
 	if err := os.MkdirAll(d, 0o750); err != nil {
 		return err
 	}
-	return writeFile(filepath.Join(d, hex.EncodeToString(sum[:])+"."+base), data)
+	return createVersioned(filepath.Join(d, hex.EncodeToString(sum[:])+"."+base), data)
 }
 
 // RefreshResult reports what Refresh wrote.
@@ -340,7 +342,7 @@ func Refresh(dir string, trustedRoot []byte, snapshotKey, timestampKey ed25519.P
 		if err != nil {
 			return res, err
 		}
-		if err := writeFile(filepath.Join(dir, "metadata", fmt.Sprintf("%d.snapshot.json", next.Signed.Version)), raw); err != nil {
+		if err := createVersioned(filepath.Join(dir, "metadata", fmt.Sprintf("%d.snapshot.json", next.Signed.Version)), raw); err != nil {
 			return res, err
 		}
 		snap, snapRaw, res.NewSnapshot = next, raw, true
@@ -489,7 +491,60 @@ func writeMeta[T metadata.Roles](dir, name string, m *metadata.Metadata[T]) erro
 	if err != nil {
 		return err
 	}
-	return writeFile(filepath.Join(dir, "metadata", name), raw)
+	return writeRepoFile(filepath.Join(dir, "metadata", name), raw)
+}
+
+// writeRepoFile replaces timestamp.json; every other repository file is
+// versioned or content-addressed and created only once.
+func writeRepoFile(path string, data []byte) error {
+	if filepath.Base(path) == "timestamp.json" {
+		return writeFile(path, data)
+	}
+	return createVersioned(path, data)
+}
+
+// createVersioned publishes path complete or not at all and never replaces
+// an existing file: the same bytes already there are accepted, anything
+// else (other content, a symlink) is an error.
+func createVersioned(path string, data []byte) error {
+	f, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	_, err = f.Write(data)
+	if err == nil {
+		err = f.Chmod(0o644)
+	}
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	err = os.Link(tmp, path)
+	if !errors.Is(err, fs.ErrExist) {
+		return err
+	}
+	info, lerr := os.Lstat(path)
+	if lerr != nil {
+		return lerr
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%s exists and is not a regular file", filepath.Base(path))
+	}
+	old, rerr := os.ReadFile(path) // #nosec G304 -- versioned name under the operator's repository folder, checked regular above
+	if rerr != nil {
+		return rerr
+	}
+	if !bytes.Equal(old, data) {
+		return fmt.Errorf("%s already exists with other content; versioned files are never replaced", filepath.Base(path))
+	}
+	return nil
 }
 
 // writeFile replaces path atomically so a host never serves a partial file.

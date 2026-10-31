@@ -23,17 +23,15 @@ import (
 // accepts it only while the signed edge list names that region.
 const defaultTunnelName = "tunnel-us-east.seawise.dev"
 
-// verifiedKeySet returns the key set verified against the pinned roots, or
-// nil while none is available; the tunnel waits for it.
-var verifiedKeySet = func() *protocol.KeySet { return nil }
-
 type tunnelSetup struct {
 	log    *slog.Logger
 	st     *store.Store
 	keys   identity.Keystore
 	keySet func() *protocol.KeySet
-	name   string
-	client *http.Client
+	// keySetHold names why no new session may be dialled, or "".
+	keySetHold func() string
+	name       string
+	client     *http.Client
 }
 
 // runID identifies this process to the edge; a reconnect with the same
@@ -95,6 +93,7 @@ func tunnelFactory(ts tunnelSetup) func() (agent.Tunnel, error) {
 				},
 				Key: k, ServerID: serverID, RunID: runID, AgentVersion: constants.Version,
 				KillSwitch: func() bool { return ts.st.State().HasHold(store.HoldKillSwitch) },
+				KeySetHold: ts.keySetHold,
 				DataDir:    ts.st.Dir(), Logger: ts.log,
 			})
 		}

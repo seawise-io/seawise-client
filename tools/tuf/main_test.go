@@ -63,7 +63,7 @@ func TestOfflineOnlineFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	sh("sign-targets", "-dir", repo, "-key", k("targets"), "-add", "keyset.json="+ks, "-add", "release/stable.json="+ks)
-	sh("refresh", "-dir", repo, "-root", rootFile, "-snapshot-key", k("snapshot"), "-timestamp-key", "env:TS_KEY")
+	online(t, repo, rootFile, k("snapshot"), k("timestamp"), now)
 	sh("verify", "-dir", repo, "-root", rootFile)
 	if !strings.Contains(out.String(), "target release/stable.json") || strings.Contains(out.String(), "TEST") {
 		t.Fatalf("verify output:\n%s", out.String())
@@ -71,7 +71,7 @@ func TestOfflineOnlineFlow(t *testing.T) {
 	// Root key 1 is lost: keys 2 and 3 rotate the timestamp key.
 	sh("keygen", "-out", k("timestamp2"))
 	sh("rotate-root", "-dir", repo, "-sign", k("root2"), "-sign", k("root3"), "-role-key", "timestamp="+k("timestamp2")+".pub")
-	sh("refresh", "-dir", repo, "-root", rootFile, "-snapshot-key", k("snapshot"), "-timestamp-key", k("timestamp2"))
+	online(t, repo, rootFile, k("snapshot"), k("timestamp2"), now)
 	sh("verify", "-dir", repo, "-root", rootFile)
 	if !strings.Contains(out.String(), "root      v2") {
 		t.Fatalf("verify output:\n%s", out.String())
@@ -79,6 +79,37 @@ func TestOfflineOnlineFlow(t *testing.T) {
 	// Expired at a later time.
 	if err := run([]string{"verify", "-dir", repo, "-root", filepath.Join(repo, "metadata", "1.root.json"), "-at", "2030-02-01T00:00:00Z"}, &out, os.Getenv, clock); err == nil {
 		t.Fatal("expired repository verified")
+	}
+}
+
+// online stands in for the platform job, the only online refresher.
+func online(t *testing.T, repo, rootFile, snapshotKey, timestampKey string, now time.Time) {
+	t.Helper()
+	root, err := os.ReadFile(rootFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk, err := tufrepo.LoadPrivateKey(snapshotKey, os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tk, err := tufrepo.LoadPrivateKey(timestampKey, os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tufrepo.Refresh(repo, root, sk, tk, now, tufrepo.DefaultOnlineExpiry, tufrepo.DefaultMinRemaining); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNoOnlineCommands(t *testing.T) {
+	var out strings.Builder
+	err := run([]string{"refresh", "-dir", t.TempDir()}, &out, os.Getenv, time.Now)
+	if err == nil || !strings.Contains(err.Error(), "unknown command") {
+		t.Fatalf("refresh: %v", err)
+	}
+	if strings.Contains(usage, "refresh") || strings.Contains(usage, "timestamp-key K") {
+		t.Fatal("usage still lists an online refresh")
 	}
 }
 
@@ -92,9 +123,7 @@ func TestInitTestIsMarked(t *testing.T) {
 	if !strings.Contains(out.String(), "TEST ONLY") {
 		t.Fatalf("no banner: %s", out.String())
 	}
-	if err := run([]string{"refresh", "-dir", d, "-root", filepath.Join(d, "metadata", "1.root.json"), "-snapshot-key", filepath.Join(d, "keys", "snapshot.pem"), "-timestamp-key", filepath.Join(d, "keys", "timestamp.pem")}, &out, os.Getenv, now); err != nil {
-		t.Fatal(err)
-	}
+	online(t, d, filepath.Join(d, "metadata", "1.root.json"), filepath.Join(d, "keys", "snapshot.pem"), filepath.Join(d, "keys", "timestamp.pem"), now())
 	out.Reset()
 	if err := run([]string{"verify", "-dir", d, "-root", filepath.Join(d, "metadata", "1.root.json")}, &out, os.Getenv, now); err != nil {
 		t.Fatal(err)
