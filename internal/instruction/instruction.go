@@ -54,6 +54,9 @@ const (
 	CodeBusy       = "busy"
 	CodeExecFailed = "exec_failed"
 	CodeStore      = "store_failed"
+	// CodeSuperseded refuses a set_visitor_enforcement whose seq is not
+	// above the stored one.
+	CodeSuperseded = "superseded"
 )
 
 // Refusal is a refused copy.
@@ -92,7 +95,11 @@ type Config struct {
 	Now       func() time.Time
 	Unpair    func(ctx context.Context) error
 	DeleteApp func(ctx context.Context, localID string) error
-	Logger    *slog.Logger
+	// SetVisitorEnforcement stores a visitor-token mode with its seq;
+	// VisitorSeq is the seq stored last (0 for none).
+	SetVisitorEnforcement func(ctx context.Context, mode string, seq int64) error
+	VisitorSeq            func() int64
+	Logger                *slog.Logger
 }
 
 const (
@@ -140,7 +147,7 @@ func New(cfg Config) (*Processor, error) {
 		return nil, errors.New("instruction folder not set")
 	case !claims.ValidUUID(cfg.ServerID):
 		return nil, errors.New("server id is not a canonical uuid")
-	case cfg.KeySet == nil || cfg.Fresh == nil || cfg.Unpair == nil || cfg.DeleteApp == nil:
+	case cfg.KeySet == nil || cfg.Fresh == nil || cfg.Unpair == nil || cfg.DeleteApp == nil || cfg.SetVisitorEnforcement == nil || cfg.VisitorSeq == nil:
 		return nil, errors.New("key set, freshness and executors are required")
 	}
 	if cfg.Now == nil {
@@ -240,6 +247,10 @@ func (p *Processor) Submit(ctx context.Context, token string) (Outcome, error) {
 		p.log.Warn("instruction refused", "error", err)
 		return "", refuse(string(protocol.CodeOf(err)), err)
 	}
+	if in.Op == protocol.OpSetVisitorEnforcement && in.Args.Seq <= p.cfg.VisitorSeq() {
+		p.log.Info("visitor-token instruction superseded by a newer one", "ins_id", in.InsID)
+		return "", refuse(CodeSuperseded, errors.New("a newer visitor-token mode is stored"))
+	}
 	p.prune(now)
 	r := p.st.Records[in.InsID]
 	if r == nil {
@@ -259,7 +270,7 @@ func (p *Processor) Submit(ctx context.Context, token string) (Outcome, error) {
 		slices.Sort(r.IATs)
 	}
 	r.EXP = max(r.EXP, in.EXP)
-	if in.Op == protocol.OpDisableApp || in.Op == protocol.OpSetVisitorEnforcement {
+	if in.Op == protocol.OpDisableApp {
 		r.State = stateUnsupported
 	}
 	p.st.Records[in.InsID] = r
@@ -297,6 +308,12 @@ func (p *Processor) execute(ctx context.Context, id string, r *record) error {
 		err = p.cfg.Unpair(ctx)
 	case protocol.OpDeleteApp:
 		err = p.cfg.DeleteApp(ctx, r.Args.LocalID)
+	case protocol.OpSetVisitorEnforcement:
+		if r.Args.Seq < 1 {
+			err = errors.New("no seq recorded")
+			break
+		}
+		err = p.cfg.SetVisitorEnforcement(ctx, r.Args.Mode, r.Args.Seq)
 	default:
 		err = fmt.Errorf("op %s cannot be carried out", r.Op)
 	}

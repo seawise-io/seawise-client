@@ -2,12 +2,17 @@ package main
 
 import (
 	"context"
+	"log/slog"
+	"math"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/seawise/client/internal/keyset"
 	"github.com/seawise/client/internal/store"
 	"github.com/seawise/client/internal/transport"
+	"github.com/seawise/client/internal/visitor"
 )
 
 func pairedStore(t *testing.T) *store.Store {
@@ -110,4 +115,59 @@ func TestInstructionsFollowTheAccount(t *testing.T) {
 	if h.status() == nil {
 		t.Fatal("no status")
 	}
+}
+
+// set_visitor_enforcement changes the paired server's mode, persisted per
+// server; another pairing starts in observe.
+func TestVisitorEnforcementFollowsTheAccount(t *testing.T) {
+	st := pairedStore(t)
+	h := newInstructions(nil, st, &trust{}, func(time.Time) bool { return false }, func(context.Context) error { return nil })
+	if h.visitorMode() != visitor.Observe {
+		t.Fatal("default is not observe")
+	}
+	set := setVisitorEnforcement(slog.New(slog.DiscardHandler), h.modeStore())
+	if err := set(context.Background(), "enforce", 100); err != nil {
+		t.Fatal(err)
+	}
+	if h.visitorMode() != visitor.Enforce {
+		t.Fatal("mode not applied")
+	}
+	if err := set(context.Background(), "observe", 99); err != nil || h.visitorMode() != visitor.Enforce {
+		t.Fatalf("older instruction applied: %v", err)
+	}
+	if err := set(context.Background(), "strict", 101); err == nil {
+		t.Fatal("unknown mode accepted")
+	}
+	fi, err := os.Stat(filepath.Join(st.Dir(), "visitor", "7c9e6679-7425-40de-944b-e07fc1f90ae7", visitor.ModeFile))
+	if err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("mode file: %v %v", fi, err)
+	}
+	if s, ok := h.visitorStatus().(visitor.ModeStatus); !ok || s.Mode != visitor.Enforce || s.Seq != 100 {
+		t.Fatalf("status %#v", h.visitorStatus())
+	}
+
+	if visitorSeq(nil)() != math.MaxInt64 || visitorSeq(h.modeStore())() != 100 {
+		t.Fatal("seq source")
+	}
+
+	h2 := newInstructions(nil, st, &trust{}, func(time.Time) bool { return false }, func(context.Context) error { return nil })
+	if h2.visitorMode() != visitor.Enforce {
+		t.Fatal("mode lost on restart")
+	}
+	other := "11111111-2222-4333-8444-555555555555"
+	_ = st.Update(func(s *store.State) error {
+		s.Account = &store.Account{ServerID: other, FRPServerAddr: "frp-1.seawise.dev", FRPServerPort: 7000, APIURL: "https://api.seawise.io"}
+		return nil
+	})
+	if h.visitorMode() != visitor.Observe {
+		t.Fatal("another server inherited the mode")
+	}
+	_ = st.Update(func(s *store.State) error { s.Account = nil; return nil })
+	if h.visitorMode() != visitor.Observe || h.modeStore() != nil {
+		t.Fatal("unpaired server has a mode")
+	}
+	if err := setVisitorEnforcement(slog.New(slog.DiscardHandler), nil)(context.Background(), "enforce", 1); err == nil {
+		t.Fatal("no store accepted")
+	}
+
 }

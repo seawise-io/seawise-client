@@ -154,11 +154,11 @@ SeaWise asks the agent to do something it cannot undo (unpair, delete or disable
 | `unpair` | `{}` |
 | `delete_app` | `{"local_id": <1-64 characters>}` |
 | `disable_app` | `{"local_id": <1-64 characters>}` |
-| `set_visitor_enforcement` | `{"mode": "observe" \| "enforce"}` |
+| `set_visitor_enforcement` | `{"mode": "observe" \| "enforce", "seq": n}`; `seq` is a positive safe integer, higher for each later mode change and the same in every copy |
 
 **Verification:** key lookup with role `control`; signature; `server_id` is this agent's (`wrong_server`); `iat` not more than 300 seconds ahead (`not_yet_valid`) and `exp` not more than 300 seconds behind (`expired`) the agent's corrected clock (§9); `ins_id` not already executed (`replayed`).
 
-**Repetition.** The agent acts on an instruction only after it holds two valid copies with the same `ins_id`, `op` and `args` whose `iat` values are at least 600 seconds apart. It acts only while its signed update metadata is unexpired. It binds each `ins_id` to its first `op` and `args` (another content is refused), keeps at most 24 copies of one `ins_id`, and remembers executed `ins_id` values, answering later copies as replays. An `op` outside the table is refused, never ignored. `disable_app` and `set_visitor_enforcement` are answered `unsupported` until the agent holds the state they change.
+**Repetition.** The agent acts on an instruction only after it holds two valid copies with the same `ins_id`, `op` and `args` whose `iat` values are at least 600 seconds apart. It acts only while its signed update metadata is unexpired. It binds each `ins_id` to its first `op` and `args` (another content is refused), keeps at most 24 copies of one `ins_id`, and remembers executed `ins_id` values, answering later copies as replays. An `op` outside the table is refused, never ignored. `disable_app` is answered `unsupported` until the agent holds the state it changes. A `set_visitor_enforcement` whose `seq` is not above the one the agent stored is refused (`superseded`), so a late copy of an older mode change never undoes a newer one.
 
 ## 9. Signed time
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"path/filepath"
 	"slices"
 	"sync"
@@ -16,6 +17,7 @@ import (
 	"github.com/seawise/client/internal/protocol"
 	"github.com/seawise/client/internal/store"
 	"github.com/seawise/client/internal/updatecheck"
+	"github.com/seawise/client/internal/visitor"
 )
 
 // testKeySetConfig lets the memory budget test pin test roots; it does
@@ -148,6 +150,7 @@ type instructions struct {
 
 	mu       sync.Mutex
 	p        *instruction.Processor
+	modes    *visitor.ModeStore
 	serverID string
 }
 
@@ -169,14 +172,20 @@ func (h *instructions) get() (*instruction.Processor, string) {
 	if id == h.serverID && (h.p != nil || id == "") {
 		return h.p, id
 	}
-	h.p, h.serverID = nil, id
+	h.p, h.modes, h.serverID = nil, nil, id
 	if id == "" {
 		return nil, ""
 	}
+	modes, err := visitor.OpenMode(filepath.Join(h.st.Dir(), "visitor", id), h.log)
+	if err != nil {
+		h.log.Error("visitor-token mode unavailable; visitors are observed", "error", err)
+	}
+	h.modes = modes
 	ex := executors(h.st, h.reconcile)
 	p, err := instruction.New(instruction.Config{
 		Dir: filepath.Join(h.st.Dir(), "instructions", id), ServerID: id,
-		KeySet: h.t.current, Fresh: h.fresh, Unpair: ex.unpair, DeleteApp: ex.deleteApp, Logger: h.log,
+		KeySet: h.t.current, Fresh: h.fresh, Unpair: ex.unpair, DeleteApp: ex.deleteApp,
+		SetVisitorEnforcement: setVisitorEnforcement(h.log, modes), VisitorSeq: visitorSeq(modes), Logger: h.log,
 	})
 	if err != nil {
 		h.log.Error("signed instructions unavailable", "error", err)
@@ -184,6 +193,60 @@ func (h *instructions) get() (*instruction.Processor, string) {
 	}
 	h.p = p
 	return p, id
+}
+
+// setVisitorEnforcement is the executor of set_visitor_enforcement.
+func setVisitorEnforcement(log *slog.Logger, m *visitor.ModeStore) func(context.Context, string, int64) error {
+	return func(_ context.Context, mode string, seq int64) error {
+		if m == nil {
+			return errors.New("visitor-token mode store unavailable")
+		}
+		changed, err := m.Set(visitor.Mode(mode), seq)
+		switch {
+		case err != nil:
+			return err
+		case changed:
+			log.Warn("visitor-token mode set by signed instruction", "mode", mode)
+		default:
+			log.Info("visitor-token instruction superseded by a newer one; ignored", "mode", mode)
+		}
+		return nil
+	}
+}
+
+// visitorSeq is the stored mode's seq; without a store every instruction
+// is refused, since none can be carried out.
+func visitorSeq(m *visitor.ModeStore) func() int64 {
+	return func() int64 {
+		if m == nil {
+			return math.MaxInt64
+		}
+		return m.Seq()
+	}
+}
+
+// modeStore is the paired server's visitor-token mode store, or nil.
+func (h *instructions) modeStore() *visitor.ModeStore {
+	h.get()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.modes
+}
+
+// visitorMode is the paired server's visitor-token mode; observe when
+// unpaired or unknown.
+func (h *instructions) visitorMode() visitor.Mode {
+	if m := h.modeStore(); m != nil {
+		return m.Mode()
+	}
+	return visitor.Observe
+}
+
+func (h *instructions) visitorStatus() any {
+	if m := h.modeStore(); m != nil {
+		return m.Status()
+	}
+	return map[string]string{"state": "not_paired"}
 }
 
 func (h *instructions) status() any {

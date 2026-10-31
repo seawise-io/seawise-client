@@ -705,7 +705,10 @@ func genInstruction() vecFile {
 		ok("valid-disable-app", base),
 		ok("valid-delete-app", with(func(in *Instruction) { in.Op = OpDeleteApp })),
 		ok("valid-unpair", with(func(in *Instruction) { in.Op = OpUnpair; in.Args = InstructionArgs{} })),
-		ok("valid-set-visitor-enforcement", with(func(in *Instruction) { in.Op = OpSetVisitorEnforcement; in.Args = InstructionArgs{Mode: "enforce"} })),
+		ok("valid-set-visitor-enforcement", with(func(in *Instruction) {
+			in.Op = OpSetVisitorEnforcement
+			in.Args = InstructionArgs{Mode: "enforce", Seq: 7}
+		})),
 		{Name: "valid-announced-next-key", Input: sign(vecKey("control-2"), base), Context: ctx, Expect: "ok", Result: raw(base)},
 		{Name: "valid-expiry-within-leeway", Input: sign(c1, with(func(in *Instruction) { in.IAT = vecNow - 900; in.EXP = vecNow - leewaySec })), Context: ctx, Expect: "ok", Result: raw(with(func(in *Instruction) { in.IAT = vecNow - 900; in.EXP = vecNow - leewaySec }))},
 		{Name: "expired", Input: sign(c1, with(func(in *Instruction) { in.IAT = vecNow - 900; in.EXP = vecNow - leewaySec - 1 })), Context: ctx, Expect: "expired"},
@@ -721,7 +724,17 @@ func genInstruction() vecFile {
 		{Name: "exp-before-iat", Input: sign(c1, with(func(in *Instruction) { in.EXP = in.IAT })), Context: ctx, Expect: "malformed"},
 		{Name: "unknown-op", Input: sign(c1, with(func(in *Instruction) { in.Op = "run_command" })), Context: ctx, Expect: "malformed"},
 		{Name: "unpair-with-args", Input: sign(c1, with(func(in *Instruction) { in.Op = OpUnpair })), Context: ctx, Expect: "malformed"},
-		{Name: "bad-enforcement-mode", Input: sign(c1, with(func(in *Instruction) { in.Op = OpSetVisitorEnforcement; in.Args = InstructionArgs{Mode: "off"} })), Context: ctx, Expect: "malformed"},
+		{Name: "bad-enforcement-mode", Input: sign(c1, with(func(in *Instruction) { in.Op = OpSetVisitorEnforcement; in.Args = InstructionArgs{Mode: "off", Seq: 7} })), Context: ctx, Expect: "malformed"},
+		{Name: "enforcement-without-seq", Input: sign(c1, with(func(in *Instruction) { in.Op = OpSetVisitorEnforcement; in.Args = InstructionArgs{Mode: "enforce"} })), Context: ctx, Expect: "malformed"},
+		{Name: "enforcement-seq-unsafe", Input: sign(c1, with(func(in *Instruction) {
+			in.Op = OpSetVisitorEnforcement
+			in.Args = InstructionArgs{Mode: "enforce", Seq: maxTime + 1}
+		})), Context: ctx, Expect: "malformed"},
+		{Name: "enforcement-seq-negative", Input: sign(c1, with(func(in *Instruction) {
+			in.Op = OpSetVisitorEnforcement
+			in.Args = InstructionArgs{Mode: "enforce", Seq: -1}
+		})), Context: ctx, Expect: "malformed"},
+		{Name: "delete-app-with-seq", Input: sign(c1, with(func(in *Instruction) { in.Op = OpDeleteApp; in.Args = InstructionArgs{LocalID: "app-1", Seq: 1} })), Context: ctx, Expect: "malformed"},
 		{Name: "args-unknown-member", Input: signRaw(c1, hdr, strings.Replace(payload, `"args":{`, `"args":{"all":true,`, 1)), Context: ctx, Expect: "malformed"},
 		{Name: "claim-duplicate-op", Input: signRaw(c1, hdr, strings.Replace(payload, `"op":"disable_app"`, `"op":"unpair","op":"disable_app"`, 1)), Context: ctx, Expect: "malformed"},
 		{Name: "alg-none", Input: noneToken(strings.Replace(hdr, `"EdDSA"`, `"none"`, 1), payload), Context: ctx, Expect: "bad_alg"},

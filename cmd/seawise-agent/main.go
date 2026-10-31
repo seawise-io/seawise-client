@@ -130,7 +130,7 @@ func main() {
 
 	ui, err := startAdminUI(ctx, log, st, a, accessLog, func(ctx context.Context) any {
 		as, _ := a.Status(ctx)
-		return map[string]any{"agent": as, "control_plane": syncer.Status(), "access_log": accessLog.Status(), "updates": updates(), "keyset": tr.status(), "instructions": instructions.status()}
+		return map[string]any{"agent": as, "control_plane": syncer.Status(), "access_log": accessLog.Status(), "updates": updates(), "keyset": tr.status(), "instructions": instructions.status(), "visitor_tokens": instructions.visitorStatus()}
 	})
 	if err != nil {
 		log.Error("admin UI", "error", err)

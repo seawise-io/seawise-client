@@ -58,6 +58,8 @@ type env struct {
 	fresh    bool
 	unpairs  int
 	deleted  []string
+	modes    []string
+	seq      int64
 	failNext error
 }
 
@@ -110,6 +112,16 @@ func (e *env) config() Config {
 			e.deleted = append(e.deleted, id)
 			return nil
 		},
+		SetVisitorEnforcement: func(_ context.Context, mode string, seq int64) error {
+			if err := e.failNext; err != nil {
+				e.failNext = nil
+				return err
+			}
+			e.modes = append(e.modes, fmt.Sprintf("%s#%d", mode, seq))
+			e.seq = max(e.seq, seq)
+			return nil
+		},
+		VisitorSeq: func() int64 { return e.seq },
 	}
 }
 
@@ -216,20 +228,117 @@ func TestStaleMetadataDefersExecution(t *testing.T) {
 func TestUnsupportedOps(t *testing.T) {
 	e := newEnv(t)
 	p := e.proc()
-	for i, c := range []struct {
-		op   string
-		args protocol.InstructionArgs
-	}{{protocol.OpDisableApp, app}, {protocol.OpSetVisitorEnforcement, protocol.InstructionArgs{Mode: "enforce"}}} {
-		id := fmt.Sprintf("dW5zdXBwb3J0ZWQtb3AtMDAw%d", i)
-		for n := 0; n < 2; n++ {
-			o, err := submit(t, p, e.copyAt(id, c.op, c.args, t0.Add(time.Duration(n)*time.Minute)))
-			if o != OutcomeUnsupported || err != nil {
-				t.Fatalf("%s copy %d: %s %v", c.op, n, o, err)
-			}
+	id := "dW5zdXBwb3J0ZWQtb3AtMDAw0"
+	for n := 0; n < 2; n++ {
+		o, err := submit(t, p, e.copyAt(id, protocol.OpDisableApp, app, t0.Add(time.Duration(n)*time.Minute)))
+		if o != OutcomeUnsupported || err != nil {
+			t.Fatalf("copy %d: %s %v", n, o, err)
 		}
 	}
-	if e.unpairs != 0 || len(e.deleted) != 0 {
+	if e.unpairs != 0 || len(e.deleted) != 0 || len(e.modes) != 0 {
 		t.Fatal("unsupported op changed something")
+	}
+}
+
+// set_visitor_enforcement runs under the same rules as the other ops and
+// passes its signed seq.
+func TestSetVisitorEnforcement(t *testing.T) {
+	e := newEnv(t)
+	p := e.proc()
+	enforce := protocol.InstructionArgs{Mode: "enforce", Seq: 3}
+	e.now = t0.Add(5 * time.Minute)
+	if o, err := submit(t, p, e.copyAt(ins1, protocol.OpSetVisitorEnforcement, enforce, t0.Add(5*time.Minute))); o != OutcomePending || err != nil {
+		t.Fatalf("first copy: %s %v", o, err)
+	}
+	if o, err := submit(t, p, e.copyAt(ins1, protocol.OpSetVisitorEnforcement, enforce, t0)); o != OutcomePending || err != nil {
+		t.Fatalf("copies 5 min apart: %s %v", o, err)
+	}
+	e.now = t0.Add(10 * time.Minute)
+	e.fresh = false
+	last := e.copyAt(ins1, protocol.OpSetVisitorEnforcement, enforce, t0.Add(10*time.Minute))
+	if o, err := submit(t, p, last); o != OutcomePending || err != nil || len(e.modes) != 0 {
+		t.Fatalf("stale metadata: %s %v %v", o, err, e.modes)
+	}
+	e.fresh = true
+	e.failNext = errors.New("disk full")
+	if _, err := submit(t, p, last); CodeOf(err) != CodeExecFailed || len(e.modes) != 0 {
+		t.Fatalf("failed executor: %v %v", err, e.modes)
+	}
+	if o, err := submit(t, p, last); o != OutcomeExecuted || err != nil {
+		t.Fatalf("fresh: %s %v", o, err)
+	}
+	if len(e.modes) != 1 || e.modes[0] != "enforce#3" {
+		t.Fatalf("modes %v", e.modes)
+	}
+	if o, _ := submit(t, p, last); o != OutcomeReplayed || len(e.modes) != 1 {
+		t.Fatalf("replay: %s %v", o, e.modes)
+	}
+	if st := p.Status(); st.Executed != 1 || st.Unsupported != 0 {
+		t.Fatalf("status %+v", st)
+	}
+}
+
+// Late copies of an older instruction, whatever their iat, never undo a
+// newer one: the signed seq orders them.
+func TestOlderEnforcementInstructionSuperseded(t *testing.T) {
+	e := newEnv(t)
+	p := e.proc()
+	oldID, newID := "b2xkLWVuZm9yY2VtZW50LTAwMDE", "bmV3LWVuZm9yY2VtZW50LTAwMDI"
+	older := protocol.InstructionArgs{Mode: "enforce", Seq: 1}
+	newer := protocol.InstructionArgs{Mode: "observe", Seq: 2}
+	e.now = t0.Add(20 * time.Minute)
+	// The older one's first copy arrives first, then the newer one runs.
+	submit(t, p, e.copyAt(oldID, protocol.OpSetVisitorEnforcement, older, t0))
+	submit(t, p, e.copyAt(newID, protocol.OpSetVisitorEnforcement, newer, t0.Add(5*time.Minute)))
+	if o, err := submit(t, p, e.copyAt(newID, protocol.OpSetVisitorEnforcement, newer, t0.Add(15*time.Minute))); o != OutcomeExecuted || err != nil {
+		t.Fatalf("newer: %s %v", o, err)
+	}
+	// Late copies of the older one, issued after the newer one's copies.
+	for _, at := range []time.Duration{16 * time.Minute, 20 * time.Minute} {
+		o, err := submit(t, p, e.copyAt(oldID, protocol.OpSetVisitorEnforcement, older, t0.Add(at)))
+		if o != "" || CodeOf(err) != CodeSuperseded {
+			t.Fatalf("late copy at %v: %q %v", at, o, err)
+		}
+	}
+	// A fresh ins_id with a stale seq is refused too.
+	if _, err := submit(t, p, e.copyAt("cmV1c2VkLXNlcS0wMDAwMDAwMDA", protocol.OpSetVisitorEnforcement, protocol.InstructionArgs{Mode: "enforce", Seq: 2}, t0.Add(20*time.Minute))); CodeOf(err) != CodeSuperseded {
+		t.Fatalf("equal seq: %v", err)
+	}
+	if len(e.modes) != 1 || e.modes[0] != "observe#2" || e.seq != 2 {
+		t.Fatalf("modes %v seq %d", e.modes, e.seq)
+	}
+}
+
+func TestSetVisitorEnforcementFinishedOnRestart(t *testing.T) {
+	e := newEnv(t)
+	p := e.proc()
+	observe := protocol.InstructionArgs{Mode: "observe", Seq: 4}
+	e.now = t0.Add(10 * time.Minute)
+	submit(t, p, e.copyAt(ins1, protocol.OpSetVisitorEnforcement, observe, t0))
+	e.failNext = errors.New("crash")
+	if _, err := submit(t, p, e.copyAt(ins1, protocol.OpSetVisitorEnforcement, observe, t0.Add(10*time.Minute))); err == nil {
+		t.Fatal("no error")
+	}
+	if p.Status().Pending != 1 {
+		t.Fatal("record lost")
+	}
+	e.proc()
+	if len(e.modes) != 1 || e.modes[0] != "observe#4" {
+		t.Fatalf("modes %v", e.modes)
+	}
+}
+
+func TestSetVisitorEnforcementRequired(t *testing.T) {
+	e := newEnv(t)
+	c := e.config()
+	c.SetVisitorEnforcement = nil
+	if _, err := New(c); err == nil {
+		t.Fatal("no executor accepted")
+	}
+	c = e.config()
+	c.VisitorSeq = nil
+	if _, err := New(c); err == nil {
+		t.Fatal("no seq source accepted")
 	}
 }
 
@@ -477,5 +586,35 @@ func TestRefusalText(t *testing.T) {
 	}
 	if CodeOf(errors.New("x")) != "" {
 		t.Fatal("code of a plain error")
+	}
+}
+
+func TestExecutingRecordWithoutSeq(t *testing.T) {
+	e := newEnv(t)
+	if err := os.MkdirAll(e.dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	st := fmt.Sprintf(`{"schema":1,"floor":0,"records":{%q:{"op":"set_visitor_enforcement","args":{"mode":"enforce"},"iats":[%d],"exp":%d,"state":"executing"}}}`, ins1, t0.Unix(), t0.Unix()+3600)
+	if err := os.WriteFile(filepath.Join(e.dir, StateFile), []byte(st), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := e.proc()
+	if len(e.modes) != 0 || p.Status().Pending != 1 {
+		t.Fatalf("modes %v status %+v", e.modes, p.Status())
+	}
+}
+
+func TestExecutingRecordWithSeqOne(t *testing.T) {
+	e := newEnv(t)
+	if err := os.MkdirAll(e.dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	st := fmt.Sprintf(`{"schema":1,"floor":0,"records":{%q:{"op":"set_visitor_enforcement","args":{"mode":"enforce","seq":1},"iats":[%d],"exp":%d,"state":"executing"}}}`, ins1, t0.Unix(), t0.Unix()+3600)
+	if err := os.WriteFile(filepath.Join(e.dir, StateFile), []byte(st), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e.proc()
+	if len(e.modes) != 1 || e.modes[0] != "enforce#1" {
+		t.Fatalf("modes %v", e.modes)
 	}
 }

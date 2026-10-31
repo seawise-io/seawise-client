@@ -28,6 +28,9 @@ var localIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 type InstructionArgs struct {
 	LocalID string `json:"local_id,omitempty"`
 	Mode    string `json:"mode,omitempty"`
+	// Seq orders set_visitor_enforcement instructions: a later one has a
+	// higher seq, the same in every copy.
+	Seq int64 `json:"seq,omitempty"`
 }
 
 // Instruction is a signed instruction from SeaWise to one agent.
@@ -74,12 +77,15 @@ func (in *Instruction) check() error {
 			return fail(CodeMalformed, "unpair takes no arguments")
 		}
 	case OpDeleteApp, OpDisableApp:
-		if a.Mode != "" || !localIDRe.MatchString(a.LocalID) {
+		if a.Mode != "" || a.Seq != 0 || !localIDRe.MatchString(a.LocalID) {
 			return fail(CodeMalformed, "%s needs a valid local_id", in.Op)
 		}
 	case OpSetVisitorEnforcement:
 		if a.LocalID != "" || (a.Mode != "observe" && a.Mode != "enforce") {
 			return fail(CodeMalformed, "mode must be observe or enforce")
+		}
+		if a.Seq < 1 || a.Seq > maxTime {
+			return fail(CodeMalformed, "seq must be a positive safe integer")
 		}
 	default:
 		return fail(CodeMalformed, "unknown op")
@@ -92,7 +98,7 @@ func argMembers(op string) []string {
 	case OpDeleteApp, OpDisableApp:
 		return []string{"local_id"}
 	case OpSetVisitorEnforcement:
-		return []string{"mode"}
+		return []string{"mode", "seq"}
 	}
 	return nil
 }
