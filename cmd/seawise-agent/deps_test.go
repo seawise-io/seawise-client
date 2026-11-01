@@ -53,3 +53,15 @@ func TestReleaseBuildsHaveNoTestTag(t *testing.T) {
 		t.Error("the test hook is part of the default build")
 	}
 }
+
+func TestAppSyncNeverCommitsRotations(t *testing.T) {
+	b, err := os.ReadFile("appsync.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"CommitRotation", "RecoverRevoked"} {
+		if strings.Contains(string(b), bad) {
+			t.Fatalf("app sync wiring calls %s; only the session manager's signed proof may commit", bad)
+		}
+	}
+}

@@ -35,6 +35,14 @@ var leftoverFiles = []string{"frpc.toml", "frpc.pid"}
 
 var ErrStopped = errors.New("agent stopped")
 
+// ErrNoTunnel means no session manager runs to prove a rotation.
+var ErrNoTunnel = errors.New("no tunnel session manager running")
+
+// rotationProver is the session manager's on-demand rotation proof.
+type rotationProver interface {
+	ProveRotation() error
+}
+
 // ErrNotReady wraps a missing tunnel prerequisite.
 var ErrNotReady = errors.New("tunnel not ready")
 
@@ -85,6 +93,7 @@ const (
 	intentHold
 	intentRelease
 	intentStatus
+	intentProve
 )
 
 // Hold reasons. Tunnels run only while no hold is set.
@@ -273,6 +282,13 @@ func (a *Agent) SetKillSwitch(ctx context.Context, on bool) error {
 	return serr
 }
 
+// ProveRotation asks the running session manager to prove the pending
+// device key; the agent never commits a rotation itself.
+func (a *Agent) ProveRotation(ctx context.Context) error {
+	_, err := a.send(ctx, intentProve, "")
+	return err
+}
+
 func (a *Agent) Status(ctx context.Context) (Status, error) {
 	return a.send(ctx, intentStatus, "")
 }
@@ -308,6 +324,15 @@ func (a *Agent) handle(in intent) reply {
 	case intentRelease:
 		delete(a.holds, in.reason)
 		err = a.reconcile()
+	case intentProve:
+		p, ok := rotationProver(nil), false
+		if a.tunnel != nil {
+			p, ok = a.tunnel.tunnel.(rotationProver)
+		}
+		if !ok {
+			return reply{status: a.snapshot(), err: ErrNoTunnel}
+		}
+		err = p.ProveRotation()
 	}
 	return reply{status: a.snapshot(), err: err}
 }

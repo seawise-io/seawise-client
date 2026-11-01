@@ -136,6 +136,9 @@ func TestFirstRunImportPerGroup(t *testing.T) {
 			if sec.FRPToken != "synthetic-frp-token-"+g || !strings.HasPrefix(sec.AdminPasswordHash, "$2") {
 				t.Fatalf("secrets = %+v", sec)
 			}
+			if st.Import == nil || st.Import.ServerID != st.Account.ServerID {
+				t.Fatalf("imported server not recorded: %+v", st.Import)
+			}
 			if st.Import == nil || len(st.Import.Files) == 0 {
 				t.Fatalf("import record = %+v", st.Import)
 			}

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ type fakeTunnel struct {
 	started chan struct{}
 	stopped chan struct{}
 	fail    error
+	proves  atomic.Int32
 }
 
 func (f *fakeTunnel) Run(ctx context.Context) error {
@@ -426,5 +428,28 @@ func TestNewValidates(t *testing.T) {
 	a, err := New(Config{Store: st, Tunnel: (&factory{}).build})
 	if err != nil || len(a.ConnectionID()) != 32 || a.cfg.Retry != DefaultRetry || a.cfg.StopTimeout != DefaultStopTimeout {
 		t.Fatal(a, err)
+	}
+}
+
+func (f *fakeTunnel) ProveRotation() error {
+	f.proves.Add(1)
+	return nil
+}
+
+func TestProveRotationAsksTheSessionManager(t *testing.T) {
+	h := newHarness(t, pairedStore(t, t.TempDir()), nil)
+	h.status()
+	tun := h.f.last()
+	if err := h.agent.ProveRotation(context.Background()); err != nil || tun.proves.Load() != 1 {
+		t.Fatalf("err %v, proves %d", err, tun.proves.Load())
+	}
+}
+
+func TestProveRotationNeedsRunningTunnel(t *testing.T) {
+	h := newHarness(t, pairedStore(t, t.TempDir()), func(c *Config) {
+		c.Tunnel = func() (Tunnel, error) { return nil, fmt.Errorf("%w: no device key yet", ErrNotReady) }
+	})
+	if err := h.agent.ProveRotation(context.Background()); !errors.Is(err, ErrNoTunnel) {
+		t.Fatalf("err %v", err)
 	}
 }

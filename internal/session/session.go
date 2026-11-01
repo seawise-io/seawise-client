@@ -242,6 +242,28 @@ func (m *Manager) Status() Status {
 	return m.status
 }
 
+// ErrNoPendingKey means no rotation is pending, so a refused proof cannot
+// be a rotation the server accepted first.
+var ErrNoPendingKey = errors.New("no pending device key")
+
+type evProve struct{}
+
+// ProveRotation asks the loop to prove the pending key now. The rotation
+// is committed only on a control-key signed state naming it active.
+func (m *Manager) ProveRotation() error {
+	if m.cfg.Pending == nil || m.cfg.CommitRotation == nil || m.cfg.Pending() == nil {
+		return ErrNoPendingKey
+	}
+	select {
+	case m.events <- evProve{}:
+		return nil
+	case <-m.quit:
+		return errors.New("session manager stopped")
+	default:
+		return errors.New("session manager busy; try again")
+	}
+}
+
 // RepairNeeded records the local repair-needed fact (rotation recovery
 // failed).
 func (m *Manager) RepairNeeded() {
@@ -526,6 +548,8 @@ func (m *Manager) handle(ctx context.Context, ev any) {
 		m.onHeartbeat(ctx, ev)
 	case evRotation:
 		m.onRotation(ctx, ev)
+	case evProve:
+		m.proveRotation(ctx, true)
 	}
 }
 

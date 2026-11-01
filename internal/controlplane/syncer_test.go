@@ -318,3 +318,32 @@ func TestServerPublicRecordedOnceSaved(t *testing.T) {
 		t.Fatal("server private flag not recorded")
 	}
 }
+
+func TestSyncerSkipsListWhileV2SyncRuns(t *testing.T) {
+	var lists atomic.Int32
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, n int) {
+		if r.Method == "GET" {
+			lists.Add(1)
+			jsonReply(w, 200, `{"data":[]}`)
+			return
+		}
+		jsonReply(w, 200, okHeartbeat)
+	})
+	st, _ := pairedStore(t)
+	skip := true
+	s, err := NewSyncer(SyncerConfig{Client: f.client(t), Store: st, Agent: &fakeAgent{}, Version: "test", Now: (&clock{now: t0}).Now, ListEvery: 1,
+		SkipList: func() bool { return skip }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Step(context.Background())
+	s.Step(context.Background())
+	if lists.Load() != 0 {
+		t.Fatal("v1 list ran while the v2 app sync owns the list")
+	}
+	skip = false
+	s.Step(context.Background())
+	if lists.Load() != 1 {
+		t.Fatal("v1 list did not resume")
+	}
+}

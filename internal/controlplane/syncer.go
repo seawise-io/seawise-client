@@ -37,9 +37,11 @@ type SyncerConfig struct {
 	ServerDisablesPerDay int
 	// ListEvery is how many heartbeats pass between service list syncs.
 	ListEvery int
-	Now       func() time.Time
-	After     func(time.Duration) <-chan time.Time
-	Logger    *slog.Logger
+	// SkipList reports that the v2 app sync owns the app list.
+	SkipList func() bool
+	Now      func() time.Time
+	After    func(time.Duration) <-chan time.Time
+	Logger   *slog.Logger
 }
 
 type SyncStatus struct {
@@ -126,7 +128,7 @@ func (s *Syncer) Step(ctx context.Context) time.Duration {
 		}
 		s.applyEndpoint(ctx, hb)
 		s.beats++
-		if (s.beats-1)%s.cfg.ListEvery == 0 {
+		if (s.beats-1)%s.cfg.ListEvery == 0 && (s.cfg.SkipList == nil || !s.cfg.SkipList()) {
 			s.syncList(ctx, st.Account.ServerID, now)
 		}
 		s.update(func(ss *SyncStatus) { ss.Removal = s.removal.State(now) })

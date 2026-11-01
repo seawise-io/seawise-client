@@ -95,7 +95,9 @@ type ImportedFile struct {
 }
 
 type Import struct {
-	Layout        string         `json:"layout"`
+	Layout string `json:"layout"`
+	// ServerID is the server the 1.x account was paired with.
+	ServerID      string         `json:"server_id,omitempty"`
 	AccountSource string         `json:"account_source,omitempty"`
 	Files         []ImportedFile `json:"files"`
 	Warnings      []string       `json:"warnings,omitempty"`
@@ -369,6 +371,9 @@ func (s *Store) importV1(dataDir string, now time.Time) error {
 	}
 	sec := Secrets{Schema: currentSchema, AdminPasswordHash: string(snap.PasswordHash)}
 	if a := snap.Account; a != nil {
+		if st.Import != nil {
+			st.Import.ServerID = a.ServerID
+		}
 		st.Account = &Account{ServerID: a.ServerID, ServerName: a.ServerName, FRPServerAddr: a.FRPServerAddr, FRPServerPort: a.FRPServerPort, ImportedFRPUseTLS: a.FRPUseTLS, APIURL: a.APIURL, UserID: a.UserID, UserEmail: a.UserEmail}
 		sec.FRPToken = a.FRPToken
 	}

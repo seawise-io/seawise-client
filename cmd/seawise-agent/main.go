@@ -118,7 +118,8 @@ func main() {
 		log.Error("control plane", "error", err)
 		os.Exit(1)
 	}
-	syncer, err := controlplane.NewSyncer(controlplane.SyncerConfig{Client: cp, Store: st, Agent: a, Version: constants.Version, Logger: log})
+	apps, appsActive := startAppSync(ctx, log, st, keys, a)
+	syncer, err := controlplane.NewSyncer(controlplane.SyncerConfig{Client: cp, Store: st, Agent: a, Version: constants.Version, Logger: log, SkipList: appsActive})
 	if err != nil {
 		log.Error("control plane", "error", err)
 		os.Exit(1)
@@ -130,7 +131,7 @@ func main() {
 
 	ui, err := startAdminUI(ctx, log, st, a, accessLog, func(ctx context.Context) any {
 		as, _ := a.Status(ctx)
-		return map[string]any{"agent": as, "control_plane": syncer.Status(), "access_log": accessLog.Status(), "updates": updates(), "keyset": tr.status(), "instructions": instructions.status(), "visitor_tokens": instructions.visitorStatus()}
+		return map[string]any{"agent": as, "control_plane": syncer.Status(), "app_sync": apps(), "access_log": accessLog.Status(), "updates": updates(), "keyset": tr.status(), "instructions": instructions.status(), "visitor_tokens": instructions.visitorStatus()}
 	})
 	if err != nil {
 		log.Error("admin UI", "error", err)
