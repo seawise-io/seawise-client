@@ -71,6 +71,48 @@
       (exact[0] || same[0] || $("review-heading")).focus();
     }
   }
+  function deleteButton(app, name) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "Delete";
+    b.setAttribute("aria-label", "Delete " + name);
+    b.dataset.localId = app.local_id;
+    b.dataset.action = "delete";
+    b.addEventListener("click", function () {
+      if (!window.confirm("Delete \u201c" + name + "\u201d? This will stop exposing this app through Seawise.io.")) return;
+      call("POST", "/api/apps/delete", { local_id: app.local_id }).then(function (r) {
+        say(r.ok ? "Removed " + name + "." : (r.body.error || "Failed to delete app."));
+        refresh();
+      });
+    });
+    return b;
+  }
+  // renderApps rebuilds the app list; focus stays on the same button, or
+  // moves to the list heading when the app is gone.
+  function renderApps(apps) {
+    var ul = $("apps");
+    var active = document.activeElement;
+    var keep = active && ul.contains(active) ? { id: active.dataset.localId, action: active.dataset.action } : null;
+    apps = apps || [];
+    ul.textContent = "";
+    $("apps-count").textContent = apps.length ? apps.length + " app" + (apps.length !== 1 ? "s" : "") : "No apps added yet.";
+    apps.forEach(function (a) {
+      var li = document.createElement("li");
+      var where = a.host + ":" + a.port;
+      var name = a.name || "App at " + where;
+      var state = a.status === "disabled" ? "turned off" : (a.subdomain || "syncing");
+      li.appendChild(document.createTextNode((a.name ? a.name + " (" + where + ")" : name) + ": " + state + " "));
+      if (a.status === "disabled") li.appendChild(button("Turn on", a.local_id, "enable", name));
+      li.appendChild(deleteButton(a, name));
+      ul.appendChild(li);
+    });
+    if (keep) {
+      var buttons = Array.prototype.slice.call(ul.querySelectorAll("button"));
+      var same = buttons.filter(function (b) { return b.dataset.localId === keep.id; });
+      var exact = same.filter(function (b) { return b.dataset.action === keep.action; });
+      (exact[0] || same[0] || $("apps-heading")).focus();
+    }
+  }
   function findHolds(s) {
     if (!s || typeof s !== "object") return [];
     if (s.agent && Array.isArray(s.agent.Holds)) return s.agent.Holds;
@@ -150,6 +192,7 @@
         renderTunnels(r.body);
         renderUpdate(r.body);
       });
+      call("GET", "/api/apps").then(function (r) { if (r.ok) renderApps(r.body.apps); });
       call("GET", "/api/targets/review").then(function (r) { renderReview(r.body.items); });
       loadAccess("");
     });
@@ -169,6 +212,23 @@
       e.preventDefault();
       call("POST", "/api/auth/login", { password: $("login-password").value }).then(function (r) {
         say(r.ok ? "" : (r.body.error || "Sign-in failed."));
+        refresh();
+      });
+    });
+    $("add-app").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var name = $("app-name").value.trim();
+      var host = $("app-host").value.trim();
+      var port = parseInt($("app-port").value, 10);
+      if (!name) { say("Please enter an app name."); return; }
+      if (!host) { say("Please enter a host (IP, hostname, or container name)."); return; }
+      if (!port || port < 1 || port > 65535) { say("Please enter a valid port (1-65535)."); return; }
+      call("POST", "/api/apps/add", { name: name, host: host, port: port }).then(function (r) {
+        if (!r.ok) { say(r.body.error || "Failed to add app."); return; }
+        $("app-name").value = "";
+        $("app-host").value = "";
+        $("app-port").value = "";
+        say("App added: " + name + ".");
         refresh();
       });
     });

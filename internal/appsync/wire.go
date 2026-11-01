@@ -32,6 +32,8 @@ const (
 	resUnchanged = "unchanged"
 	resDeleted   = "deleted"
 	resAbsent    = "absent"
+	// resAbsentUnrecorded is absent without a tombstone on the server.
+	resAbsentUnrecorded = "absent_unrecorded"
 )
 
 var hostRe = regexp.MustCompile(`^[A-Za-z0-9.:\[\]-]{1,255}$`)
@@ -148,7 +150,9 @@ func parseRegisterAnswer(raw []byte, sent []string) ([]RegisterResult, error) {
 	return out, nil
 }
 
-func parseDeleteAnswer(raw []byte, sent []string) error {
+// parseDeleteAnswer checks a delete answer and returns the ids the server
+// reported gone without recording a tombstone.
+func parseDeleteAnswer(raw []byte, sent []string) ([]string, error) {
 	var doc struct {
 		Results *[]struct {
 			LocalID *string `json:"local_id"`
@@ -156,17 +160,25 @@ func parseDeleteAnswer(raw []byte, sent []string) error {
 		} `json:"results"`
 	}
 	if err := decodeStrict(raw, &doc); err != nil {
-		return fmt.Errorf("delete answer: %w", err)
+		return nil, fmt.Errorf("delete answer: %w", err)
 	}
 	if doc.Results == nil || len(*doc.Results) != len(sent) {
-		return errors.New("delete answer: results do not match the request")
+		return nil, errors.New("delete answer: results do not match the request")
 	}
+	var unrecorded []string
 	for i, r := range *doc.Results {
-		if r.LocalID == nil || *r.LocalID != sent[i] || r.Result == nil || (*r.Result != resDeleted && *r.Result != resAbsent) {
-			return fmt.Errorf("delete answer: result %d does not match the request", i)
+		if r.LocalID == nil || *r.LocalID != sent[i] || r.Result == nil {
+			return nil, fmt.Errorf("delete answer: result %d does not match the request", i)
+		}
+		switch *r.Result {
+		case resDeleted, resAbsent:
+		case resAbsentUnrecorded:
+			unrecorded = append(unrecorded, sent[i])
+		default:
+			return nil, fmt.Errorf("delete answer: result %d does not match the request", i)
 		}
 	}
-	return nil
+	return unrecorded, nil
 }
 
 // ServerApp is one live app in a list answer.

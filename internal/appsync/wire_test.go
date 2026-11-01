@@ -150,7 +150,7 @@ func TestParseRegisterAnswerRefuses(t *testing.T) {
 		}
 	}
 	for _, raw := range []string{`{"results":[]}`, `{"results":[{"local_id":"` + lid + `","result":"created"}]}`} {
-		if parseDeleteAnswer([]byte(raw), []string{lid}) == nil {
+		if _, err := parseDeleteAnswer([]byte(raw), []string{lid}); err == nil {
 			t.Fatalf("%s accepted", raw)
 		}
 	}

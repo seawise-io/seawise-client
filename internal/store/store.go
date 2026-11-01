@@ -289,6 +289,12 @@ func (s *Store) load() (bool, error) {
 	if err := checkAccountToken(&state, &secrets); err != nil {
 		return false, err
 	}
+	// Earlier 2.0 builds imported without the 1.x server id; v2 has no
+	// pairing path yet, so the paired account is the imported one.
+	if imp := state.Import; imp != nil && imp.ServerID == "" && imp.AccountSource != "" && state.Account != nil && state.Account.ServerID != "" {
+		imp.ServerID = state.Account.ServerID
+		migrated = true
+	}
 
 	if migrated {
 		if err := writeJSON(statePath, state); err != nil && !errors.Is(err, ErrNotDurable) {

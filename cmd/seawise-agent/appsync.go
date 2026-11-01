@@ -19,11 +19,14 @@ import (
 )
 
 // startAppSync runs the v2 app sync while a device key exists for a server
-// with a v2 identity. It returns its status and whether it is active.
-func startAppSync(ctx context.Context, log *slog.Logger, st *store.Store, keys identity.Keystore, a *agent.Agent) (func() appsync.Status, func() bool) {
-	off := func() appsync.Status { return appsync.Status{Mode: appsync.ModeOff} }
+// with a v2 identity. It returns its status, whether it is active, and the
+// engine for local app changes (nil without a keystore or when the outbox
+// cannot be read).
+func startAppSync(ctx context.Context, log *slog.Logger, st *store.Store, keys identity.Keystore, a *agent.Agent) (func() appsync.Status, func() bool, *appsync.Engine) {
 	if keys == nil {
-		return off, func() bool { return false }
+		return func() appsync.Status {
+			return appsync.Status{Mode: appsync.ModeOff, LastError: "app sync off: no device keystore"}
+		}, func() bool { return false }, nil
 	}
 	signer := func() crypto.Signer {
 		k, err := keys.Current()
@@ -47,10 +50,10 @@ func startAppSync(ctx context.Context, log *slog.Logger, st *store.Store, keys i
 		log.Error("app sync off: the outbox cannot be read", "error", err)
 		return func() appsync.Status {
 			return appsync.Status{Mode: appsync.ModeOff, LastError: "app sync off: " + err.Error()}
-		}, func() bool { return false }
+		}, func() bool { return false }, nil
 	}
 	go func() { _ = e.Run(ctx, active) }()
-	return e.Status, func() bool { return active() && e.Listed() }
+	return e.Status, func() bool { return active() && e.Listed() }, e
 }
 
 // recoverIdentity asks the session manager to prove a pending rotation;

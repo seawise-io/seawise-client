@@ -71,3 +71,40 @@ func TestProveRotationWithoutPendingKey(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+// A prove request from outside the session waits for the backoff of a
+// failed proof; only the session's own revoked state skips it.
+func TestProveRotationRequestWaitsForBackoff(t *testing.T) {
+	d := &rotatingDevice{pending: seedKey("pending")}
+	h := rotatingHarness(t, d)
+	h.hb.set(func(string) (int, string) { return http.StatusServiceUnavailable, "" })
+	if err := h.m.ProveRotation(); err != nil {
+		t.Fatal(err)
+	}
+	<-h.hb.nonces
+	h.settle()
+	for i := 0; i < 3; i++ {
+		if err := h.m.ProveRotation(); err != nil {
+			t.Fatal(err)
+		}
+		h.settle()
+	}
+	// Rand returns n-1: the first wait is 30 s plus 30 s of jitter.
+	h.advance(59 * time.Second)
+	select {
+	case <-h.hb.nonces:
+		t.Fatal("proof requested inside the backoff was sent")
+	case <-time.After(50 * time.Millisecond):
+	}
+	h.advance(time.Second)
+	select {
+	case <-h.hb.nonces:
+	case <-time.After(5 * time.Second):
+		t.Fatal("requested proof not sent after the backoff")
+	}
+	select {
+	case <-h.hb.nonces:
+		t.Fatal("more than one proof after the backoff")
+	case <-time.After(50 * time.Millisecond):
+	}
+}

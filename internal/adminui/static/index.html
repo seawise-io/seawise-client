@@ -40,6 +40,19 @@
 <h2>Status</h2>
 <p id="update" hidden></p>
 <pre id="status"></pre>
+<h2 id="apps-heading" tabindex="-1">Apps</h2>
+<p id="apps-count"></p>
+<ul id="apps" aria-labelledby="apps-heading"></ul>
+<form id="add-app">
+<h3>Add app</h3>
+<label for="app-name">App name</label>
+<input id="app-name" name="name" type="text" maxlength="100" required>
+<label for="app-host">Host</label>
+<input id="app-host" name="host" type="text" maxlength="255" placeholder="sonarr, host.docker.internal, or 192.168.1.5" required>
+<label for="app-port">Port</label>
+<input id="app-port" name="port" type="number" min="1" max="65535" required>
+<button type="submit">Add</button>
+</form>
 <h2 id="review-heading" tabindex="-1">Apps to review</h2>
 <p>Apps that reach this machine, a public address, a mail port, a management API or the network gateway, apps that are turned off, apps whose address is refused, and requests from SeaWise to turn an app off. Only a refused address stops an app.</p>
 <ul id="review" aria-labelledby="review-heading"></ul>

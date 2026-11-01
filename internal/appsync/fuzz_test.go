@@ -66,9 +66,14 @@ func FuzzParseList(f *testing.F) {
 func FuzzParseDeleteAnswer(f *testing.F) {
 	lid := "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 	f.Add([]byte(`{"results":[{"local_id":"` + lid + `","id":null,"result":"absent"}]}`))
+	f.Add([]byte(`{"results":[{"local_id":"` + lid + `","result":"absent_unrecorded"}]}`))
 	f.Fuzz(func(t *testing.T, b []byte) {
-		if err := parseDeleteAnswer(b, []string{lid}); err != nil {
+		un, err := parseDeleteAnswer(b, []string{lid})
+		if err != nil {
 			return
+		}
+		if len(un) > 1 || (len(un) == 1 && un[0] != lid) {
+			t.Fatalf("unrecorded %v", un)
 		}
 	})
 }

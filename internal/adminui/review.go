@@ -74,8 +74,9 @@ func (s *Server) handleReviewAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("app reviewed", "local_id", body.LocalID, "action", body.Action)
-	if s.cfg.OnTargetsChanged != nil {
-		s.cfg.OnTargetsChanged(r.Context())
+	s.targetsChanged(r)
+	if s.cfg.Apps != nil && (body.Action == "enable" || body.Action == "dismiss_server_disable") {
+		s.cfg.Apps.Kick()
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

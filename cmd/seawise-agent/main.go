@@ -22,6 +22,7 @@ import (
 	"github.com/seawise/client/internal/accesslog"
 	"github.com/seawise/client/internal/adminui"
 	"github.com/seawise/client/internal/agent"
+	"github.com/seawise/client/internal/appsync"
 	"github.com/seawise/client/internal/constants"
 	"github.com/seawise/client/internal/controlplane"
 	"github.com/seawise/client/internal/identity"
@@ -118,7 +119,7 @@ func main() {
 		log.Error("control plane", "error", err)
 		os.Exit(1)
 	}
-	apps, appsActive := startAppSync(ctx, log, st, keys, a)
+	apps, appsActive, appEngine := startAppSync(ctx, log, st, keys, a)
 	syncer, err := controlplane.NewSyncer(controlplane.SyncerConfig{Client: cp, Store: st, Agent: a, Version: constants.Version, Logger: log, SkipList: appsActive})
 	if err != nil {
 		log.Error("control plane", "error", err)
@@ -129,7 +130,7 @@ func main() {
 	updates, fresh := startUpdateCheck(ctx, log, st, tr)
 	instructions := newInstructions(log, st, tr, fresh, a.Reconcile)
 
-	ui, err := startAdminUI(ctx, log, st, a, accessLog, func(ctx context.Context) any {
+	ui, err := startAdminUI(ctx, log, st, a, appEngine, accessLog, func(ctx context.Context) any {
 		as, _ := a.Status(ctx)
 		return map[string]any{"agent": as, "control_plane": syncer.Status(), "app_sync": apps(), "access_log": accessLog.Status(), "updates": updates(), "keyset": tr.status(), "instructions": instructions.status(), "visitor_tokens": instructions.visitorStatus()}
 	})
@@ -181,7 +182,7 @@ func startUpdateCheck(ctx context.Context, log *slog.Logger, st *store.Store, tr
 
 // startAdminUI serves the admin UI on the admin port (plain HTTP, or HTTPS
 // with SEAWISE_TLS=auto) and returns a function that waits for it to stop.
-func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *agent.Agent, al *accesslog.Log, status func(context.Context) any) (func(), error) {
+func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *agent.Agent, apps *appsync.Engine, al *accesslog.Log, status func(context.Context) any) (func(), error) {
 	auth, err := adminui.NewAuth(adminui.AuthConfig{Store: st, Logger: log})
 	if err != nil {
 		return nil, err
@@ -210,12 +211,16 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *age
 			return map[string]any{"status": inner(ctx), "notices": []string{notice}}
 		}
 	}
-	srv, err := adminui.New(adminui.Config{
+	cfg := adminui.Config{
 		Store: st, Auth: auth, Status: status, AllowedHosts: extra, Hostname: hostname, Logger: log, TLS: useTLS,
 		OnTargetsChanged: func(ctx context.Context) { _ = a.Reconcile(ctx) },
 		AccessLog:        al,
 		KillSwitch:       a.SetKillSwitch,
-	})
+	}
+	if apps != nil {
+		cfg.Apps = apps
+	}
+	srv, err := adminui.New(cfg)
 	if err != nil {
 		return nil, err
 	}

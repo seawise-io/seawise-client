@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,7 +38,19 @@ const (
 	ResultIdentity = "identity"
 )
 
-var errUnchanged = errors.New("unchanged")
+var (
+	errUnchanged    = errors.New("unchanged")
+	errListTooLarge = errors.New("list: too large")
+)
+
+// Errors of Add and Remove.
+var (
+	ErrInvalidApp  = errors.New("invalid app")
+	ErrNameExists  = errors.New("an app with this name exists")
+	ErrTooManyApps = errors.New("too many apps")
+	ErrNoSuchApp   = errors.New("no such app")
+	ErrOutboxFull  = errors.New("outbox full; try again after the next sync")
+)
 
 type Config struct {
 	Store   *store.Store
@@ -580,11 +593,16 @@ func (e *Engine) dropHead(c Call) {
 // crash in between replays the call and gets the stored answer again.
 func (e *Engine) apply(c Call, raw []byte) error {
 	if c.Op == OpDelete {
-		if err := parseDeleteAnswer(raw, c.LocalIDs); err != nil {
+		unrecorded, err := parseDeleteAnswer(raw, c.LocalIDs)
+		if err != nil {
 			return err
 		}
 		for _, id := range c.LocalIDs {
 			e.box.Registered = removeID(e.box.Registered, id)
+		}
+		for _, id := range unrecorded {
+			e.log.Warn("app gone on the server, which recorded no tombstone", "local_id", id)
+			e.status.Notices = append(e.status.Notices, "delete_not_recorded_by_server:"+id)
 		}
 		e.box.Calls = e.box.Calls[1:]
 		return e.save()
@@ -641,6 +659,15 @@ func (e *Engine) apply(c Call, raw []byte) error {
 	for _, r := range res {
 		delete(e.refused, r.LocalID)
 		delete(e.split, r.LocalID)
+		if i := slices.IndexFunc(e.box.Retired, func(x Retired) bool { return x.LocalID == r.LocalID }); i >= 0 && (r.Result == resUpdated || r.Result == resUnchanged) && r.ID != e.box.Retired[i].ServerID {
+			// Adopted another server app than the one removed here: never
+			// delete it. An app created by this register is ours and its
+			// queued delete removes it.
+			e.log.Warn("removed app adopted another server app; not deleted", "local_id", r.LocalID)
+			e.box.Retired = slices.Delete(e.box.Retired, i, i+1)
+			e.box.Deleted = removeID(e.box.Deleted, r.LocalID)
+			continue
+		}
 		e.box.Retired = slices.DeleteFunc(e.box.Retired, func(x Retired) bool { return x.LocalID == r.LocalID })
 		if r.Result == resDeleted && !auth {
 			continue
@@ -671,6 +698,9 @@ func (e *Engine) fetchList(ctx context.Context) (listAnswer, error) {
 	}
 	if resp.Status != http.StatusOK {
 		eb := parseError(resp.Body)
+		if resp.Status == http.StatusRequestEntityTooLarge && eb.Error == "list_too_large" {
+			return listAnswer{}, errListTooLarge
+		}
 		if resp.Status == http.StatusUnauthorized && eb.Code != "" && eb.Code != "replayed" && !resp.NonceChallenge && eb.Error != "use_dpop_nonce" {
 			if err := e.identity(ctx, eb.Code); err != nil {
 				return listAnswer{}, fmt.Errorf("list: device proof refused: %s: %w", eb.Code, err)
@@ -691,6 +721,13 @@ func (e *Engine) syncList(ctx context.Context, now time.Time, adopting bool) tim
 		e.status.LastResult = ResultRetrying
 		e.status.LastError = "the app list from the server is over 64 KiB; retrying at the next list"
 		e.log.Error("app list answer over 64 KiB")
+		e.waitUntil = now.Add(e.cfg.ListEvery)
+		return e.cfg.ListEvery
+	}
+	if errors.Is(err, errListTooLarge) {
+		e.status.LastResult = ResultRetrying
+		e.status.LastError = "the server's app list is too large to send; retrying at the next list"
+		e.log.Error("app list too large on the server")
 		e.waitUntil = now.Add(e.cfg.ListEvery)
 		return e.cfg.ListEvery
 	}
@@ -871,20 +908,27 @@ func (e *Engine) applyList(l listAnswer, adopting bool, now time.Time) error {
 		}
 		items = append(items, RegisterItem{LocalID: t.LocalID, Name: name, Host: t.Host, Port: t.Port, IconURL: t.IconURL, PublicLocal: true})
 	}
-	if adopting {
-		// 1.x apps removed here before this sync: adopted, then deleted by
-		// their queued delete.
-		e.box.Retired = slices.DeleteFunc(e.box.Retired, func(r Retired) bool {
-			v1, ok := byID[r.ServerID]
-			if !ok || v1.LocalID != "" || checkApp(v1.Name, r.Host, r.Port, r.IconURL) != nil {
-				// Gone or linked elsewhere: nothing of ours to delete.
-				delete(e.refused, r.LocalID)
-				return true
-			}
-			items = append(items, RegisterItem{LocalID: r.LocalID, Name: v1.Name, Host: r.Host, Port: r.Port, IconURL: r.IconURL, PublicLocal: true})
-			return false
-		})
-	}
+	// 1.x apps removed here before the first sync: adopted, then deleted by
+	// their queued delete. After a refused adoption they are retried alone,
+	// each register followed by its own delete, which is sent only once the
+	// register confirmed the link.
+	var retry []RegisterItem
+	e.box.Retired = slices.DeleteFunc(e.box.Retired, func(r Retired) bool {
+		v1, ok := byID[r.ServerID]
+		if !ok || v1.LocalID != "" || checkApp(v1.Name, r.Host, r.Port, r.IconURL) != nil {
+			// Gone or linked: nothing of ours left to adopt.
+			delete(e.refused, r.LocalID)
+			return true
+		}
+		it := RegisterItem{LocalID: r.LocalID, Name: v1.Name, Host: r.Host, Port: r.Port, IconURL: r.IconURL, PublicLocal: true}
+		switch {
+		case adopting:
+			items = append(items, it)
+		case !now.Before(e.refused[r.LocalID].until):
+			retry = append(retry, it)
+		}
+		return false
+	})
 	var dels []string
 	unlinked := []Unlinked{}
 	unknown := 0
@@ -911,6 +955,17 @@ func (e *Engine) applyList(l listAnswer, adopting bool, now time.Time) error {
 	calls, err := e.registerCalls(items, adopting, now)
 	if err != nil {
 		return err
+	}
+	for _, it := range retry {
+		rc, err := registerCall([]RegisterItem{it}, false, now)
+		if err != nil {
+			return err
+		}
+		dc, err := deleteCall([]string{it.LocalID}, now)
+		if err != nil {
+			return err
+		}
+		calls = append(calls, rc, dc)
 	}
 	for i := 0; i < len(dels); i += MaxItems {
 		c, err := deleteCall(dels[i:min(i+MaxItems, len(dels))], now)
@@ -1047,16 +1102,16 @@ func (e *Engine) sendHealth(ctx context.Context, now time.Time) time.Duration {
 // Add creates a local app with a new local_id; the next sync registers it.
 func (e *Engine) Add(name, host string, port int) (string, error) {
 	if err := checkApp(name, host, port, ""); err != nil {
-		return "", err
+		return "", fmt.Errorf("%w: %s", ErrInvalidApp, err)
 	}
 	id := NewLocalID()
 	err := e.cfg.Store.Update(func(s *store.State) error {
 		if len(s.Targets) >= store.MaxTargets {
-			return errors.New("too many apps")
+			return ErrTooManyApps
 		}
 		for _, t := range s.Targets {
-			if t.Name == name {
-				return errors.New("an app with this name exists")
+			if strings.EqualFold(t.Name, name) {
+				return ErrNameExists
 			}
 		}
 		s.Targets = append(s.Targets, store.Target{LocalID: id, Name: name, Host: host, Port: port, Source: store.SourceLocal})
@@ -1077,7 +1132,7 @@ func (e *Engine) Remove(localID string) error {
 	defer e.mu.Unlock()
 	st := e.cfg.Store.State()
 	if !slices.ContainsFunc(st.Targets, func(t store.Target) bool { return t.LocalID == localID }) {
-		return errors.New("no such app")
+		return ErrNoSuchApp
 	}
 	if st.Account != nil && ValidLocalID(st.Account.ServerID) {
 		if err := e.bindServer(st.Account.ServerID); err != nil {
@@ -1100,7 +1155,7 @@ func (e *Engine) Remove(localID string) error {
 	queued := slices.ContainsFunc(e.box.Calls, func(c Call) bool { return c.Op == OpRegister && slices.Contains(c.LocalIDs, localID) })
 	retire := !e.box.Adopted && !queued && ValidLocalID(t.ServerServiceID) && checkApp(t.Name, t.Host, t.Port, t.IconURL) == nil
 	if slices.Contains(e.box.Registered, localID) || queued || retire {
-		if err := e.queueDelete(localID); err != nil {
+		if err := e.queueDelete(localID, retire); err != nil {
 			return err
 		}
 	}
@@ -1129,10 +1184,12 @@ func (e *Engine) Remove(localID string) error {
 }
 
 // queueDelete adds a delete of localID; calls after the head were never
-// sent, so the last one may grow.
-func (e *Engine) queueDelete(localID string) error {
+// sent, so the last one may grow. The delete of a retired app goes alone,
+// so it is sent only if that app's adoption was confirmed.
+func (e *Engine) queueDelete(localID string, alone bool) error {
 	n := len(e.box.Calls)
-	if n > 1 && e.box.Calls[n-1].Op == OpDelete && len(e.box.Calls[n-1].LocalIDs) < MaxItems {
+	if !alone && n > 1 && e.box.Calls[n-1].Op == OpDelete && len(e.box.Calls[n-1].LocalIDs) < MaxItems &&
+		!slices.ContainsFunc(e.box.Calls[n-1].LocalIDs, e.isRetired) {
 		c, err := deleteCall(append(slices.Clone(e.box.Calls[n-1].LocalIDs), localID), e.cfg.Now())
 		if err != nil {
 			return err
@@ -1142,7 +1199,7 @@ func (e *Engine) queueDelete(localID string) error {
 		return nil
 	}
 	if n >= MaxCalls {
-		return errors.New("outbox full; try again after the next sync")
+		return ErrOutboxFull
 	}
 	c, err := deleteCall([]string{localID}, e.cfg.Now())
 	if err != nil {

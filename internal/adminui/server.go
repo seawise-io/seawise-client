@@ -47,6 +47,8 @@ type Config struct {
 	Resolver         targetpolicy.Resolver
 	Gateways         func() []netip.Addr
 	OnTargetsChanged func(context.Context)
+	// Apps adds and removes local apps; nil turns both off.
+	Apps Apps
 	// KillSwitch drops or restores all tunnels.
 	AccessLog     AccessLog
 	KillSwitch    KillSwitchFunc
@@ -98,6 +100,10 @@ func New(cfg Config) (*Server, error) {
 	mux.HandleFunc("POST /api/setup", s.handleSetup)
 	mux.Handle("GET /api/targets/review", s.requireSession(http.HandlerFunc(s.handleReviewList)))
 	mux.Handle("POST /api/targets/review", s.requireSession(http.HandlerFunc(s.handleReviewAction)))
+	mux.Handle("GET /api/apps", s.requireSession(http.HandlerFunc(s.handleAppList)))
+	mux.Handle("POST /api/apps/add", s.requireSession(http.HandlerFunc(s.handleAppAdd)))
+	mux.Handle("POST /api/apps/delete", s.requireSession(http.HandlerFunc(s.handleAppDelete)))
+	mux.Handle("DELETE /api/apps/delete", s.requireSession(http.HandlerFunc(s.handleAppDelete)))
 	mux.Handle("GET /api/access-log", s.requireSession(http.HandlerFunc(s.handleAccessLog)))
 	mux.Handle("POST /api/kill-switch", s.requireSession(http.HandlerFunc(s.handleKillSwitch)))
 	mux.Handle("POST /api/auth/logout", s.requireSession(http.HandlerFunc(s.handleLogout)))

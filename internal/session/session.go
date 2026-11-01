@@ -248,8 +248,9 @@ var ErrNoPendingKey = errors.New("no pending device key")
 
 type evProve struct{}
 
-// ProveRotation asks the loop to prove the pending key now. The rotation
-// is committed only on a control-key signed state naming it active.
+// ProveRotation asks the loop to prove the pending key, at once or after
+// the backoff of a failed proof. The rotation is committed only on a
+// control-key signed state naming it active.
 func (m *Manager) ProveRotation() error {
 	if m.cfg.Pending == nil || m.cfg.CommitRotation == nil || m.cfg.Pending() == nil {
 		return ErrNoPendingKey
@@ -549,7 +550,7 @@ func (m *Manager) handle(ctx context.Context, ev any) {
 	case evRotation:
 		m.onRotation(ctx, ev)
 	case evProve:
-		m.proveRotation(ctx, true)
+		m.proveRotation(ctx, false)
 	}
 }
 
