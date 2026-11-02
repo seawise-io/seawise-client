@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1244,4 +1245,123 @@ func TestAdoptionDisablesOnlyImportedApps(t *testing.T) {
 		t.Fatalf("local app disabled: %+v", tg)
 	}
 	registeredOn(t, h.api, 1)
+}
+
+func healthHas(api *fakeAPI, id, status string) bool {
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	for _, b := range api.health {
+		if bytes.Contains(b, []byte(`"local_id":"`+id+`","status":"`+status+`"`)) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestHealthOfMigratedAppsSentAfterAdoption(t *testing.T) {
+	api := newFakeAPI()
+	m := api.addV1App("Media", "192.168.1.20", 8096, "brave-otter")
+	h := newHarness(t, v1App("0123456789abcdef0123456789abcdef", "Media", "192.168.1.20", 8096, m.ID, m.Subdomain))
+	h.api = api
+	h.start()
+	h.e.SetHealth(map[string]string{"0123456789abcdef0123456789abcdef": "online"})
+	h.e.Step(context.Background())
+	id := h.targets()[0].LocalID
+	if !ValidLocalID(id) {
+		t.Fatalf("not renamed: %s", id)
+	}
+	h.e.SetHealth(map[string]string{id: "online"})
+	h.settle(20)
+	if !healthHas(api, id, "online") {
+		t.Fatalf("adopted app's health never sent: %q", api.health)
+	}
+}
+
+func TestHealthResentWhenAppBecomesRegistered(t *testing.T) {
+	h := newHarness(t, app("A", "10.0.0.1", 80))
+	h.settle(20)
+	id, err := h.e.Add("B", "10.0.0.2", 81)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.e.SetHealth(map[string]string{id: "online"})
+	h.settle(30)
+	if !slices.Contains(h.e.box.Registered, id) {
+		t.Fatal("new app not registered")
+	}
+	if !healthHas(h.api, id, "online") {
+		t.Fatalf("health of a newly registered app never sent: %q", h.api.health)
+	}
+	n := len(h.api.health)
+	h.clk.Add(time.Hour)
+	h.settle(20)
+	if len(h.api.health) != n {
+		t.Fatal("health resent without a change")
+	}
+}
+
+func TestHealthRetriedWhileServerOffline(t *testing.T) {
+	a := app("A", "10.0.0.1", 80)
+	h := newHarness(t, a)
+	h.settle(20)
+	offline := status(http.StatusConflict, map[string]string{"error": "server_offline"})
+	h.api.push(only(pb.DeviceMethod_REPORT_HEALTH, offline), only(pb.DeviceMethod_REPORT_HEALTH, offline))
+	h.e.SetHealth(map[string]string{a.LocalID: "online"})
+	if d := h.e.Step(context.Background()); d != time.Second {
+		t.Fatalf("first wait %v", d)
+	}
+	h.clk.Add(time.Second)
+	if d := h.e.Step(context.Background()); d != 2*time.Second {
+		t.Fatalf("second wait %v", d)
+	}
+	h.clk.Add(2 * time.Second)
+	h.settle(30)
+	if got := len(h.api.requests(pb.DeviceMethod_REPORT_HEALTH)); got != 3 {
+		t.Fatalf("health requests %d, want two refused then one sent", got)
+	}
+	if !healthHas(h.api, a.LocalID, "online") {
+		t.Fatal("health dropped after the server came back")
+	}
+}
+
+func TestHealthWaitDoesNotBlockList(t *testing.T) {
+	a := app("A", "10.0.0.1", 80)
+	h := newHarness(t, a)
+	h.settle(20)
+	offline := status(http.StatusConflict, map[string]string{"error": "server_offline"})
+	for range 20 {
+		h.api.push(only(pb.DeviceMethod_REPORT_HEALTH, offline))
+	}
+	lists := len(h.api.requests(pb.DeviceMethod_LIST_APPS))
+	h.e.SetHealth(map[string]string{a.LocalID: "online"})
+	h.e.Step(context.Background())
+	h.e.Kick()
+	h.e.Step(context.Background())
+	if got := len(h.api.requests(pb.DeviceMethod_LIST_APPS)); got != lists+1 {
+		t.Fatalf("list requests %d, want %d while health waits", got, lists+1)
+	}
+	d := h.e.Step(context.Background())
+	if got := len(h.api.requests(pb.DeviceMethod_REPORT_HEALTH)); got != 1 {
+		t.Fatalf("health requests %d before the wait ended", got)
+	}
+	if d <= 0 || d > MaxBackoff {
+		t.Fatalf("next step in %v", d)
+	}
+	h.clk.Add(d)
+	h.e.Step(context.Background())
+	if got := len(h.api.requests(pb.DeviceMethod_REPORT_HEALTH)); got != 2 {
+		t.Fatalf("health requests %d after the wait", got)
+	}
+}
+
+func TestHealthOtherRefusalDropped(t *testing.T) {
+	a := app("A", "10.0.0.1", 80)
+	h := newHarness(t, a)
+	h.settle(20)
+	h.api.push(only(pb.DeviceMethod_REPORT_HEALTH, status(http.StatusBadRequest, map[string]string{"error": "invalid_request", "code": "status"})))
+	h.e.SetHealth(map[string]string{a.LocalID: "online"})
+	h.settle(20)
+	if got := len(h.api.requests(pb.DeviceMethod_REPORT_HEALTH)); got != 1 {
+		t.Fatalf("health requests %d", got)
+	}
 }

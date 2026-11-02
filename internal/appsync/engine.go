@@ -127,6 +127,8 @@ type Engine struct {
 	health       map[string]string
 	healthGen    int
 	healthSent   int
+	healthFails  int
+	healthWait   time.Time
 	changed      bool
 	status       Status
 
@@ -322,7 +324,7 @@ func (e *Engine) step(ctx context.Context) time.Duration {
 	case len(e.box.Calls) > 0:
 		e.mu.Unlock()
 		return e.sendHead(ctx, now)
-	case e.healthGen != e.healthSent:
+	case e.healthGen != e.healthSent && !now.Before(e.healthWait):
 		e.mu.Unlock()
 		return e.sendHealth(ctx, now)
 	case e.listNow || !now.Before(e.nextList):
@@ -330,6 +332,9 @@ func (e *Engine) step(ctx context.Context) time.Duration {
 		return e.syncList(ctx, now, false)
 	}
 	d := e.nextList.Sub(now)
+	if e.healthGen != e.healthSent {
+		d = min(d, e.healthWait.Sub(now))
+	}
 	e.mu.Unlock()
 	return d
 }
@@ -678,7 +683,7 @@ func (e *Engine) apply(c Call, raw []byte) error {
 			e.log.Info("app deleted on the server; removed here", "local_id", r.LocalID)
 			continue
 		}
-		e.box.Registered = addID(e.box.Registered, r.LocalID, maxRegistered)
+		e.addRegistered(r.LocalID)
 	}
 	e.box.Calls = e.box.Calls[1:]
 	if c.Adopt && !e.hasAdopt() {
@@ -877,7 +882,7 @@ func (e *Engine) applyList(l listAnswer, adopting bool, now time.Time) error {
 	for _, t := range st.Targets {
 		local[t.LocalID] = true
 		if _, ok := byLocal[t.LocalID]; ok {
-			e.box.Registered = addID(e.box.Registered, t.LocalID, maxRegistered)
+			e.addRegistered(t.LocalID)
 		}
 	}
 	for id := range e.refused {
@@ -938,7 +943,7 @@ func (e *Engine) applyList(l listAnswer, adopting bool, now time.Time) error {
 			unlinked = append(unlinked, Unlinked{ID: a.ID, Name: a.Name})
 		case deleted[a.LocalID]:
 			dels = append(dels, a.LocalID)
-			e.box.Registered = addID(e.box.Registered, a.LocalID, maxRegistered)
+			e.addRegistered(a.LocalID)
 		case !local[a.LocalID]:
 			unknown++
 		}
@@ -1051,6 +1056,15 @@ func deleteCall(ids []string, now time.Time) (Call, error) {
 	return Call{Key: newKey(), Op: OpDelete, Body: body, LocalIDs: slices.Clone(ids), CreatedAt: now.UTC()}, nil
 }
 
+// addRegistered records a registered app; a pending or sent status of an
+// app that was not registered before is sent again.
+func (e *Engine) addRegistered(id string) {
+	if _, ok := e.health[id]; ok && !slices.Contains(e.box.Registered, id) {
+		e.healthGen++
+	}
+	e.box.Registered = addID(e.box.Registered, id, maxRegistered)
+}
+
 // SetHealth replaces the pending health report; only the latest is sent.
 func (e *Engine) SetHealth(statuses map[string]string) {
 	e.mu.Lock()
@@ -1087,6 +1101,17 @@ func (e *Engine) sendHealth(ctx context.Context, now time.Time) time.Duration {
 			e.mu.Unlock()
 			return d
 		}
+		if resp.Status == http.StatusConflict && parseError(resp.Body).Error == "server_offline" {
+			// Kept and retried: the server takes reports again once a
+			// heartbeat marks it online.
+			e.mu.Lock()
+			e.healthFails++
+			d := e.cfg.Rand(min(time.Second<<min(e.healthFails-1, 6), MaxBackoff))
+			e.healthWait = now.Add(d)
+			e.status.LastError = "health: server offline"
+			e.mu.Unlock()
+			return d
+		}
 		if resp.Status != http.StatusOK {
 			e.log.Info("health report refused", "status", resp.Status, "reason", parseError(resp.Body).Error)
 			break
@@ -1095,6 +1120,7 @@ func (e *Engine) sendHealth(ctx context.Context, now time.Time) time.Duration {
 	e.mu.Lock()
 	e.succeeded()
 	e.healthSent = gen
+	e.healthFails, e.healthWait = 0, time.Time{}
 	e.mu.Unlock()
 	return 0
 }
