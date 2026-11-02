@@ -1,0 +1,276 @@
+// seawise-tunnel/1 wire schema: control stream (stream 0), data-stream
+// header and relay prefix. Limits in comments are enforced by the
+// validators in package wire after strict decoding.
+syntax = "proto3";
+
+package seawise.tunnel.v1;
+
+option go_package = "github.com/seawise-io/seawise-client/tunnelwire/tunnelpb";
+
+// ---------- Envelope (stream 0) ----------
+
+message ControlMessage {
+  uint32 schema = 1;            // must be 1
+  uint64 seq = 2;               // per sender, starts at 1, +1 per message
+  oneof body {                  // exactly one set
+    Hello hello = 10;           // agent -> edge, first message, once
+    HelloAck hello_ack = 11;    // edge -> agent, once
+    HelloRefuse hello_refuse = 12; // edge -> agent, then close
+    RouteSet route_set = 13;    // edge -> agent
+    RouteSetAck route_set_ack = 14; // agent -> edge
+    Ping ping = 15;             // agent -> edge
+    Pong pong = 16;             // edge -> agent
+    Drain drain = 17;           // edge -> agent
+    Revoke revoke = 18;         // edge -> agent
+    MinVersion min_version = 19;   // edge -> agent
+    PolicyVersion policy_version = 20; // edge -> agent
+    DeviceCall device_call = 21;   // agent -> edge
+    DeviceResult device_result = 22; // edge -> agent
+    Error error = 23;           // either direction
+  }
+  // Field numbers 24-99 are reserved for negotiated capabilities.
+}
+
+// ---------- Hello ----------
+
+message Hello {
+  bytes body = 1;       // serialized HelloBody, 1..4096 bytes; signed as sent
+  bytes signature = 2;  // exactly 64 bytes, Ed25519 by the device key
+}
+
+message HelloBody {
+  bytes server_id = 1;          // exactly 16 bytes (UUID)
+  string key_id = 2;            // exactly 43 chars, RFC 7638 thumbprint, base64url
+  bytes run_id = 3;             // exactly 16 bytes, random per agent process
+  uint32 protocol_minor = 4;    // highest /1 minor the agent speaks
+  repeated string capabilities = 5; // 0..32 entries, each 1..32 chars [a-z0-9_.-], unique, sorted
+  string agent_version = 6;     // 1..32 chars, semver without build metadata
+  Transport transport = 7;      // must match what the edge observed
+  bytes time_nonce = 8;         // exactly 16 bytes; echoed in the signed time
+  uint32 routes_held = 9;       // 0..1000; diagnostics only
+  uint32 max_streams = 10;      // agent buffer budget / initial stream window; 1..4096
+}
+
+enum Transport {
+  TRANSPORT_UNSPECIFIED = 0;    // refused
+  TRANSPORT_TLS = 1;
+  TRANSPORT_WEBSOCKET = 2;
+}
+
+message HelloAck {
+  bytes body = 1;               // serialized HelloAckBody, 1..2048 bytes; signed as sent
+  bytes signature = 2;          // exactly 64 bytes, Ed25519 by the key of body.edge_id
+}
+
+message HelloAckBody {
+  bytes session_id = 1;         // exactly 16 bytes, random; never a credential
+  string edge_id = 2;           // 1..63 chars, ^edge-[a-z]+-[a-z]+-[0-9]{1,4}$
+  uint32 protocol_minor = 3;    // min(agent, edge)
+  repeated string capabilities = 4; // the intersection, sorted, 0..32 entries
+  bytes offered_digest = 5;     // exactly 32 bytes: SHA-256 of Hello.body as received
+  uint32 ping_interval_ms = 6;  // agent clamps to [10000, 60000]
+  uint32 ping_timeout_ms = 7;   // agent clamps to [15000, 30000]
+  uint32 max_streams = 8;       // 1..4096, at most HelloBody.max_streams
+  uint32 max_control_bytes = 9; // 65536 in /1; any other value closes
+  int64 max_session_age_s = 10; // 43200..86400
+}
+
+message HelloRefuse {
+  RefuseCode code = 1;
+  uint32 retry_after_ms = 2;    // 0..86400000; 0 means use the ladder rule
+  string detail = 3;            // 0..128 chars, fixed per code
+}
+
+enum RefuseCode {
+  REFUSE_UNSPECIFIED = 0;
+  INVALID_PROOF = 1;        // unknown key, bad signature, key/server mismatch
+  KEY_REVOKED = 2;          // only after the signature verified
+  NOT_ENROLLED = 3;
+  ACCOUNT_SUSPENDED = 4;
+  PROTOCOL_DISABLED = 5;    // maintenance: flags off for this server or globally
+  VERSION_TOO_OLD = 6;      // update required
+  EDGE_NOT_READY = 7;
+  OVERLOADED = 8;           // retry_after_ms set
+  TOO_MANY_ROUTES = 9;
+  BAD_REQUEST = 10;
+}
+
+// ---------- Routes ----------
+
+message RouteSet {
+  string jws = 1;           // compact JWS typ "sw-routeset+jws", edge key, <= 61440 bytes
+  string signed_time = 2;   // optional signed time JWS bound to Hello.time_nonce, <= 1024 bytes
+}
+
+message RouteSetAck {
+  uint64 version = 1;       // RouteSet version applied
+}
+
+// ---------- Liveness ----------
+
+message Ping {
+  uint64 nonce = 1;
+}
+
+message Pong {
+  uint64 nonce = 1;          // echo
+  uint64 policy_version = 2; // current PolicyVersion.version
+}
+
+// ---------- Lifecycle and policy ----------
+
+message Drain {
+  DrainReason reason = 1;
+  uint32 deadline_ms = 2;   // 1000..120000
+  DrainAction action = 3;
+}
+
+enum DrainReason {
+  DRAIN_UNSPECIFIED = 0;
+  ROLLOUT = 1;
+  REBALANCE = 2;
+  SUPERSEDED = 3;
+  KEY_ROTATED = 4;
+  KILL_SWITCH = 5;
+  MAX_AGE = 6;
+}
+
+enum DrainAction {           // advisory: Drain is unsigned
+  ACTION_UNSPECIFIED = 0;   // treated as RECONNECT
+  RECONNECT = 1;
+  reserved 2, 3;
+  reserved "USE_FRPC", "STOP";
+  HOLD = 4;                 // SUPERSEDED or KILL_SWITCH only
+}
+
+message Revoke {             // unsigned: a session drop plus a signed-heartbeat check
+  RevokeScope scope = 1;
+  bytes app_id = 2;         // exactly 16 bytes when scope = APP, else empty
+  string detail = 3;        // 0..128 chars, fixed per scope
+}
+
+enum RevokeScope {
+  REVOKE_UNSPECIFIED = 0;
+  DEVICE = 1;
+  ACCOUNT = 2;
+  APP = 3;                  // session stays
+}
+
+message MinVersion {
+  uint32 min_protocol_minor = 1;
+  string min_agent_version = 2; // 1..32 chars semver
+  int64 effective_at = 3;       // unix seconds
+}
+
+message PolicyVersion {
+  uint64 version = 1;           // strictly increasing per session
+  uint64 snapshot_version = 2;
+  uint64 snapshot_generation = 3;
+  uint64 keyset_version = 4;
+  reserved 5;
+  string flags = 6;             // sw-tunnel-flags+jws, control key, <= 16384 bytes
+}
+
+enum ProtocolMode {         // result of evaluating the signed flags for one server
+  MODE_UNSPECIFIED = 0;     // treated as OFF
+  OFF = 1;                  // the edge refuses new sessions; the agent holds
+  ON = 2;
+}
+
+// ---------- Device calls ----------
+
+message DeviceCall {
+  uint32 call_id = 1;           // 1..2^31-1, unique among in-flight calls
+  bytes idempotency_key = 2;    // exactly 16 bytes, reused on every retry
+  DeviceMethod method = 3;
+  string path_suffix = 4;       // 0..256 chars [a-z0-9_.-], only for methods with a path parameter
+  string dpop = 5;              // DPoP proof JWS, <= 2048 bytes
+  bytes body = 6;               // exact JSON body of the HTTPS twin, 0..57344 bytes
+}
+
+enum DeviceMethod {
+  METHOD_UNSPECIFIED = 0;
+  REGISTER_APPS = 1;
+  DELETE_APPS = 2;
+  LIST_APPS = 3;
+  REPORT_HEALTH = 4;
+  ROTATE_KEY = 5;
+  SIGNED_TIME = 6;
+}
+
+message DeviceResult {
+  uint32 call_id = 1;
+  ResultClass class = 2;
+  uint32 http_status = 3;       // 100..599; 0 when class = UNAVAILABLE
+  bytes body = 4;               // 0..57344 bytes
+  string dpop_nonce = 5;        // 0..256 chars
+  uint32 retry_after_ms = 6;    // 0..300000
+}
+
+enum ResultClass {
+  CLASS_UNSPECIFIED = 0;
+  DONE = 1;                 // body is authoritative
+  UNAVAILABLE = 2;          // outcome unknown; never destructive
+}
+
+message Error {
+  ErrorCode code = 1;
+  string detail = 2;        // 0..128 chars, fixed per code
+}
+
+enum ErrorCode {
+  ERROR_UNSPECIFIED = 0;
+  PROTOCOL = 1;             // session closes
+  RATE_LIMITED = 2;
+  UNSUPPORTED = 3;          // session stays
+}
+
+// ---------- Data-stream header ----------
+
+message StreamHeader {
+  uint32 version = 1;           // must be 1
+  StreamType type = 2;
+  bytes app_id = 3;             // exactly 16 bytes
+  string visitor_token = 4;     // 0..2048 bytes; empty only for public routes
+  bytes client_ip = 5;          // exactly 4 or 16 bytes, IPv4-mapped normalised to 4
+  Scheme scheme = 6;
+  string alpn = 7;              // "h2" or "http/1.1"
+  int64 edge_time_ms = 8;       // informational only
+  bytes trace_id = 9;           // exactly 16 bytes, not all zero
+  string stale_ok_until = 10;   // 0..512 bytes, sw-stale-ok+jws
+}
+
+enum StreamType {
+  STREAM_TYPE_UNSPECIFIED = 0;  // refused
+  HTTP = 1;
+  RAW_TCP = 2;                  // refused without a capability
+}
+
+enum Scheme {
+  SCHEME_UNSPECIFIED = 0;       // refused
+  HTTPS = 1;
+}
+
+message StreamReply {
+  ReplyCode code = 1;
+}
+
+enum ReplyCode {
+  REPLY_UNSPECIFIED = 0;
+  ACCEPTED = 1;
+  UNKNOWN_APP = 2;
+  TOKEN_REJECTED = 3;
+  TARGET_UNAVAILABLE = 4;
+  AGENT_BUSY = 5;
+  BAD_HEADER = 6;
+}
+
+// ---------- Relay between edges ----------
+
+message RelayPrefix {
+  uint32 version = 1;           // must be 1
+  bytes server_id = 2;          // exactly 16 bytes
+  uint64 expected_epoch = 3;
+  string ingress_edge_id = 4;   // 1..63 chars, must equal the authenticated peer
+  uint32 hop = 5;               // must be 1
+}

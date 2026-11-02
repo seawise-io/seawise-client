@@ -1,0 +1,4740 @@
+{
+  "format": "ladder",
+  "note": "TEST ONLY. Every key in this file is derived from a published seed; never use these keys outside tests.",
+  "cases": [
+    {
+      "name": "start-dials-tls",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "start-with-persisted-flags-off-holds",
+      "initial": {
+        "generation": 4,
+        "mode_on": false
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "flags_off",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                300000,
+                300000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 300000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "flags_off",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                600000,
+                600000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 360000,
+            "kind": "flags",
+            "generation": 5,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "dial": [
+                360000,
+                390000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 390000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 420000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "no-flags-ever-dials",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 3600000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "tls-blocked-falls-to-websocket",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                2000,
+                4000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                4000,
+                904000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "websocket-reprobes-tls-and-switches",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                2000,
+                4000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                4000,
+                904000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 900000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                4000,
+                904000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 904000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 905000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                905000,
+                2705000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2700000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                905000,
+                2705000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2705000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2706000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "switch_session"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "websocket-reprobe-backoff-doubles-to-cap",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                2000,
+                4000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                4000,
+                904000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 904000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                4000,
+                904000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 904000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 904000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                904000,
+                2704000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2704000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                904000,
+                2704000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2704000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2704000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                2704000,
+                6304000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 6304000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                2704000,
+                6304000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 6304000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 6304000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                6304000,
+                13504000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 13504000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                6304000,
+                13504000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 13504000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 13504000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                13504000,
+                27904000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 27904000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                13504000,
+                27904000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 27904000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 27904000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                27904000,
+                42304000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 42304000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                27904000,
+                42304000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 42304000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 42304000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                42304000,
+                56704000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "websocket-session-lost-stays-websocket",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                2000,
+                4000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                4000,
+                904000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                11000,
+                911000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "subprotocol-refused-twice-update-required",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                2000,
+                4000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "dial_failed",
+            "cause": "subprotocol"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                4000,
+                8000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 8000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 8000,
+            "kind": "dial_failed",
+            "cause": "subprotocol"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "update_required",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                308000,
+                308000
+              ],
+              "redial": [
+                8000,
+                908000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 908000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 908000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "forged-alerts-on-both-carriages-never-hold",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                2000,
+                4000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                4000,
+                8000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 8000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 8000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                8000,
+                16000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 16000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 16000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                16000,
+                32000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 32000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 32000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                32000,
+                62000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 64000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 64000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                64000,
+                94000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 94000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 94000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                94000,
+                124000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 124000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 124000,
+            "kind": "dial_failed",
+            "cause": "alpn"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                124000,
+                154000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 154000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 155000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "network-change-resets-carriage",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "dial_failed",
+            "cause": "tls"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                2000,
+                4000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2500,
+            "kind": "network_change"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "reconnect-backoff-caps-at-30s",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                11000,
+                12000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 12000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 12000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                12000,
+                14000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 14000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 14000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                14000,
+                18000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 18000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 18000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                18000,
+                26000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 26000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 26000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                26000,
+                42000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 42000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 42000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                42000,
+                72000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 72000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 72000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "redial": [
+                72000,
+                102000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 3600000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "WEBSOCKET",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 3600000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN_WS",
+            "transport": "WEBSOCKET",
+            "actions": [],
+            "timers": {
+              "probe_tls": [
+                3600000,
+                4500000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "transient-refusals-keep-carriage",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "EDGE_NOT_READY"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                2000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "refused",
+            "code": "OVERLOADED"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                2000,
+                4000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 4000,
+            "kind": "refused",
+            "code": "BAD_REQUEST"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                4000,
+                8000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "flapping-sessions",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 20000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 21000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                21000,
+                22000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 22000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 22000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "refused-VERSION_TOO_OLD-holds-and-redials",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "VERSION_TOO_OLD"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "update_required",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                301000,
+                301000
+              ],
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 301000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "update_required",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                601000,
+                601000
+              ],
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 901000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 902000,
+            "kind": "refused",
+            "code": "VERSION_TOO_OLD"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "update_required",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                1202000,
+                1202000
+              ],
+              "redial": [
+                902000,
+                2702000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2702000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2703000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "refused-PROTOCOL_DISABLED-holds-and-redials",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "maintenance",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                301000,
+                301000
+              ],
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 301000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "maintenance",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                601000,
+                601000
+              ],
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 901000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 902000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "maintenance",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                1202000,
+                1202000
+              ],
+              "redial": [
+                902000,
+                2702000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2702000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2703000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "refused-TOO_MANY_ROUTES-holds-and-redials",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "TOO_MANY_ROUTES"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "too_many_routes",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                301000,
+                301000
+              ],
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 301000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "too_many_routes",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                601000,
+                601000
+              ],
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 901000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 902000,
+            "kind": "refused",
+            "code": "TOO_MANY_ROUTES"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "too_many_routes",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                1202000,
+                1202000
+              ],
+              "redial": [
+                902000,
+                2702000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2702000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 2703000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "edge-too-old-update-required",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_failed",
+            "cause": "edge_too_old"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "update_required",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                311000,
+                311000
+              ],
+              "redial": [
+                11000,
+                911000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "maintenance-hold-left-by-newer-flags-on",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "maintenance",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                301000,
+                301000
+              ],
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "dial": [
+                2000,
+                32000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 3000,
+            "kind": "flags",
+            "generation": 2,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "dial": [
+                2000,
+                32000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 33000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 34000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "maintenance-hold-confirmed-by-flags-off",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "maintenance",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                301000,
+                301000
+              ],
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "flags",
+            "generation": 2,
+            "mode": "OFF"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "flags_off",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                302000,
+                302000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 3600000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "flags_off",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                3900000,
+                3900000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "auth-refusal-unconfirmed-redials-slowly",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "KEY_REVOKED"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 901000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 901000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "auth-refusal-confirmed-hold",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "KEY_REVOKED"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 2000,
+            "kind": "signed_state",
+            "device_status": "revoked",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "revoked",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                302000,
+                302000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 302000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "revoked",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                602000,
+                602000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 303000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "dial": [
+                303000,
+                333000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 333000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "invalid-proof-never-holds-alone",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "refused",
+            "code": "INVALID_PROOF"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "redial": [
+                1000,
+                901000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 901000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 902000,
+            "kind": "refused",
+            "code": "ACCOUNT_SUSPENDED"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "redial": [
+                902000,
+                2702000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 903000,
+            "kind": "refused",
+            "code": "NOT_ENROLLED"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "redial": [
+                903000,
+                4503000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "liveness-traffic-without-pong",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "send_ping"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 31000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 50000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 51000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 71000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "send_ping"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 85000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 86000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "liveness-ping-answered-by-any-byte",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 21000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "send_ping"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 30000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 36000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-reconnect-same-run-make-before-break",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "ROLLOUT",
+            "action": "RECONNECT"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "switch_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 12000,
+            "kind": "rx"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-max-age",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "MAX_AGE",
+            "action": "RECONNECT"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "switch_session"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-second-dial-fails-then-old-closes",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "REBALANCE",
+            "action": "ACTION_UNSPECIFIED"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_failed",
+            "cause": "dial"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 20000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-second-dial-in-flight-when-old-closes",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "ROLLOUT",
+            "action": "RECONNECT"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 20000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 21000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-superseded-hold-pauses-60s",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "SUPERSEDED",
+            "action": "HOLD"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "close_session",
+              "count_supersede"
+            ],
+            "timers": {
+              "redial": [
+                70000,
+                70000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 60000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "redial": [
+                70000,
+                70000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 70000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 71000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "drain-kill-switch-hold-while-flags-on",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "KILL_SWITCH",
+            "action": "HOLD"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat",
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 70000,
+            "kind": "session_lost"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 71000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "maintenance",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                371000,
+                371000
+              ],
+              "redial": [
+                71000,
+                971000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 72000,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "OFF"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "flags_off",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                372000,
+                372000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "kill-switch-signed-flags-off",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "flags",
+            "generation": 2,
+            "mode": "OFF"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "flags_off",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                310000,
+                310000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 3600000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "flags_off",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                3900000,
+                3900000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 3601000,
+            "kind": "flags",
+            "generation": 3,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "dial": [
+                3601000,
+                3631000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 3631000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 3632000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "flags-rollback-refused",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "flags",
+            "generation": 2,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "flags",
+            "generation": 2,
+            "mode": "OFF"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "flags_rollback_refused"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 12000,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "OFF"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "flags_rollback_refused"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "key-rotated-with-pending-key",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "KEY_ROTATED",
+            "action": "RECONNECT",
+            "pending_key": true
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "commit_rotation",
+              "dial_second_session"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "switch_session"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "key-rotated-without-pending-key",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "drain",
+            "reason": "KEY_ROTATED",
+            "action": "RECONNECT"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "close_session",
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "legacy-reactivated-revoke-device-confirmed",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "revoke",
+            "scope": "DEVICE"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "close_session",
+              "request_signed_heartbeat",
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "refused",
+            "code": "KEY_REVOKED"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "redial": [
+                11000,
+                911000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 12000,
+            "kind": "signed_state",
+            "device_status": "revoked",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "revoked",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                312000,
+                312000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "revoke-device-unconfirmed",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "revoke",
+            "scope": "DEVICE"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "close_session",
+              "request_signed_heartbeat",
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 12000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "revoke-account-confirmed",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "revoke",
+            "scope": "ACCOUNT"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "close_session",
+              "request_signed_heartbeat",
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "suspended"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "suspended",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                311000,
+                311000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 12000,
+            "kind": "flags",
+            "generation": 1,
+            "mode": "ON"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "suspended",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "heartbeat": [
+                311000,
+                311000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 13000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "dial": [
+                13000,
+                43000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "revoke-app-keeps-session",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "revoke",
+            "scope": "APP"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "end_app_sessions"
+            ],
+            "timers": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "repair-needed-hold",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "repair_needed"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "repair_needed",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels"
+            ],
+            "timers": {
+              "heartbeat": [
+                301000,
+                301000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 301000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "repair_needed",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                601000,
+                601000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 360000,
+            "kind": "signed_state",
+            "device_status": "active",
+            "account_status": "active"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {
+              "dial": [
+                360000,
+                390000
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "unsigned-statements-never-hold-without-redial",
+      "initial": {
+        "generation": 0,
+        "mode_on": true
+      },
+      "steps": [
+        {
+          "event": {
+            "at": 0,
+            "kind": "start"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1000,
+            "kind": "dial_ok"
+          },
+          "want": {
+            "state": "OWN",
+            "transport": "TLS",
+            "actions": [],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 10000,
+            "kind": "revoke",
+            "scope": "DEVICE"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "close_session",
+              "request_signed_heartbeat",
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 11000,
+            "kind": "refused",
+            "code": "KEY_REVOKED"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "redial": [
+                11000,
+                911000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 12000,
+            "kind": "refused",
+            "code": "ACCOUNT_SUSPENDED"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "redial": [
+                12000,
+                1812000
+              ]
+            }
+          }
+        },
+        {
+          "event": {
+            "at": 1812000,
+            "kind": "tick"
+          },
+          "want": {
+            "state": "RECONNECTING",
+            "transport": "TLS",
+            "actions": [
+              "dial"
+            ],
+            "timers": {}
+          }
+        },
+        {
+          "event": {
+            "at": 1813000,
+            "kind": "refused",
+            "code": "PROTOCOL_DISABLED"
+          },
+          "want": {
+            "state": "HOLD",
+            "hold": "maintenance",
+            "transport": "TLS",
+            "actions": [
+              "stop_tunnels",
+              "request_signed_heartbeat"
+            ],
+            "timers": {
+              "heartbeat": [
+                2113000,
+                2113000
+              ],
+              "redial": [
+                1813000,
+                5413000
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

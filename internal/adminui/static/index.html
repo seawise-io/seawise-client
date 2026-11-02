@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SeaWise client</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<main>
+<h1>SeaWise client</h1>
+<p id="message" role="status" aria-live="polite"></p>
+
+<form id="setup" hidden>
+<h2 tabindex="-1">Set up this client</h2>
+<p>Choose a password for this admin page. For security, a password can only be set within 5 minutes of the client starting.</p>
+<label for="setup-password">New password</label>
+<input id="setup-password" name="password" type="password" autocomplete="new-password" maxlength="72" required aria-describedby="setup-password-hint">
+<p id="setup-password-hint" class="hint">10 to 72 bytes. Most letters count as 1; accented letters and symbols count as 2 to 4.</p>
+<button type="submit">Save password</button>
+</form>
+
+<section id="closed" hidden>
+<h2 tabindex="-1">Setup timed out</h2>
+<p>For security, a password can only be set within 5 minutes of the client starting. Restart the client, then open this page again and set a password.</p>
+</section>
+
+<form id="login" hidden>
+<h2 tabindex="-1">Sign in</h2>
+<label for="login-password">Password</label>
+<input id="login-password" name="password" type="password" autocomplete="current-password" required>
+<button type="submit">Sign in</button>
+</form>
+
+<section id="dashboard" hidden>
+<h2 tabindex="-1">Tunnels</h2>
+<p id="tunnels"></p>
+<button id="kill-switch" type="button"></button>
+<h2>Status</h2>
+<p id="update" hidden></p>
+<pre id="status"></pre>
+<h2 id="apps-heading" tabindex="-1">Apps</h2>
+<p id="apps-count"></p>
+<ul id="apps" aria-labelledby="apps-heading"></ul>
+<form id="add-app">
+<h3>Add app</h3>
+<label for="app-name">App name</label>
+<input id="app-name" name="name" type="text" maxlength="100" required>
+<label for="app-host">Host</label>
+<input id="app-host" name="host" type="text" maxlength="255" placeholder="sonarr, host.docker.internal, or 192.168.1.5" required>
+<label for="app-port">Port</label>
+<input id="app-port" name="port" type="number" min="1" max="65535" required>
+<button type="submit">Add</button>
+</form>
+<h2 id="review-heading" tabindex="-1">Apps to review</h2>
+<p>Apps that reach this machine, a public address, a mail port, a management API or the network gateway, apps that are turned off, apps whose address is refused, and requests from SeaWise to turn an app off. Only a refused address stops an app.</p>
+<ul id="review" aria-labelledby="review-heading"></ul>
+<h2 id="access-heading">Access log</h2>
+<p>Connections forwarded to your apps from this machine, newest first. Kept for 30 days on this machine only.</p>
+<div class="scroll" role="region" aria-labelledby="access-heading" tabindex="0">
+<table id="access">
+<thead><tr><th scope="col">Time</th><th scope="col">App</th><th scope="col">From</th><th scope="col">To</th><th scope="col">In</th><th scope="col">Out</th><th scope="col">Duration</th><th scope="col">Result</th></tr></thead>
+<tbody id="access-rows"></tbody>
+</table>
+</div>
+<button id="access-newest" type="button">Newest</button>
+<button id="access-older" type="button">Older</button>
+<button id="logout" type="button">Sign out</button>
+</section>
+</main>
+</body>
+</html>

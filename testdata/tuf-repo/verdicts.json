@@ -1,0 +1,64 @@
+[
+  {
+    "name": "fresh-B",
+    "state": "B",
+    "root": "A/metadata/1.root.json",
+    "at": "2026-11-03T00:00:00Z",
+    "expect": "ok"
+  },
+  {
+    "name": "timestamp-expired-B",
+    "state": "B",
+    "root": "A/metadata/1.root.json",
+    "at": "2026-11-17T00:00:00Z",
+    "expect": "error",
+    "detail": "expired metadata error: timestamp.json is expired"
+  },
+  {
+    "name": "timestamp-last-second-B",
+    "state": "B",
+    "root": "A/metadata/1.root.json",
+    "at": "2026-11-15T23:59:59Z",
+    "expect": "ok"
+  },
+  {
+    "name": "fresh-C",
+    "state": "C",
+    "root": "A/metadata/1.root.json",
+    "at": "2026-11-10T01:00:00Z",
+    "expect": "ok"
+  },
+  {
+    "name": "fresh-D",
+    "state": "D",
+    "root": "A/metadata/1.root.json",
+    "at": "2026-11-11T01:00:00Z",
+    "expect": "ok"
+  },
+  {
+    "name": "rollback-D-to-C",
+    "state": "C",
+    "floor": "D",
+    "root": "A/metadata/1.root.json",
+    "at": "2026-11-11T02:00:00Z",
+    "expect": "error",
+    "detail": "bad version number error: new timestamp version 2 must be \u003e= 3"
+  },
+  {
+    "name": "rollback-C-to-B",
+    "state": "B",
+    "floor": "C",
+    "root": "A/metadata/1.root.json",
+    "at": "2026-11-10T02:00:00Z",
+    "expect": "error",
+    "detail": "bad version number error: new timestamp version 1 must be \u003e= 2"
+  },
+  {
+    "name": "fresh-E-rotated-timestamp-key",
+    "state": "E",
+    "floor": "D",
+    "root": "A/metadata/1.root.json",
+    "at": "2026-11-12T01:00:00Z",
+    "expect": "ok"
+  }
+]

@@ -1,0 +1,845 @@
+{
+  "format": "dpop",
+  "note": "TEST ONLY. Every key in this file is derived from a published seed; never use these keys outside tests.",
+  "keys": [
+    {
+      "name": "device-a",
+      "seed": "9b67f1987274c60bcea26117ecc5662790fe5cc5beb5dfc0a4ca16b6859522e8",
+      "x": "qYklkTB9s4gdjWqIu88z5rNohd8lXkHeosIrjz0UeP8",
+      "kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
+      "fingerprint": "SW-6636-8967-0707-058A"
+    },
+    {
+      "name": "device-b",
+      "seed": "5945a2e2824c22c74fea8abcf380f7ee5516e00c2351cba98af1d8dadf7eddc2",
+      "x": "GGjbToKsrATfH6iktzQkxuVDw4CsZ6lxPU_0Q-6e0W4",
+      "kid": "s6XaxZBr2_jRf5lAfSp2AZGefGjRScK25ZnTrMfJhyE",
+      "fingerprint": "SW-B3A5-DAC5-906B-DBF8"
+    }
+  ],
+  "cases": [
+    {
+      "name": "valid",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "ok",
+      "result": {
+        "kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
+        "jti": "dGVzdC1qdGktMDAwMDAwMDE"
+      }
+    },
+    {
+      "name": "valid-get-empty-body",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IkdFVCIsImh0dSI6Imh0dHBzOi8vYXBpLnNlYXdpc2UuaW8vZGV2aWNlL3YyL2hlYXJ0YmVhdCIsImlhdCI6MTc5MzAwMDAwMCwibm9uY2UiOiJuMS5BQUFBQVEuYzJWeWRtVnlMVzV2Ym1ObCIsImJvZHlfc2hhMjU2IjoiNDdERVFwajhIQlNhLV9USW1XLTVKQ2V1UWVSa201Tk1wSldaRzNoU3VGVSJ9.Ad19xc7jvWcLSWLdihyBMaxa40sH5XF47BqiohpxE7pr9lln8X-8ryTq6xN1Y6XB8bFVC-lFm2P0UsPxJt4FCQ",
+      "context": {
+        "method": "GET",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "ok",
+      "result": {
+        "kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
+        "jti": "dGVzdC1qdGktMDAwMDAwMDE"
+      }
+    },
+    {
+      "name": "valid-request-url-normalised",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA",
+      "context": {
+        "method": "POST",
+        "url": "HTTPS://API.SeaWise.io:443/device/v2/heartbeat#frag",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "ok",
+      "result": {
+        "kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
+        "jti": "dGVzdC1qdGktMDAwMDAwMDE"
+      }
+    },
+    {
+      "name": "valid-query-bound",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQ_c2luY2U9NVx1MDAyNmxpbWl0PTEwIiwiaWF0IjoxNzkzMDAwMDAwLCJub25jZSI6Im4xLkFBQUFBUS5jMlZ5ZG1WeUxXNXZibU5sIiwiYm9keV9zaGEyNTYiOiJRTmlFQzdzUjNMRGk2eEZrcjcxSjlSNnEtYzkwd1JNVjVNN3Nud2lIVEdJIn0.gMqLOdc-fTcq-eeq-pCU4Xh7v2OMFh7PoglZGznwDepKPkFMhj44kVCbvzVD12nXcd1bGuYI-LN1UvtfinURDA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat?since=5\u0026limit=10",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "ok",
+      "result": {
+        "kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
+        "jti": "dGVzdC1qdGktMDAwMDAwMDE"
+      }
+    },
+    {
+      "name": "query-changed",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQ_c2luY2U9NVx1MDAyNmxpbWl0PTEwIiwiaWF0IjoxNzkzMDAwMDAwLCJub25jZSI6Im4xLkFBQUFBUS5jMlZ5ZG1WeUxXNXZibU5sIiwiYm9keV9zaGEyNTYiOiJRTmlFQzdzUjNMRGk2eEZrcjcxSjlSNnEtYzkwd1JNVjVNN3Nud2lIVEdJIn0.gMqLOdc-fTcq-eeq-pCU4Xh7v2OMFh7PoglZGznwDepKPkFMhj44kVCbvzVD12nXcd1bGuYI-LN1UvtfinURDA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat?since=0\u0026limit=10",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "wrong_htu",
+      "wire": "wrong_htu"
+    },
+    {
+      "name": "query-reordered",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQ_c2luY2U9NVx1MDAyNmxpbWl0PTEwIiwiaWF0IjoxNzkzMDAwMDAwLCJub25jZSI6Im4xLkFBQUFBUS5jMlZ5ZG1WeUxXNXZibU5sIiwiYm9keV9zaGEyNTYiOiJRTmlFQzdzUjNMRGk2eEZrcjcxSjlSNnEtYzkwd1JNVjVNN3Nud2lIVEdJIn0.gMqLOdc-fTcq-eeq-pCU4Xh7v2OMFh7PoglZGznwDepKPkFMhj44kVCbvzVD12nXcd1bGuYI-LN1UvtfinURDA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat?limit=10\u0026since=5",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "wrong_htu",
+      "wire": "wrong_htu"
+    },
+    {
+      "name": "query-added-to-request",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat?since=5",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "wrong_htu",
+      "wire": "wrong_htu"
+    },
+    {
+      "name": "valid-iat-not-used-for-freshness",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.8t6OPvM8k6G8UdJCr2UWOCPPjaE486OBsG2OULqDfYaSjo68nFLDb3dyum_IJ35D5DWDDDg-y-MQBzXtWF1LDQ",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "ok",
+      "result": {
+        "kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
+        "jti": "dGVzdC1qdGktMDAwMDAwMDE"
+      }
+    },
+    {
+      "name": "valid-same-jti-other-key",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": [
+          {
+            "kid": "s6XaxZBr2_jRf5lAfSp2AZGefGjRScK25ZnTrMfJhyE",
+            "jti": "dGVzdC1qdGktMDAwMDAwMDE"
+          }
+        ]
+      },
+      "expect": "ok",
+      "result": {
+        "kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
+        "jti": "dGVzdC1qdGktMDAwMDAwMDE"
+      }
+    },
+    {
+      "name": "wrong-key",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.q8e_26cKxTK-XVUUnhCovPPe5WEmnVbfWcKfIJ9RztP1w6qTdj7Szq2xJZFFEBHCuoBKVNq8hw0GBI6O-UC8Dg",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "bad_signature",
+      "wire": "invalid_proof"
+    },
+    {
+      "name": "wrong-htm",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA",
+      "context": {
+        "method": "PUT",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "wrong_htm",
+      "wire": "wrong_htm"
+    },
+    {
+      "name": "wrong-htm-case",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6InBvc3QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.j-b3dPu-SiagHli_CF5_SSUMQvtM70vQ3ln1VKz_KuVzBf4oyqWwiauDpbpXW3DJ3rWv9zsHfVnhSFDYpjYYDg",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "wrong_htm",
+      "wire": "wrong_htm"
+    },
+    {
+      "name": "wrong-htu-path",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/apps",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "wrong_htu",
+      "wire": "wrong_htu"
+    },
+    {
+      "name": "wrong-htu-host",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA",
+      "context": {
+        "method": "POST",
+        "url": "https://evil.example/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "wrong_htu",
+      "wire": "wrong_htu"
+    },
+    {
+      "name": "wrong-htu-scheme",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA",
+      "context": {
+        "method": "POST",
+        "url": "http://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "wrong_htu",
+      "wire": "wrong_htu"
+    },
+    {
+      "name": "query-dropped-from-request",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQ_c2luY2U9NVx1MDAyNmxpbWl0PTEwIiwiaWF0IjoxNzkzMDAwMDAwLCJub25jZSI6Im4xLkFBQUFBUS5jMlZ5ZG1WeUxXNXZibU5sIiwiYm9keV9zaGEyNTYiOiJRTmlFQzdzUjNMRGk2eEZrcjcxSjlSNnEtYzkwd1JNVjVNN3Nud2lIVEdJIn0.gMqLOdc-fTcq-eeq-pCU4Xh7v2OMFh7PoglZGznwDepKPkFMhj44kVCbvzVD12nXcd1bGuYI-LN1UvtfinURDA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "wrong_htu",
+      "wire": "wrong_htu"
+    },
+    {
+      "name": "body-mismatch",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.1\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "body_mismatch",
+      "wire": "body_mismatch"
+    },
+    {
+      "name": "body-digest-of-empty-on-post",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IjQ3REVRcGo4SEJTYS1fVEltVy01SkNldVFlUmttNU5NcEpXWkczaFN1RlUifQ.FmCSW0IzQGwJwAHk8D60XfqIB9Hv5z0wGQlNzFxMCWPGFpFvhY9mXnreaDQl08jYScqBCA3Q4y7OwHSpKqmJCA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "body_mismatch",
+      "wire": "body_mismatch"
+    },
+    {
+      "name": "bad-nonce-expired",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAg.bmV3ZXItbm9uY2U"
+        ],
+        "seen": []
+      },
+      "expect": "bad_nonce",
+      "wire": "bad_nonce"
+    },
+    {
+      "name": "bad-nonce-syntax",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEgd2l0aCBzcGFjZSIsImJvZHlfc2hhMjU2IjoiUU5pRUM3c1IzTERpNnhGa3I3MUo5UjZxLWM5MHdSTVY1TTdzbndpSFRHSSJ9.HwQ7ER1J1ufN3k8MIFa821ZZ6LeAm7lAOy__fJXFnpkRURCP4MuxRphZ2zaxL1QwV6qA-pueA4jT0qC7u8rOCA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "bad_nonce",
+      "wire": "bad_nonce"
+    },
+    {
+      "name": "replayed-jti",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": [
+          {
+            "kid": "ZjaJZwcHBYrpGDKzt14xb29K8hbw4dWAkq90oCxfEYo",
+            "jti": "dGVzdC1qdGktMDAwMDAwMDE"
+          }
+        ]
+      },
+      "expect": "replayed",
+      "wire": "replayed"
+    },
+    {
+      "name": "alg-none",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6Im5vbmUiLCJqd2siOnsia3R5IjoiT0tQIiwiY3J2IjoiRWQyNTUxOSIsIngiOiJxWWtsa1RCOXM0Z2RqV3FJdTg4ejVyTm9oZDhsWGtIZW9zSXJqejBVZVA4In19.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "bad_alg",
+      "wire": "bad_alg"
+    },
+    {
+      "name": "alg-hs256-public-key-as-secret",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkhTMjU2IiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.Z7aP4ur0Lv_Jlx5fqhX-5SbCV1sDX7-yEQqtXHzgQ54",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "bad_alg",
+      "wire": "bad_alg"
+    },
+    {
+      "name": "alg-ed25519-fully-specified",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkMjU1MTkiLCJqd2siOnsia3R5IjoiT0tQIiwiY3J2IjoiRWQyNTUxOSIsIngiOiJxWWtsa1RCOXM0Z2RqV3FJdTg4ejVyTm9oZDhsWGtIZW9zSXJqejBVZVA4In19.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.j3UrhVkhXuUFhuEM5bGB5bHYgyVao_puIsbJkr2oiisAQ8BMXsa1JAT6y2h18Rr-A385tDQD8YXzGVD_2eLGCw",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "bad_alg",
+      "wire": "bad_alg"
+    },
+    {
+      "name": "alg-missing",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImp3ayI6eyJrdHkiOiJPS1AiLCJjcnYiOiJFZDI1NTE5IiwieCI6InFZa2xrVEI5czRnZGpXcUl1ODh6NXJOb2hkOGxYa0hlb3NJcmp6MFVlUDgifX0.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.fXMqNblmZ_ht1IX4v84XbEYi7swtRwsRzK8p2c55xpgi4FoTmjXo5Rab1q3CIUoKUyk5ZL1Udk6SfFF1DjZnBA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "typ-jwt",
+      "input": "eyJ0eXAiOiJKV1QiLCJhbGciOiJFZERTQSIsImp3ayI6eyJrdHkiOiJPS1AiLCJjcnYiOiJFZDI1NTE5IiwieCI6InFZa2xrVEI5czRnZGpXcUl1ODh6NXJOb2hkOGxYa0hlb3NJcmp6MFVlUDgifX0.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.0R-NeDsIpJGqGxrmsPIT3gCprRfoV_N9n46JIINZRPAExLyCYGlKttg8zyDUBh9hvm8Uf7RiTiI0Wp_AakZcAA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "bad_typ",
+      "wire": "bad_typ"
+    },
+    {
+      "name": "typ-frp-token",
+      "input": "eyJ0eXAiOiJzdy1mcnArand0IiwiYWxnIjoiRWREU0EiLCJqd2siOnsia3R5IjoiT0tQIiwiY3J2IjoiRWQyNTUxOSIsIngiOiJxWWtsa1RCOXM0Z2RqV3FJdTg4ejVyTm9oZDhsWGtIZW9zSXJqejBVZVA4In19.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5N2_4NzvtAcxizkgAj5fmEbR_dkr3NZksLSsL7O0aHUUo3VfmTvSnKRvTeiE0L_XMrMmwKNGMenO3_z-broKBw",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "bad_typ",
+      "wire": "bad_typ"
+    },
+    {
+      "name": "header-kid-not-jwk",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwia2lkIjoiWmphSlp3Y0hCWXJwR0RLenQxNHhiMjlLOGhidzRkV0FrcTkwb0N4ZkVZbyJ9.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.7RsboZkQsia7YtWn07_trQbq93UqbU0d1ZCJPzaYbqRlgWJMDIU9d1kWXQnKeNpiSizAfKmOQe7vFbxDkeYeAw",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "header-crit",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9LCJjcml0IjpbImV4cCJdfQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.8b8ACQ8Vy_Ge-__3gIRbBfZigZswFvx80vfNVuv097l7JTICrVwHcNr5sDlhbg56APJBXtEnep_MmIg3pSvnDw",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "header-jku",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9LCJqa3UiOiJodHRwczovL2V2aWwuZXhhbXBsZS9qd2tzIn0.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.W_YOPtBunfwtfiAH0pp8UZaxMvUAABSqVSuVvAtmTTrqzkvt_iMB15qGRAyvoc-uXsDU7dLpn2YbHKTDUDJuBw",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "jwk-with-private-d",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJkIjoibTJmeG1ISjB4Z3ZPb21FWDdNVm1KNUQtWE1XLXRkX0FwTW9XdG9XVkl1ZyIsIngiOiJxWWtsa1RCOXM0Z2RqV3FJdTg4ejVyTm9oZDhsWGtIZW9zSXJqejBVZVA4In19.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.DqBS5-65ZbsqV342l34x_emcSBUdjUdlTrDivW-_GphApcpGRBTjS74kE-ODIk6drVP_nvopTtrMTOpmiWWJCA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "bad_key",
+      "wire": "bad_key"
+    },
+    {
+      "name": "jwk-wrong-curve",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IlgyNTUxOSIsIngiOiJxWWtsa1RCOXM0Z2RqV3FJdTg4ejVyTm9oZDhsWGtIZW9zSXJqejBVZVA4In19.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.UeXR43eS1WtHiwX7D_5zLcryo7DoARZF4u1jM95_aP_kE2NlvAYdlPLVQsWloGpDUy0uEJ02E0XrYSWcYyAgDw",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "bad_key",
+      "wire": "bad_key"
+    },
+    {
+      "name": "jwk-small-order",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoiQVFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQSJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.C-bFTBbEccliWXYK4Exe64VR0y69dlk4ugR8frslpwCPo_yU8kbNfUiMs7r-eWzOFNYLOOGlziVK_9eevsRTAw",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "bad_key",
+      "wire": "bad_key"
+    },
+    {
+      "name": "jwk-non-canonical",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoiN3ZfX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fX19fX18zOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.WSJJgdtqVXMULNBxOy9hNmx4JMRWjp8FDebA4ky1-T_y0l8cho0CB7Lob4L7eRR9rsqfcZoMNPX0a5RkIxOVDQ",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "bad_key",
+      "wire": "bad_key"
+    },
+    {
+      "name": "claim-duplicate",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IkdFVCIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.QWGozB0nNG9uGyYEc-NCx7r9RwZzF3cbu84clKMo-A2Z4GbmR48W7ZPBCRUvrD9Dx2tWKzudMY7VutrAVwB2DQ",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "claim-case-variant",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJIVE0iOiJHRVQiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.PLMYzZQKwM1J76ys5rvr-r6adiyaoiafFR_SAMV61gMcJ21GWR1uroZzeBDussCBo9FDcUs2NoeMvZQDk5dYCQ",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "claim-unknown",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kiLCJhdGgiOiJ4In0.-jnzEETHLtkTPwjcck3FL7oYSQESjEbzPzLtG95srZKtsb2ywkCoflWwerCVkOsjUuXjYyN2C15N9ORV7N6hDQ",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "claim-missing-body-digest",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwifQ.xct6BlSarzJWDM01XOGAxB0o-NZMV1C_jFBnD7sT5XxXoGv_CdUx-0FjmPCw9kc7c9SGLxkmLz3CAmTh98Z6Aw",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "claim-null",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjpudWxsLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.YQnmjehUX5XIut4urO0YTT2WqZ4V2wyTdjZbPl_tmc1GII_dHnNqRfWJ3c1uqDeV2XQ43Bh3dse2uo_diuiMAw",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "claim-iat-fraction",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAuNSwibm9uY2UiOiJuMS5BQUFBQVEuYzJWeWRtVnlMVzV2Ym1ObCIsImJvZHlfc2hhMjU2IjoiUU5pRUM3c1IzTERpNnhGa3I3MUo5UjZxLWM5MHdSTVY1TTdzbndpSFRHSSJ9.W0iDwAMyIJRpcpi-fpLxuhDo-vy0O6-vsQqpZCb892zcaCYalywKiyBLMgyX31HWVAZAod2ypLvevX0jNgbrAw",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "claim-iat-negative",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOi0xLCJub25jZSI6Im4xLkFBQUFBUS5jMlZ5ZG1WeUxXNXZibU5sIiwiYm9keV9zaGEyNTYiOiJRTmlFQzdzUjNMRGk2eEZrcjcxSjlSNnEtYzkwd1JNVjVNN3Nud2lIVEdJIn0.vOQtpmL7CN2euFo3WSIZJfZncJFEIor6mZeKkm5Hbm2IChyq3A6hPx_WABqeCDqJb2uJb4mHFZmF65gmBn92Aw",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "claim-jti-too-short",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJjMmh2Y25RIiwiaHRtIjoiUE9TVCIsImh0dSI6Imh0dHBzOi8vYXBpLnNlYXdpc2UuaW8vZGV2aWNlL3YyL2hlYXJ0YmVhdCIsImlhdCI6MTc5MzAwMDAwMCwibm9uY2UiOiJuMS5BQUFBQVEuYzJWeWRtVnlMVzV2Ym1ObCIsImJvZHlfc2hhMjU2IjoiUU5pRUM3c1IzTERpNnhGa3I3MUo5UjZxLWM5MHdSTVY1TTdzbndpSFRHSSJ9.jnOHS7GAFRLkldmsS9DR0LhXchQbce_O7ksaCEtJNutqALRrDYApjdduJtYA8yhS0f3g2CwPULcVUpXvn6IYDw",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "payload-invalid-utf8",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2Rldv9pY2UvdjIvaGVhcnRiZWF0IiwiaWF0IjoxNzkzMDAwMDAwLCJub25jZSI6Im4xLkFBQUFBUS5jMlZ5ZG1WeUxXNXZibU5sIiwiYm9keV9zaGEyNTYiOiJRTmlFQzdzUjNMRGk2eEZrcjcxSjlSNnEtYzkwd1JNVjVNN3Nud2lIVEdJIn0.uT2svo5pu_fw62WdvaqANBNl-za1U3SfGuD_H68LIhvM810fmhI0NYIAnqxx9RPNxyhromZaweAsLM6IZwf0DQ",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "payload-trailing-data",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifXt9.nywmMPhIXoMhkRZ-a3oW95cYrQDGl8izPRbctL8tvaNLzgqqMXsEB0dyGY48l2rl5qggD6_z_6s_axnQgdVnBg",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "payload-not-object",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.WyJqdGkiXQ.f95-0rKfEukfxh9R38jPsZjCaiq0Ebufryz2IsPc2iIjnfLtkRmiy46Afkgc15EKu_t_dILuBLTACi4rsIs8CQ",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "base64-padding",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA==",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "base64-standard-alphabet",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.+QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "base64-nonzero-trailing-bits",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCB",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "base64-line-break",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJq\ndGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "two-segments",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "four-segments",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCA.AAAA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "malformed",
+      "wire": "malformed"
+    },
+    {
+      "name": "signature-s-not-reduced",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUeRbOWm-sJh7BwW1rn-gAmlSjROldmi2IO6bip8yfgGA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "bad_signature",
+      "wire": "invalid_proof"
+    },
+    {
+      "name": "too-large",
+      "input": "eyJ0eXAiOiJkcG9wK2p3dCIsImFsZyI6IkVkRFNBIiwiandrIjp7Imt0eSI6Ik9LUCIsImNydiI6IkVkMjU1MTkiLCJ4IjoicVlrbGtUQjlzNGdkaldxSXU4OHo1ck5vaGQ4bFhrSGVvc0lyanowVWVQOCJ9fQ.eyJqdGkiOiJkR1Z6ZEMxcWRHa3RNREF3TURBd01ERSIsImh0bSI6IlBPU1QiLCJodHUiOiJodHRwczovL2FwaS5zZWF3aXNlLmlvL2RldmljZS92Mi9oZWFydGJlYXQiLCJpYXQiOjE3OTMwMDAwMDAsIm5vbmNlIjoibjEuQUFBQUFRLmMyVnlkbVZ5TFc1dmJtTmwiLCJib2R5X3NoYTI1NiI6IlFOaUVDN3NSM0xEaTZ4RmtyNzFKOVI2cS1jOTB3Uk1WNU03c253aUhUR0kifQ.5QiYvAHtwgHabNigg0-ZhUnQB0mjZSW6dZcuP4QrJYUxcb05gYj3LtrTY7cIASIRlSjROldmi2IO6bip8yfgCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "context": {
+        "method": "POST",
+        "url": "https://api.seawise.io/device/v2/heartbeat",
+        "body": "{\"client_version\":\"2.0.0\"}",
+        "valid_nonces": [
+          "n1.AAAAAQ.c2VydmVyLW5vbmNl"
+        ],
+        "seen": []
+      },
+      "expect": "too_large",
+      "wire": "too_large"
+    }
+  ]
+}
