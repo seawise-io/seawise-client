@@ -141,7 +141,13 @@ func main() {
 		log.Error("control plane", "error", err)
 		os.Exit(1)
 	}
-	enrolment := startEnrolment(ctx, log, st, keys, a)
+	call, err := deviceCaller(clock.Now)
+	if err != nil {
+		log.Error("device API client", "error", err)
+		os.Exit(1)
+	}
+	enrolment := startEnrolment(ctx, log, st, keys, call, a)
+	pairing := startPairing(ctx, log, st, keys, call, a)
 	apps, appsActive, appEngine := startAppSync(ctx, log, st, keys, a)
 	startHealthProbe(ctx, log, st, cfg.Gateways, tunnelUp(ctx, a), appEngine)
 	syncer, err := controlplane.NewSyncer(controlplane.SyncerConfig{Client: cp, Store: st, Agent: a, Version: constants.Version, Logger: log, SkipList: appsActive,
@@ -155,7 +161,7 @@ func main() {
 	updates, fresh := startUpdateCheck(ctx, log, st, tr)
 	ins = newInstructions(log, st, tr, fresh, a.Reconcile)
 
-	ui, err := startAdminUI(ctx, log, st, a, appEngine, accessLog, func(ctx context.Context) any {
+	ui, err := startAdminUI(ctx, log, st, a, appEngine, accessLog, pairing, func(ctx context.Context) any {
 		as, _ := a.Status(ctx)
 		return map[string]any{"agent": as, "enrolment": enrolment(), "control_plane": syncer.Status(), "app_sync": apps(), "access_log": accessLog.Status(), "updates": updates(), "keyset": tr.status(), "instructions": ins.status(), "visitor_tokens": ins.visitorStatus(), "data_streams": dataStreams.Status()}
 	})
@@ -207,7 +213,7 @@ func startUpdateCheck(ctx context.Context, log *slog.Logger, st *store.Store, tr
 
 // startAdminUI serves the admin UI on the admin port (plain HTTP, or HTTPS
 // with SEAWISE_TLS=auto) and returns a function that waits for it to stop.
-func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *agent.Agent, apps *appsync.Engine, al *accesslog.Log, status func(context.Context) any) (func(), error) {
+func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *agent.Agent, apps *appsync.Engine, al *accesslog.Log, pairing adminui.Pairing, status func(context.Context) any) (func(), error) {
 	auth, err := adminui.NewAuth(adminui.AuthConfig{Store: st, Logger: log})
 	if err != nil {
 		return nil, err
@@ -241,6 +247,7 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *age
 		OnTargetsChanged: func(ctx context.Context) { _ = a.Reconcile(ctx) },
 		AccessLog:        al,
 		KillSwitch:       a.SetKillSwitch,
+		Pairing:          pairing,
 	}
 	if apps != nil {
 		cfg.Apps = apps

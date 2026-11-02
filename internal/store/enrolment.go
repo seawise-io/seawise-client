@@ -59,9 +59,10 @@ func (st State) EnrolmentFor() *Enrolment {
 }
 
 // EnrolmentNeeded reports whether the paired server has not switched to
-// the device key; until then it holds its 1.x token.
+// the device key; until then it holds its 1.x token. An account paired
+// with the device key never needs it.
 func (st State) EnrolmentNeeded(_ Secrets) bool {
-	if st.Account == nil {
+	if st.Account == nil || st.Account.Keyed() {
 		return false
 	}
 	e := st.EnrolmentFor()

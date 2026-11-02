@@ -34,7 +34,21 @@
 </form>
 
 <section id="dashboard" hidden>
-<h2 tabindex="-1">Tunnels</h2>
+<h2 id="pair-heading" tabindex="-1">Pairing</h2>
+<p id="pair-state" role="status" aria-live="polite"></p>
+<form id="pair-form" hidden>
+<label for="pair-name">Server name</label>
+<input id="pair-name" name="server_name" type="text" maxlength="100" placeholder="My Server">
+<button type="submit">Pair this server</button>
+</form>
+<div id="pair-pending" hidden>
+<p>To approve this server, sign in to Seawise.io, open the connect page and type this code. Check that the code matches before you approve.</p>
+<p id="pair-code" class="code" tabindex="-1"></p>
+<p><a id="pair-link" href="#" target="_blank" rel="noopener noreferrer">Open the connect page on Seawise.io</a></p>
+<p id="pair-key" class="hint"></p>
+<button id="pair-cancel" type="button">Cancel pairing</button>
+</div>
+<h2>Tunnels</h2>
 <p id="tunnels"></p>
 <button id="kill-switch" type="button"></button>
 <h2>Status</h2>

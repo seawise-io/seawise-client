@@ -214,6 +214,30 @@ func (ks *FileKeystore) Create() (*Key, error) {
 	return k, err
 }
 
+func (ks *FileKeystore) Replace() (*Key, error) {
+	ks.mu.Lock()
+	defer ks.mu.Unlock()
+	if ks.closed {
+		return nil, ErrClosed
+	}
+	k, err := generate(ks.now())
+	if err != nil {
+		return nil, err
+	}
+	err = ks.persist(k, nil)
+	if !written(err) {
+		k.destroy()
+		return nil, err
+	}
+	for _, old := range []*Key{ks.current, ks.pending} {
+		if old != nil {
+			old.destroy()
+		}
+	}
+	ks.current, ks.pending = k, nil
+	return k, err
+}
+
 func (ks *FileKeystore) BeginRotation() (*Key, error) {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/seawise/client/internal/devicecall"
 	"github.com/seawise/client/internal/identity"
 	"github.com/seawise/client/internal/store"
 )
@@ -77,6 +78,10 @@ type env struct {
 	changes int
 	v1      map[string][]byte
 	handler atomic.Pointer[handlerBox]
+	// jti fixes the proof id while set.
+	jti atomic.Pointer[string]
+	// client replaces the test server's client when set.
+	client *http.Client
 }
 
 type handlerBox struct{ h http.Handler }
@@ -128,8 +133,21 @@ func (v *env) open() {
 		v.t.Fatal(err)
 	}
 	v.st, v.ks = st, ks
+	client := v.srv.Client()
+	if v.client != nil {
+		client = v.client
+	}
+	call, err := devicecall.New(devicecall.Config{Client: client, Version: "2.0.0", Now: v.clk.now, JTI: func() string {
+		if j := v.jti.Load(); j != nil {
+			return *j
+		}
+		return devicecall.NewJTI()
+	}})
+	if err != nil {
+		v.t.Fatal(err)
+	}
 	e, err := New(Config{
-		Store: st, Keys: ks, Origin: func() string { return v.origin }, Client: v.srv.Client(), Version: "2.0.0",
+		Store: st, Keys: ks, Origin: func() string { return v.origin }, Caller: call,
 		Now: v.clk.now, Logger: slog.New(slog.NewTextHandler(v.logs, nil)),
 		OnChange: func(context.Context) { v.changes++ }, Jitter: func() float64 { return 1 },
 	})

@@ -3,6 +3,7 @@ package enrol
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/seawise/client/internal/devicecall"
 	"github.com/seawise/client/internal/identity"
 	"github.com/seawise/client/internal/store"
 )
@@ -246,7 +248,8 @@ func TestReplayedProofRetried(t *testing.T) {
 	v := newEnv(t)
 	v.step()
 	v.step()
-	v.e.call.jti = func() string { return "fixed-jti-fixed-jti-fixed" }
+	fixed := "fixed-jti-fixed-jti-fixed"
+	v.jti.Store(&fixed)
 	v.fake.with(func(f *fakeC12) {
 		k, _ := v.ks.Current()
 		f.seen[k.KeyID()+":fixed-jti-fixed-jti-fixed"] = true
@@ -255,7 +258,7 @@ func TestReplayedProofRetried(t *testing.T) {
 	if v.phase() != store.PhasePending || v.holdReason() != "" || !strings.Contains(v.e.Status().LastError, "replayed") {
 		t.Fatalf("status %+v", v.e.Status())
 	}
-	v.e.call.jti = newJTI
+	v.jti.Store(nil)
 	v.run(30, v.switched)
 }
 
@@ -422,23 +425,10 @@ func TestLocalHolds(t *testing.T) {
 	})
 }
 
-func TestCheckOrigin(t *testing.T) {
-	good := map[string]string{"https://api.seawise.io": "https://api.seawise.io", "https://api.seawise.io/": "https://api.seawise.io", "https://h:8443": "https://h:8443"}
-	for in, want := range good {
-		if got, err := checkOrigin(in); err != nil || got != want {
-			t.Errorf("%s: %q %v", in, got, err)
-		}
-	}
-	for _, in := range []string{"http://api.seawise.io", "https://", "https://u@h", "https://h/x", "https://h?q", "https://h#f", "ftp://h", ""} {
-		if _, err := checkOrigin(in); err == nil {
-			t.Errorf("%s accepted", in)
-		}
-	}
-}
-
 func TestInsecureClientRefused(t *testing.T) {
 	c := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}} // #nosec G402 -- the refusal is under test
-	if _, err := newCaller(c, "x", time.Now); err == nil {
+	v := newEnv(t)
+	if _, err := New(Config{Store: v.st, Keys: v.ks, Origin: func() string { return v.origin }, Client: c}); !errors.Is(err, devicecall.ErrInsecureTLS) {
 		t.Fatal("insecure client accepted")
 	}
 }
@@ -461,7 +451,8 @@ func TestRedirectNotFollowed(t *testing.T) {
 
 func TestUntrustedCertificateFails(t *testing.T) {
 	v := newEnv(t)
-	v.e.call.client = &http.Client{}
+	v.client = &http.Client{}
+	v.reopen()
 	v.step()
 	v.step()
 	v.step()
@@ -604,7 +595,7 @@ func TestNonceChallengeRetriedOnlyOnce(t *testing.T) {
 }
 
 func TestAnswerSizeCap(t *testing.T) {
-	for _, size := range []int{maxAnswer, maxAnswer + 1} {
+	for _, size := range []int{devicecall.MaxAnswer, devicecall.MaxAnswer + 1} {
 		v := newEnv(t)
 		v.step()
 		v.step()
@@ -614,7 +605,7 @@ func TestAnswerSizeCap(t *testing.T) {
 		})
 		v.step()
 		tooLarge := strings.Contains(v.e.Status().LastError, "too large")
-		if tooLarge != (size > maxAnswer) {
+		if tooLarge != (size > devicecall.MaxAnswer) {
 			t.Fatalf("size %d: %q", size, v.e.Status().LastError)
 		}
 	}
@@ -724,5 +715,52 @@ func TestSwitchedWithoutKeyShowsKeyLost(t *testing.T) {
 	v.step()
 	if s := v.e.Status(); s.Hold != store.HoldKeyLost {
 		t.Fatalf("replaced key not shown: %+v", s)
+	}
+}
+
+func TestKeystoreErrorIsNotKeyLost(t *testing.T) {
+	v := newEnv(t)
+	v.run(30, v.switched)
+	v.ks.Close()
+	v.step()
+	s := v.e.Status()
+	if s.State != StateSwitched || s.Hold != "" || !strings.Contains(s.LastError, identity.ErrClosed.Error()) || s.KeyFingerprint != "" {
+		t.Fatalf("status %+v", s)
+	}
+	v.ks = nil
+}
+
+func TestKeystoreErrorKeepsEarlierError(t *testing.T) {
+	v := newEnv(t)
+	v.ks.Close()
+	v.e.setStatus("store: disk full", time.Time{})
+	if s := v.e.Status(); s.LastError != "store: disk full" {
+		t.Fatalf("status %+v", s)
+	}
+	v.ks = nil
+}
+
+func TestKeyedAccountSendsNoLegacyCalls(t *testing.T) {
+	st := store.State{Account: &store.Account{ServerID: testServer, DeviceID: "d0000000-0000-4000-8000-000000000001", KeyID: strings.Repeat("A", 43)}}
+	if LegacyAllowed(st) || !Ready(st, store.Secrets{}) {
+		t.Fatal("an account paired with its device key must not send 1.x calls")
+	}
+	if !LegacyAllowed(store.State{Account: &store.Account{ServerID: testServer}}) {
+		t.Fatal("an imported account sends 1.x calls until enrolled")
+	}
+}
+
+// No pairing path exists for a paired or held server, so no hold asks for
+// one; each points at the server's page instead.
+func TestHoldTextsNeedNoLocalPairing(t *testing.T) {
+	for reason, text := range holdText {
+		if strings.Contains(strings.ToLower(text), "pair") {
+			t.Errorf("%s: %q asks for pairing", reason, text)
+		}
+	}
+	for _, r := range []string{store.HoldInvalidToken, store.HoldAlreadyEnrolled, store.HoldBadKey, store.HoldRepairRequired, store.HoldKeyRevoked, store.HoldTokenUnusable, store.HoldServerID, store.HoldKeyLost, store.HoldKeyUnknown} {
+		if !strings.HasSuffix(holdText[r], reconnectText) {
+			t.Errorf("%s: %q", r, holdText[r])
+		}
 	}
 }

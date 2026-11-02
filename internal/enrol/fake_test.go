@@ -15,6 +15,7 @@ import (
 
 	"github.com/seawise-io/seawise-client/tunnelwire/claims"
 
+	"github.com/seawise/client/internal/devicecall"
 	"github.com/seawise/client/internal/protocol"
 )
 
@@ -179,7 +180,7 @@ func parseBody(raw []byte, max int, optional ...string) (map[string]string, bool
 	if len(raw) > max {
 		return nil, false
 	}
-	m, err := strictStrings(raw, []string{"server_id"}, optional...)
+	m, err := devicecall.StrictStrings(raw, []string{"server_id"}, optional...)
 	if err != nil {
 		return nil, false
 	}

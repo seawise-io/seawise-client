@@ -35,6 +35,10 @@ type Keystore interface {
 	// Create generates the first key. It returns ErrKeyExists rather than
 	// replace an identity.
 	Create() (*Key, error)
+	// Replace generates a new current key and destroys the current and
+	// pending keys. Only an unpaired agent starting a pairing calls it, so
+	// every pairing offers a key that was never registered.
+	Replace() (*Key, error)
 	// Pending returns the rotation candidate, or ErrNoKey.
 	Pending() (*Key, error)
 	// BeginRotation creates the pending key, or returns the existing one so
@@ -80,11 +84,11 @@ func Rotate(ks Keystore, serverID string) (protocol.Rotation, error) {
 
 var (
 	// ErrRepairNeeded means the device key is revoked and no pending key
-	// was accepted: the agent must pair again.
-	ErrRepairNeeded = errors.New("device key revoked; pair this device again")
+	// was accepted: the server must be connected again.
+	ErrRepairNeeded = errors.New("device key revoked; this server needs to be connected again")
 	// ErrKeyLost means the agent is paired but its key is gone. A new key
 	// would be a different identity, so none is created.
-	ErrKeyLost = errors.New("device is paired but its key is missing; pair this device again")
+	ErrKeyLost = errors.New("the device key of this server is missing; this server needs to be connected again")
 )
 
 // RecoverRevoked handles the server reporting the current key as revoked.

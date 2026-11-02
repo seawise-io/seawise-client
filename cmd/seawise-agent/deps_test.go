@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -19,7 +20,7 @@ func TestAgentDependencies(t *testing.T) {
 		t.Fatalf("go list: %v\n%s", err, out)
 	}
 	deps := string(out)
-	for _, bad := range []string{"github.com/seawise/client/cmd/seawise/", "github.com/seawise/client/internal/tufrepo", "github.com/seawise/client/tools/"} {
+	for _, bad := range []string{"github.com/seawise/client/cmd/seawise/", "github.com/seawise/client/internal/tufrepo", "github.com/seawise/client/tools/", "github.com/seawise/client/internal/api\n"} {
 		if strings.Contains(deps, bad) {
 			t.Errorf("seawise-agent depends on %s", bad)
 		}
@@ -63,5 +64,44 @@ func TestAppSyncNeverCommitsRotations(t *testing.T) {
 		if strings.Contains(string(b), bad) {
 			t.Fatalf("app sync wiring calls %s; only the session manager's signed proof may commit", bad)
 		}
+	}
+}
+
+// A fresh pairing goes only through the device-key pairing; no other
+// package the agent links calls the pairing paths.
+func TestPairingOnlyWithTheDeviceKey(t *testing.T) {
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatalf("Go toolchain needed to list the agent dependencies: %v", err)
+	}
+	out, err := exec.Command(goBin, "list", "-deps", "-f", `{{if not .Standard}}{{.ImportPath}}|{{.Dir}}|{{join .GoFiles ","}}{{end}}`, ".").CombinedOutput()
+	if err != nil {
+		t.Fatalf("go list: %v\n%s", err, out)
+	}
+	var found []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		f := strings.SplitN(line, "|", 3)
+		if len(f) != 3 || !strings.HasPrefix(f[0], "github.com/seawise/client/") || f[2] == "" {
+			continue
+		}
+		for _, name := range strings.Split(f[2], ",") {
+			b, err := os.ReadFile(filepath.Join(f[1], name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(b), "/servers/pair/") {
+				found = append(found, f[0]+"/"+name)
+			}
+		}
+	}
+	if len(found) != 1 || found[0] != "github.com/seawise/client/internal/pair/wire.go" {
+		t.Fatalf("pairing paths in %v; only internal/pair may call them", found)
+	}
+	b, err := os.ReadFile("../../internal/pair/pair.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(b), "X-FRP-Token") || strings.Contains(string(b), "frp_token") {
+		t.Fatal("device-key pairing handles a 1.x token")
 	}
 }

@@ -49,6 +49,8 @@ type Config struct {
 	OnTargetsChanged func(context.Context)
 	// Apps adds and removes local apps; nil turns both off.
 	Apps Apps
+	// Pairing pairs an unpaired client; nil turns it off.
+	Pairing Pairing
 	// KillSwitch drops or restores all tunnels.
 	AccessLog     AccessLog
 	KillSwitch    KillSwitchFunc
@@ -106,6 +108,9 @@ func New(cfg Config) (*Server, error) {
 	mux.Handle("DELETE /api/apps/delete", s.requireSession(http.HandlerFunc(s.handleAppDelete)))
 	mux.Handle("GET /api/access-log", s.requireSession(http.HandlerFunc(s.handleAccessLog)))
 	mux.Handle("POST /api/kill-switch", s.requireSession(http.HandlerFunc(s.handleKillSwitch)))
+	mux.Handle("GET /api/pair/status", s.requireSession(http.HandlerFunc(s.handlePairStatus)))
+	mux.Handle("POST /api/pair/start", s.requireSession(http.HandlerFunc(s.handlePairStart)))
+	mux.Handle("POST /api/pair/cancel", s.requireSession(http.HandlerFunc(s.handlePairCancel)))
 	mux.Handle("POST /api/auth/logout", s.requireSession(http.HandlerFunc(s.handleLogout)))
 	s.secure = mux
 	return s, nil

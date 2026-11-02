@@ -597,3 +597,86 @@ func TestCommitRotationNamesThePendingKey(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestReplace(t *testing.T) {
+	dir := stateDir(t)
+	ks := openFile(t, dir)
+	first, err := ks.Replace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cur, _ := ks.Current(); cur.KeyID() != first.KeyID() {
+		t.Fatal("replace without a key did not make one")
+	}
+	pend, err := ks.BeginRotation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := ks.Replace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.KeyID() == first.KeyID() || next.KeyID() == pend.KeyID() {
+		t.Fatal("replace reused a key")
+	}
+	if cur, _ := ks.Current(); cur.KeyID() != next.KeyID() {
+		t.Fatal("new key not current")
+	}
+	if _, err := ks.Pending(); !errors.Is(err, ErrNoKey) {
+		t.Fatal("pending key kept")
+	}
+	for _, old := range []*Key{first, pend} {
+		if _, err := old.Sign(nil, []byte("m"), crypto.Hash(0)); !errors.Is(err, ErrDestroyed) {
+			t.Fatal("retired key still signs")
+		}
+	}
+	ks.Close()
+	if _, err := ks.Replace(); !errors.Is(err, ErrClosed) {
+		t.Fatalf("closed: %v", err)
+	}
+	ks = openFile(t, dir)
+	cur, _ := ks.Current()
+	if cur.KeyID() != next.KeyID() {
+		t.Fatal("replace not persisted")
+	}
+	if _, err := ks.Pending(); !errors.Is(err, ErrNoKey) {
+		t.Fatal("pending key persisted")
+	}
+	raw, _ := os.ReadFile(filepath.Join(dir, KeyFile))
+	for _, old := range []*Key{first, pend} {
+		if bytes.Contains(raw, []byte(base64.RawURLEncoding.EncodeToString(old.PublicKey()))) {
+			t.Fatal("retired key left in the file")
+		}
+	}
+}
+
+func TestReplaceWriteFailureKeepsKeys(t *testing.T) {
+	dir := stateDir(t)
+	ks := openFile(t, dir)
+	old := create(t, ks)
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	if os.Getuid() == 0 {
+		t.Skip("root ignores directory modes")
+	}
+	if _, err := ks.Replace(); err == nil {
+		t.Fatal("replace reported success without writing")
+	}
+	cur, err := ks.Current()
+	if err != nil || cur.KeyID() != old.KeyID() {
+		t.Fatal("current key changed")
+	}
+	if _, err := old.Sign(nil, []byte("m"), crypto.Hash(0)); err != nil {
+		t.Fatal("current key destroyed")
+	}
+}
+
+func TestRecoveryErrorsNeedNoLocalPairing(t *testing.T) {
+	for _, err := range []error{ErrRepairNeeded, ErrKeyLost} {
+		if strings.Contains(err.Error(), "pair") {
+			t.Errorf("%q asks for pairing", err)
+		}
+	}
+}

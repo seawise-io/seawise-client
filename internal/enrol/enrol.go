@@ -16,6 +16,7 @@ import (
 
 	"github.com/seawise-io/seawise-client/tunnelwire/claims"
 
+	"github.com/seawise/client/internal/devicecall"
 	"github.com/seawise/client/internal/identity"
 	"github.com/seawise/client/internal/store"
 )
@@ -38,20 +39,23 @@ const (
 	StateHeld      = "held"
 )
 
+// reconnectText ends every hold that only the server side can clear.
+const reconnectText = "This server needs to be connected again. See the server's page on Seawise.io."
+
 var holdText = map[string]string{
-	store.HoldInvalidToken:    "The server did not accept this server's 1.x token. Pair this server again from your servers page.",
-	store.HoldAlreadyEnrolled: "Another device key is already enrolled for this server, for example a copy of this data directory. Pair this server again if that copy is gone.",
-	store.HoldBadKey:          "The server refused this device key because it was registered before. Pair this server again.",
-	store.HoldRepairRequired:  "The server asks for this server to be paired again.",
+	store.HoldInvalidToken:    "The server did not accept this server's 1.x token. " + reconnectText,
+	store.HoldAlreadyEnrolled: "Another device key is already enrolled for this server, for example a copy of this data directory. " + reconnectText,
+	store.HoldBadKey:          "The server refused this device key because it was registered before. " + reconnectText,
+	store.HoldRepairRequired:  "The server asks for this server to be connected again. " + reconnectText,
 	store.HoldInvalidRequest:  "The server refused the enrolment request.",
 	store.HoldIdentity:        "The server named another server or key for this device key.",
-	store.HoldKeyRevoked:      "This device key was revoked. Pair this server again.",
+	store.HoldKeyRevoked:      "This device key was revoked. " + reconnectText,
 	store.HoldNotEnrolled:     "The server refused to finish the switch: this key was not enrolled from the 1.x token.",
 	store.HoldSwitchRefused:   "The server refused to finish the switch.",
-	store.HoldTokenUnusable:   "The stored 1.x token is not in the expected format. Pair this server again.",
-	store.HoldServerID:        "The stored server id is not valid. Pair this server again.",
-	store.HoldKeyLost:         "The enrolled device key is missing or was replaced. Pair this server again.",
-	store.HoldKeyUnknown:      "The server enrolled this device key but then did not accept it, several times. Pair this server again.",
+	store.HoldTokenUnusable:   "The stored 1.x token is not in the expected format. " + reconnectText,
+	store.HoldServerID:        "The stored server id is not valid. " + reconnectText,
+	store.HoldKeyLost:         "The enrolled device key is missing or was replaced. " + reconnectText,
+	store.HoldKeyUnknown:      "The server enrolled this device key but then did not accept it, several times. " + reconnectText,
 	store.HoldInsecureOrigin:  "The API address is not an https address; the 1.x token is only sent over verified TLS.",
 }
 
@@ -60,7 +64,10 @@ type Config struct {
 	Store *store.Store
 	Keys  identity.Keystore
 	// Origin returns the API origin of the paired account.
-	Origin  func() string
+	Origin func() string
+	// Caller signs and sends device calls; nil builds one from Client,
+	// Version and Now.
+	Caller  *devicecall.Caller
 	Client  *http.Client
 	Version string
 	Now     func() time.Time
@@ -87,7 +94,7 @@ type Status struct {
 type Enroller struct {
 	cfg  Config
 	log  *slog.Logger
-	call *caller
+	call *devicecall.Caller
 
 	failures int
 	reenrols int
@@ -111,9 +118,12 @@ func New(cfg Config) (*Enroller, error) {
 	if cfg.Jitter == nil {
 		cfg.Jitter = func() float64 { return 0.8 + 0.4*rand.Float64() }
 	}
-	c, err := newCaller(cfg.Client, cfg.Version, cfg.Now)
-	if err != nil {
-		return nil, err
+	c := cfg.Caller
+	if c == nil {
+		var err error
+		if c, err = devicecall.New(devicecall.Config{Client: cfg.Client, Version: cfg.Version, Now: cfg.Now}); err != nil {
+			return nil, err
+		}
 	}
 	e := &Enroller{cfg: cfg, log: cfg.Logger.With("component", "enrol"), call: c}
 	e.status = e.view("", time.Time{})
@@ -131,9 +141,12 @@ func Ready(st store.State, sec store.Secrets) bool {
 }
 
 // LegacyAllowed reports whether 1.x calls with the token may be sent:
-// only until the server has enrolled the device key, and not once the
-// server refused the token.
+// never for an account paired with the device key, only until the server
+// has enrolled the device key, and not once the server refused the token.
 func LegacyAllowed(st store.State) bool {
+	if st.Account.Keyed() {
+		return false
+	}
 	e := st.EnrolmentFor()
 	return e == nil || (e.Phase == store.PhasePending && e.Hold != store.HoldInvalidToken)
 }
@@ -204,7 +217,7 @@ func (e *Enroller) Step(ctx context.Context) time.Duration {
 			return wait
 		}
 	}
-	origin, err := checkOrigin(e.cfg.Origin())
+	origin, err := devicecall.CheckOrigin(e.cfg.Origin())
 	if err != nil {
 		return e.hold(store.HoldInsecureOrigin)
 	}
@@ -253,14 +266,14 @@ func (e *Enroller) enrol(ctx context.Context, origin string, rec *store.Enrolmen
 		}
 		return 0
 	}
-	a, err := e.call.do(ctx, key, origin, http.MethodPost, PathEnroll, serverIDBody(rec.ServerID), token)
+	a, err := e.do(ctx, key, origin, http.MethodPost, PathEnroll, serverIDBody(rec.ServerID), token)
 	if err != nil {
 		return e.fail(err.Error())
 	}
-	if a.status != http.StatusOK {
-		return e.outcome(classify(PathEnroll, a.status, a.body), a)
+	if a.Status != http.StatusOK {
+		return e.outcome(classify(PathEnroll, a.Status, a.Body), a)
 	}
-	m, err := strictStrings(a.body, []string{"result", "server_id", "device_id", "key_id"})
+	m, err := devicecall.StrictStrings(a.Body, []string{"result", "server_id", "device_id", "key_id"})
 	if err != nil || m["result"] != "enrolled" || !claims.ValidUUID(m["device_id"]) {
 		return e.fail("unexpected enrol answer")
 	}
@@ -294,14 +307,14 @@ func (e *Enroller) confirm(ctx context.Context, origin string, rec *store.Enrolm
 		return e.fail("device key: " + err.Error())
 	}
 	if !e.probed {
-		a, err := e.call.do(ctx, key, origin, http.MethodGet, PathIdentity, nil, "")
+		a, err := e.do(ctx, key, origin, http.MethodGet, PathIdentity, nil, "")
 		if err != nil {
 			return e.fail(err.Error())
 		}
-		if a.status != http.StatusOK {
-			return e.outcome(classify(PathIdentity, a.status, a.body), a)
+		if a.Status != http.StatusOK {
+			return e.outcome(classify(PathIdentity, a.Status, a.Body), a)
 		}
-		m, err := strictStrings(a.body, []string{"server_id", "device_id", "key_id"})
+		m, err := devicecall.StrictStrings(a.Body, []string{"server_id", "device_id", "key_id"})
 		if err != nil {
 			return e.fail("unexpected identity answer")
 		}
@@ -311,14 +324,14 @@ func (e *Enroller) confirm(ctx context.Context, origin string, rec *store.Enrolm
 		e.probed = true
 		return 0
 	}
-	a, err := e.call.do(ctx, key, origin, http.MethodPost, PathConfirm, serverIDBody(rec.ServerID), "")
+	a, err := e.do(ctx, key, origin, http.MethodPost, PathConfirm, serverIDBody(rec.ServerID), "")
 	if err != nil {
 		return e.fail(err.Error())
 	}
-	if a.status != http.StatusOK {
-		return e.outcome(classify(PathConfirm, a.status, a.body), a)
+	if a.Status != http.StatusOK {
+		return e.outcome(classify(PathConfirm, a.Status, a.Body), a)
 	}
-	m, err := strictStrings(a.body, []string{"result"})
+	m, err := devicecall.StrictStrings(a.Body, []string{"result"})
 	if err != nil || m["result"] != "switched" {
 		return e.fail("unexpected confirm answer")
 	}
@@ -336,7 +349,7 @@ func (e *Enroller) confirm(ctx context.Context, origin string, rec *store.Enrolm
 	return 0
 }
 
-func (e *Enroller) outcome(o outcome, a answer) time.Duration {
+func (e *Enroller) outcome(o outcome, a devicecall.Answer) time.Duration {
 	switch o.kind {
 	case kindHold:
 		return e.hold(o.hold)
@@ -357,7 +370,7 @@ func (e *Enroller) outcome(o outcome, a answer) time.Duration {
 		e.log.Warn("server does not know the enrolled key; enrolling it again")
 		return e.backoff("device key not known to the server", 0)
 	}
-	return e.backoff(o.reason, a.retryAfter)
+	return e.backoff(o.reason, a.RetryAfter)
 }
 
 func (e *Enroller) hold(reason string) time.Duration {
@@ -430,12 +443,15 @@ func (e *Enroller) view(lastErr string, next time.Time) Status {
 	key, keyErr := e.cfg.Keys.Current()
 	if keyErr == nil {
 		s.KeyFingerprint = key.Fingerprint()
+	} else if !errors.Is(keyErr, identity.ErrNoKey) && s.LastError == "" {
+		s.LastError = "device key: " + keyErr.Error()
 	}
 	if rec != nil {
 		s.Phase = rec.Phase
 	}
+	lost := errors.Is(keyErr, identity.ErrNoKey) || (keyErr == nil && rec != nil && key.KeyID() != rec.KeyID)
 	switch {
-	case rec != nil && rec.Phase == store.PhaseSwitched && (keyErr != nil || key.KeyID() != rec.KeyID):
+	case rec != nil && rec.Phase == store.PhaseSwitched && lost:
 		s.State, s.Hold, s.HoldText = StateHeld, store.HoldKeyLost, holdText[store.HoldKeyLost]
 	case rec != nil && rec.Hold != "":
 		s.State, s.Hold, s.HoldText = StateHeld, rec.Hold, holdText[rec.Hold]

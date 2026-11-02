@@ -4,6 +4,8 @@
   var accessCursor = "";
   var killed = false;
   var view = "";
+  var pairTimer = null;
+  var pairState = "";
   function $(id) { return document.getElementById(id); }
   // show switches the view; after a change, focus moves to the new view's
   // heading so keyboard and screen reader users are not left on a hidden
@@ -180,6 +182,38 @@
       older.disabled = !accessCursor;
     });
   }
+  function renderPair(s) {
+    s = s || {};
+    var paired = s.state === "paired";
+    var pending = s.state === "pending";
+    var text;
+    if (paired) text = "This client is paired" + (s.server_name ? " as " + s.server_name : "") + ".";
+    else if (pending) text = "Waiting for approval on Seawise.io." + (s.error ? " " + s.error : "");
+    else if (s.error) text = s.error;
+    else text = "This client is not paired. Pair it to share its apps through Seawise.io.";
+    $("pair-state").textContent = text;
+    $("pair-form").hidden = paired || pending;
+    $("pair-pending").hidden = !pending;
+    if (pending) {
+      $("pair-code").textContent = s.code || "";
+      var link = $("pair-link");
+      var url = typeof s.approve_url === "string" && /^https?:\/\//.test(s.approve_url) ? s.approve_url : "";
+      link.hidden = !url;
+      link.href = url || "#";
+      $("pair-key").textContent = s.key_fingerprint ? "Device key (for support): " + s.key_fingerprint : "";
+    }
+    if (pending && !pairTimer) pairTimer = setInterval(loadPair, 3000);
+    if (!pending && pairTimer) { clearInterval(pairTimer); pairTimer = null; }
+    var was = pairState;
+    pairState = s.state || "";
+    if (was === "pending" && paired) refresh();
+  }
+  function loadPair() {
+    call("GET", "/api/pair/status").then(function (r) {
+      if (r.ok) renderPair(r.body);
+      else renderPair({ state: "unavailable", error: r.body.error || "Pairing status is unavailable." });
+    });
+  }
   function refresh() {
     call("GET", "/api/auth/status").then(function (r) {
       var s = r.body || {};
@@ -192,6 +226,7 @@
         renderTunnels(r.body);
         renderUpdate(r.body);
       });
+      loadPair();
       call("GET", "/api/apps").then(function (r) { if (r.ok) renderApps(r.body.apps); });
       call("GET", "/api/targets/review").then(function (r) { renderReview(r.body.items); });
       loadAccess("");
@@ -230,6 +265,21 @@
         $("app-port").value = "";
         say("App added: " + name + ".");
         refresh();
+      });
+    });
+    $("pair-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      say("");
+      call("POST", "/api/pair/start", { server_name: $("pair-name").value }).then(function (r) {
+        if (!r.ok) { say(r.body.error || "Could not start pairing."); loadPair(); return; }
+        renderPair(r.body);
+        $("pair-code").focus();
+      });
+    });
+    $("pair-cancel").addEventListener("click", function () {
+      call("POST", "/api/pair/cancel").then(function (r) {
+        if (r.ok) renderPair(r.body); else say(r.body.error || "Could not cancel pairing.");
+        $("pair-name").focus();
       });
     });
     $("kill-switch").addEventListener("click", function () {

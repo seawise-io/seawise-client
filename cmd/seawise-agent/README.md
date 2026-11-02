@@ -46,6 +46,12 @@ its own state in `<data folder>/v2`.
   old password file after that has no effect.
 - **Listening address.** In a container the UI listens on all interfaces.
   Elsewhere it listens on `127.0.0.1` unless `SEAWISE_BIND_ADDR` is set.
+- **Pairing.** An unpaired client pairs from the admin UI: it shows a
+  code that you type on the connect page of Seawise.io; check that the
+  code matches before you approve. The link never carries the code. The
+  page also shows the fingerprint of a device key made for this pairing,
+  for support. Each pairing makes a new key and removes the previous one;
+  apps stay on this machine and register again on the new server.
 - **Kill switch.** "Drop all tunnels" in the admin UI closes every
   forwarder and the tunnel session at once. It is saved, so it stays on
   across restarts until you restore the tunnels.
@@ -158,6 +164,7 @@ stay on the current client.
 | `SEAWISE_TLS` | `auto` serves the admin UI over HTTPS only, with a self-signed certificate |
 | `SEAWISE_NAT64_PREFIXES` | Extra NAT64 prefixes used on this network, comma separated |
 | `SEAWISE_CONTAINER` | `1` treats the process as running in a container |
+| `SEAWISE_WEB_URL` | Site where pairing codes are approved (default `https://seawise.io`) |
 | `SEAWISE_TUNNEL_NAME` | Tunnel name to dial (default `tunnel-us-east.seawise.dev`); must be in the signed edge list |
 | `SEAWISE_UPDATE_CHANNEL` | `stable` (default) or `beta`: which releases update notices follow |
 | `SEAWISE_UPDATE_CHECK` | `0` hides release notices; the signed metadata and the signing key set are still fetched |

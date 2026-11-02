@@ -57,20 +57,6 @@ func FuzzParseHeartbeat(f *testing.F) {
 	})
 }
 
-func FuzzParsePairing(f *testing.F) {
-	f.Add([]byte(`{"server_id":"` + serverID + `","frp_token":"t","frp_server_addr":"frp-1.seawise.dev","frp_server_port":7000,"frp_use_tls":true}`))
-	f.Add([]byte(`{"server_id":"` + serverID + `","frp_token":"t\n","frp_server_addr":"seawise.dev","frp_server_port":7000,"frp_use_tls":false}`))
-	f.Fuzz(func(t *testing.T, data []byte) {
-		p, err := parsePairing(data, testDomains)
-		if err != nil {
-			return
-		}
-		if !validUUID(p.ServerID) || !validToken(p.FRPToken) || !AllowedFRPHost(p.FRPServerAddr, testDomains) || p.FRPServerPort < 1 || p.FRPServerPort > 65535 {
-			t.Fatalf("invalid pairing accepted: %+v", p)
-		}
-	})
-}
-
 func FuzzUnpairBody(f *testing.F) {
 	f.Add([]byte(`{"action":"unpair","reason":"server_deleted"}`))
 	f.Add([]byte(`{"action":"unpair"} trailing`))

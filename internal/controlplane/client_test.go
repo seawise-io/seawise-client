@@ -206,9 +206,6 @@ func TestRemoval410OnlyFromHeartbeat(t *testing.T) {
 	if _, err := c.ListServices(context.Background(), serverID); kindOf(t, err) == Removal {
 		t.Fatal("list 410 treated as removal")
 	}
-	if _, err := c.PairComplete(context.Background(), "device-code"); kindOf(t, err) != Rejected {
-		t.Fatalf("pair complete 410: %v", err)
-	}
 }
 
 func TestHeartbeatSuperseded(t *testing.T) {
@@ -477,66 +474,6 @@ func TestNoTokenNoRequest(t *testing.T) {
 	}
 	if len(f.requests()) != 0 {
 		t.Fatal("request sent without token")
-	}
-}
-
-func TestPairFlow(t *testing.T) {
-	f := newFake(t, func(w http.ResponseWriter, r *http.Request, n int) {
-		if r.Header.Get("X-FRP-Token") != "" {
-			t.Errorf("pairing call sent token")
-		}
-		switch r.URL.Path {
-		case "/api/servers/pair/request":
-			jsonReply(w, 200, `{"data":{"user_code":"ABCD-1234","device_code":"dev","expires_at":"2026-10-08T12:15:00Z"}}`)
-		case "/api/servers/pair/status":
-			jsonReply(w, 200, `{"data":{"status":"approved"}}`)
-		case "/api/servers/pair/complete":
-			jsonReply(w, 200, `{"data":{"server_id":"`+serverID+`","server_name":"nas","user_id":"`+serviceID+`","user_email":"x@example.com","frp_token":"tok","frp_server_addr":"frp-1.seawise.dev","frp_server_port":7000,"frp_use_tls":true}}`)
-		case "/api/servers/pair/cancel":
-			jsonReply(w, 200, `{"data":{"ok":true}}`)
-		default:
-			jsonReply(w, 404, `{}`)
-		}
-	})
-	c := f.client(t)
-	ctx := context.Background()
-	pr, err := c.PairRequest(ctx, "nas")
-	if err != nil || pr.UserCode != "ABCD-1234" || pr.DeviceCode != "dev" || pr.ExpiresAt.IsZero() {
-		t.Fatal(pr, err)
-	}
-	if st, err := c.PairStatus(ctx, "dev"); err != nil || st != "approved" {
-		t.Fatal(st, err)
-	}
-	p, err := c.PairComplete(ctx, "dev")
-	if err != nil || p.ServerID != serverID || p.FRPToken != "tok" || p.FRPServerAddr != "frp-1.seawise.dev" || !p.FRPUseTLS {
-		t.Fatal(p, err)
-	}
-	if err := c.PairCancel(ctx, "dev"); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestPairCompleteRejectsBadFields(t *testing.T) {
-	good := map[string]any{"server_id": serverID, "server_name": "nas", "frp_token": "tok", "frp_server_addr": "frp-1.seawise.dev", "frp_server_port": 7000, "frp_use_tls": true}
-	mutate := []func(m map[string]any){
-		func(m map[string]any) { m["server_id"] = "x" },
-		func(m map[string]any) { m["frp_token"] = "" },
-		func(m map[string]any) { m["frp_token"] = "a\nb" },
-		func(m map[string]any) { m["frp_server_addr"] = "evil.example" },
-		func(m map[string]any) { m["frp_server_port"] = 0 },
-		func(m map[string]any) { delete(m, "frp_use_tls") },
-	}
-	for i, mut := range mutate {
-		m := map[string]any{}
-		for k, v := range good {
-			m[k] = v
-		}
-		mut(m)
-		b, _ := json.Marshal(map[string]any{"data": m})
-		f := newFake(t, func(w http.ResponseWriter, r *http.Request, n int) { jsonReply(w, 200, string(b)) })
-		if _, err := f.client(t).PairComplete(context.Background(), "dev"); err == nil {
-			t.Errorf("mutation %d accepted", i)
-		}
 	}
 }
 

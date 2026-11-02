@@ -133,6 +133,17 @@ A server paired by a 1.x client moves to its device key without pairing again. T
 
 The token is sent only on the enrol call, only to an `https` origin with verified TLS, never through a redirect. The agent never unpairs or deletes anything on a refusal: it holds with the reason and retries every 6 hours; outages and rate limits are retried with backoff. `testdata/vectors/enrol.json` covers the enrol call.
 
+### 6.2 Pairing
+
+An unpaired agent pairs through the device flow with a key generated for that pairing, so a key registered before is never offered again. Every call carries a request proof by that key (§4) and the bodies are JSON:
+
+1. `POST /api/servers/pair/request` `{"server_name":"<1 to 100 characters>"}` binds the key. `200 {"data":{"user_code","device_code","expires_at","poll_url","key_id"}}`: the user code is 10 characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, the device code 32 lower-case hex, `key_id` the proof's key. `400 {"error":"invalid_key","code":"bad_key"}` for a key registered before; `429` and `503` (pairing paused) are retried by the owner.
+2. `POST /api/servers/pair/status` `{"device_code"}` every 5 seconds: `{"data":{"status":"pending"|"approved"|"used"|"expired"|"cancelled"|"invalid"}}`. A code polled with another key reads as `invalid`.
+3. `POST /api/servers/pair/complete` `{"device_code"}` once approved: `200 {"data":{"server_id","server_name","user_id","device_id","key_id"}}`, also for a retry after a lost answer; no 1.x token. `400` not approved or expired; `403` server limit.
+4. `POST /api/servers/pair/cancel` `{"device_code"}` abandons a code: always `200`.
+
+The owner types the user code on Seawise.io; the agent never puts the code in a link. The agent shows the key fingerprint (§2) for support. The agent sends no 1.x token and never uses the 1.x pairing calls.
+
 ## 7. Key set
 
 The keys the agent trusts for SeaWise signatures are published as a key set signed by an offline root key. The agent pins two root public keys, a primary and a backup kept apart; a key set signed by either is valid.

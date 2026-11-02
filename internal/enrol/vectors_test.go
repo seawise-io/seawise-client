@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/seawise/client/internal/devicecall"
 )
 
 type vecFile struct {
@@ -153,15 +155,14 @@ func TestRequestMatchesVectors(t *testing.T) {
 			t.Fatal("vector proof payload")
 		}
 		rt := &captureRT{}
-		cl, err := newCaller(&http.Client{Transport: rt}, "test", func() time.Time { return time.Unix(claims.IAT, 0) })
+		cl, err := devicecall.New(devicecall.Config{Client: &http.Client{Transport: rt}, Version: "test", Now: func() time.Time { return time.Unix(claims.IAT, 0) }, JTI: func() string { return claims.JTI }})
 		if err != nil {
 			t.Fatal(err)
 		}
-		cl.jti = func() string { return claims.JTI }
-		cl.keepNonce(claims.Nonce)
+		cl.KeepNonce(claims.Nonce)
 		origin := c.Context.URL[:strings.Index(c.Context.URL, PathEnroll)]
 		body := serverIDBody(c.Context.Server.ID)
-		if _, err := cl.do(context.Background(), priv, origin, http.MethodPost, PathEnroll, body, *c.Input.FRPToken); err != nil {
+		if _, err := cl.Do(context.Background(), priv, origin, http.MethodPost, PathEnroll, body, map[string]string{frpTokenHeader: *c.Input.FRPToken}); err != nil {
 			t.Fatal(err)
 		}
 		if got := rt.req.Header.Get("DPoP"); got != c.Input.DPoP {

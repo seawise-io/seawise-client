@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"sync"
@@ -36,6 +37,11 @@ const (
 )
 
 var (
+	keyIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
+	uuidRe  = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+)
+
+var (
 	ErrNewerSchema = errors.New("state was written by a newer client")
 	ErrUnsafePath  = errors.New("unsafe store path")
 	ErrInvalid     = errors.New("invalid state")
@@ -52,7 +58,14 @@ type Account struct {
 	APIURL            string `json:"api_url"`
 	UserID            string `json:"user_id,omitempty"`
 	UserEmail         string `json:"user_email,omitempty"`
+	// DeviceID and KeyID are set when the account was paired with the
+	// device key; such an account has no 1.x token.
+	DeviceID string `json:"device_id,omitempty"`
+	KeyID    string `json:"key_id,omitempty"`
 }
+
+// Keyed reports whether the account was paired with the device key.
+func (a *Account) Keyed() bool { return a != nil && a.KeyID != "" }
 
 type Target struct {
 	LocalID         string `json:"local_id"`
@@ -291,9 +304,9 @@ func (s *Store) load() (bool, error) {
 	if err := checkAccountToken(&state, &secrets); err != nil {
 		return false, err
 	}
-	// Earlier 2.0 builds imported without the 1.x server id; v2 has no
-	// pairing path yet, so the paired account is the imported one.
-	if imp := state.Import; imp != nil && imp.ServerID == "" && imp.AccountSource != "" && state.Account != nil && state.Account.ServerID != "" {
+	// Earlier 2.0 builds imported without the 1.x server id; they had no
+	// pairing path, so an account without a device key is the imported one.
+	if imp := state.Import; imp != nil && imp.ServerID == "" && imp.AccountSource != "" && state.Account != nil && state.Account.ServerID != "" && !state.Account.Keyed() {
 		imp.ServerID = state.Account.ServerID
 		migrated = true
 	}
@@ -308,10 +321,10 @@ func (s *Store) load() (bool, error) {
 }
 
 // checkAccountToken rejects a paired account without its FRP token, which
-// would otherwise leave the agent silently idle, unless the account has
-// switched to its device key.
+// would otherwise leave the agent silently idle, unless the account was
+// paired with or has switched to its device key.
 func checkAccountToken(st *State, sec *Secrets) error {
-	if e := st.EnrolmentFor(); e != nil && e.Phase == PhaseSwitched {
+	if e := st.EnrolmentFor(); st.Account.Keyed() || (e != nil && e.Phase == PhaseSwitched) {
 		return nil
 	}
 	if st.Account != nil && sec.FRPToken == "" {
@@ -474,6 +487,9 @@ func validateState(st *State) error {
 	}
 	if err := validateEnrolment(st.Enrolment); err != nil {
 		return err
+	}
+	if a := st.Account; a != nil && (a.KeyID != "" || a.DeviceID != "") && (!keyIDRe.MatchString(a.KeyID) || !uuidRe.MatchString(a.DeviceID)) {
+		return fmt.Errorf("%w: account device_id and key_id must both be valid", ErrInvalid)
 	}
 	ids := map[string]bool{}
 	for i, t := range st.Targets {
