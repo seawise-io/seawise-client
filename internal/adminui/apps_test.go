@@ -436,3 +436,20 @@ func TestUIAddsAndDeletesApps(t *testing.T) {
 		}
 	}
 }
+
+func TestAddAcceptsEveryTargetClassAsV1(t *testing.T) {
+	h := newAppsHarness(t)
+	i := 0
+	for _, host := range []string{"127.0.0.1", "localhost", "192.168.1.1", "93.184.216.34", "host.docker.internal"} {
+		for _, port := range []int{25, 2375, 2376, 2377, 2379, 2380, 6443, 10250, 10255} {
+			i++
+			body, _ := json.Marshal(map[string]any{"name": fmt.Sprintf("app%d", i), "host": host, "port": port})
+			if w := h.do("POST", "/api/apps/add", string(body), true); w.Code != 200 {
+				t.Fatalf("%s: %d %s", body, w.Code, w.Body)
+			}
+		}
+	}
+	if n := len(h.st.State().Targets); n != i {
+		t.Fatalf("stored %d of %d", n, i)
+	}
+}

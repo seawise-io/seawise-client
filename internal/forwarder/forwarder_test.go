@@ -370,3 +370,21 @@ func freePort(t *testing.T) int {
 	defer ln.Close()
 	return ln.Addr().(*net.TCPAddr).Port
 }
+
+func TestNameToForbiddenRefused(t *testing.T) {
+	resolve := func(_ context.Context, h string) ([]netip.Addr, error) {
+		switch h {
+		case "metadata.google.internal":
+			return []netip.Addr{netip.MustParseAddr("169.254.169.254")}, nil
+		case "ll.test":
+			return []netip.Addr{netip.MustParseAddr("fe80::1")}, nil
+		case "aws6.test":
+			return []netip.Addr{netip.MustParseAddr("fd00:ec2::254")}, nil
+		}
+		return nil, errors.New("nxdomain")
+	}
+	f := newFwd(t, Config{Resolve: resolve, DialTimeout: time.Second})
+	for _, h := range []string{"metadata.google.internal", "ll.test", "aws6.test"} {
+		refused(t, f, App{ID: h, Host: h, Port: 80, Rule: targetpolicy.Rule{Host: h}})
+	}
+}

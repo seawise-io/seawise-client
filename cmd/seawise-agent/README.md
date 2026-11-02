@@ -37,10 +37,6 @@ its own state in `<data folder>/v2`.
   old password file after that has no effect.
 - **Listening address.** In a container the UI listens on all interfaces.
   Elsewhere it listens on `127.0.0.1` unless `SEAWISE_BIND_ADDR` is set.
-- **Public apps need a local toggle.** If SeaWise reports an app as public
-  but it is not marked public in this client's admin UI, the app is not
-  tunnelled. Apps set up before the upgrade take SeaWise's setting the first
-  time it is reported; after that only the local toggle counts.
 - **Kill switch.** "Drop all tunnels" in the admin UI closes every
   forwarder and the tunnel session at once. It is saved, so it stays on
   across restarts until you restore the tunnels.
