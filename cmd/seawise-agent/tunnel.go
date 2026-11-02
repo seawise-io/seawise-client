@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto"
 	"crypto/rand"
 	"errors"
@@ -33,6 +34,8 @@ type tunnelSetup struct {
 	keySetHold func() string
 	name       string
 	client     *http.Client
+	clock      *session.SignedClock
+	streams    func(context.Context, session.DataSession)
 }
 
 // runID identifies this process to the edge; a reconnect with the same
@@ -113,6 +116,8 @@ func tunnelFactory(ts tunnelSetup) func() (agent.Tunnel, error) {
 				return k
 			},
 			CommitRotation: ts.keys.CommitRotation,
+			SignedClock:    ts.clock,
+			Streams:        ts.streams,
 			Logger:         ts.log,
 		})
 		if err != nil {

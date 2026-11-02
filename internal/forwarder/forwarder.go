@@ -1,5 +1,5 @@
-// Package forwarder runs one loopback listener per app. frpc connects to it
-// instead of to the app, and every connection is dialled to the real target
+// Package forwarder runs one loopback listener per app and dials apps for
+// data streams (Dial). Every connection is dialled to the real target
 // through the target policy, which checks the address actually connected to.
 // It passes bytes through unchanged and never logs or inspects payloads;
 // each connection is reported to Config.Record with addresses, byte counts,
@@ -236,7 +236,7 @@ func (l *listener) handle(in net.Conn) {
 	}
 	defer l.untrack(in)
 	start := time.Now()
-	out, err := l.dial()
+	out, err := l.dial(context.Background())
 	if err != nil {
 		l.refusal(err)
 		result := accesslog.ResultUnreachable
@@ -308,9 +308,10 @@ func (l *listener) watch(moved func() int64, closeBoth func(), done <-chan struc
 
 // dial resolves the target and connects to the first address the policy
 // accepts. The policy check runs in the dialer's Control hook.
-func (l *listener) dial() (net.Conn, error) {
-	ctx, cancel := context.WithTimeout(l.ctx, l.f.cfg.DialTimeout)
+func (l *listener) dial(ctx context.Context) (net.Conn, error) {
+	ctx, cancel := context.WithTimeout(ctx, l.f.cfg.DialTimeout)
 	defer cancel()
+	defer context.AfterFunc(l.ctx, cancel)()
 	addrs, err := targetpolicy.ResolveHost(ctx, l.f.cfg.Resolve, l.app.Host)
 	if err != nil {
 		return nil, err
@@ -376,3 +377,69 @@ func pipe(dst, src net.Conn, idle time.Duration, moved *atomic.Int64, closeBoth 
 		}
 	}
 }
+
+var (
+	// ErrNoApp means the app has no listener: not admitted, or every
+	// tunnel is dropped.
+	ErrNoApp = errors.New("app not served")
+	// ErrBusy means the app's connection limit is reached.
+	ErrBusy = errors.New("app connection limit reached")
+)
+
+// Upstream is a connection to an app's target, counted in the app's
+// connection limit and closed with the app's listener.
+type Upstream struct {
+	net.Conn
+	l    *listener
+	once sync.Once
+}
+
+// Dial connects to the app's target through the target policy.
+func (f *Forwarder) Dial(ctx context.Context, id string) (*Upstream, error) {
+	f.mu.Lock()
+	l := f.apps[id]
+	f.mu.Unlock()
+	if l == nil {
+		return nil, ErrNoApp
+	}
+	select {
+	case l.sem <- struct{}{}:
+	default:
+		return nil, ErrBusy
+	}
+	c, err := l.dial(ctx)
+	if err != nil {
+		<-l.sem
+		l.refusal(err)
+		return nil, err
+	}
+	if !l.track(c) {
+		_ = c.Close()
+		<-l.sem
+		return nil, ErrNoApp
+	}
+	return &Upstream{Conn: c, l: l}, nil
+}
+
+// Close closes the connection and frees its slot, once.
+func (u *Upstream) Close() error {
+	u.once.Do(func() {
+		u.l.untrack(u.Conn)
+		<-u.l.sem
+	})
+	return nil
+}
+
+// CloseWrite half-closes the connection where the transport allows it.
+func (u *Upstream) CloseWrite() error {
+	if cw, ok := u.Conn.(interface{ CloseWrite() error }); ok {
+		return cw.CloseWrite()
+	}
+	return nil
+}
+
+// Target is the address connected to.
+func (u *Upstream) Target() string { return u.RemoteAddr().String() }
+
+// Configured is the app's configured host:port.
+func (u *Upstream) Configured() string { return u.l.configured() }

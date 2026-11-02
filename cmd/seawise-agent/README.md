@@ -18,7 +18,16 @@ its own state in `<data folder>/v2`.
   - cloud metadata, link-local, multicast and reserved addresses are always
     refused, including in IPv6 translation forms;
   - every other address is allowed, as in 1.x: no confirmation is needed on
-    this machine for new or existing apps.
+    this machine for new or existing apps;
+  - a target written exactly `0.0.0.0` or `::` means this machine, as in
+    1.x, and connects to `127.0.0.1` or `::1`.
+- **Visitor tokens.** Each request arrives on its own tunnel stream for one
+  app listed in the routes SeaWise's edge signed for this session. The
+  agent checks the visitor's token itself on a clock corrected by
+  SeaWise-signed time, removes any `SeaWise-Visitor-Token` or
+  `SeaWise-Stale-Ok` header, and forwards exactly one request. Until
+  SeaWise switches a server to enforcement, a failed check is only counted
+  and logged.
 
   The admin UI lists apps that reach this machine, a public address, a mail
   port, a management API (Docker, Kubernetes, kubelet, etcd) or the network
@@ -43,11 +52,12 @@ its own state in `<data folder>/v2`.
 
 ## Access log
 
-Every connection forwarded to an app is recorded in
-`<data folder>/v2/access-*.log`, one JSON line each: time, app, the local
-address it came from, the address connected to, bytes in each direction,
-duration and result (`ok`, `refused`, `unreachable`, `busy`). No request
-data, headers or visitor identity is recorded. Files are readable only by
+Every request forwarded to an app is recorded in
+`<data folder>/v2/access-*.log`, one JSON line each: time, app, the
+visitor's address, the address connected to, bytes in each direction,
+duration, result (`ok`, `refused`, `unreachable`, `busy`, `denied`,
+`malformed`), the visitor-token decision and a short hash of the visitor's
+session. No request data, headers, tokens or user ids are recorded. Files are readable only by
 the client's user, start a new file daily or at 4 MiB, are deleted after
 30 days, and are capped at 32 MiB in total. The admin UI shows the log,
 newest first.

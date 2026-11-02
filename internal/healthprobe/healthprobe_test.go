@@ -285,19 +285,22 @@ func TestPolicyRefusedTargetsAreNeverConnected(t *testing.T) {
 	})
 	p.round(context.Background())
 	got := r.last(t)
-	for _, id := range []string{"metadata", "linklocal", "thisnet", "named"} {
+	for _, id := range []string{"metadata", "linklocal", "named"} {
 		if got[id] != Offline {
 			t.Fatalf("%s: %q", id, got[id])
 		}
 	}
-	if got["mixed"] != Online {
-		t.Fatalf("mixed: %q", got["mixed"])
+	// 0.0.0.0 means this machine, as on the data path.
+	for _, id := range []string{"thisnet", "mixed"} {
+		if got[id] != Online {
+			t.Fatalf("%s: %q", id, got[id])
+		}
 	}
 	mu.Lock()
 	defer mu.Unlock()
 	want := "127.0.0.1:" + strconv.Itoa(port)
-	if len(connected) != 1 || connected[0] != want {
-		t.Fatalf("connected to %v, want only %s", connected, want)
+	if len(connected) != 2 || connected[0] != want || connected[1] != want {
+		t.Fatalf("connected to %v, want only %s (thisnet and mixed)", connected, want)
 	}
 }
 

@@ -31,6 +31,8 @@ type ConnInfo struct {
 	Proxied      bool
 	LastKnown    bool
 	Mux          *yamux.Session // data streams arrive here
+	Capabilities []string
+	MaxStreams   uint32
 }
 
 // DialFunc opens a session to the tunnel name over a carriage. Errors are
@@ -45,6 +47,7 @@ func (c transportConn) Info() ConnInfo {
 		Carriage: c.Carriage, EdgeID: acc.Ack.GetEdgeId(), SessionID: acc.Ack.GetSessionId(),
 		TimeNonce: c.Hello.GetTimeNonce(), PingInterval: acc.PingInterval, PingTimeout: acc.PingTimeout,
 		Proxied: c.Proxied, LastKnown: c.LastKnown, Mux: c.Mux,
+		Capabilities: acc.Ack.GetCapabilities(), MaxStreams: acc.Ack.GetMaxStreams(),
 	}
 }
 

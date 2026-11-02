@@ -36,6 +36,9 @@ func admit(targets []store.Target, gateways []netip.Addr) ([]store.Target, []Ref
 }
 
 func literal(host string) (netip.Addr, bool) {
+	if a, ok := targetpolicy.ThisMachine(host); ok {
+		return a, true
+	}
 	h := strings.Trim(host, "[]")
 	if strings.EqualFold(strings.TrimSuffix(h, "."), "localhost") {
 		return netip.MustParseAddr("127.0.0.1"), true

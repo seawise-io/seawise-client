@@ -435,3 +435,9 @@ func (a *Agent) stopTunnel() {
 		a.log.Warn("tunnel did not stop in time")
 	}
 }
+
+// Dial connects to an admitted app's target through the forwarder, for a
+// data stream.
+func (a *Agent) Dial(ctx context.Context, localID string) (*forwarder.Upstream, error) {
+	return a.fwd.Dial(ctx, localID)
+}

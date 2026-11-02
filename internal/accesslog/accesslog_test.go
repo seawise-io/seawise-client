@@ -290,7 +290,7 @@ func TestRecordAfterCloseIsDropped(t *testing.T) {
 }
 
 func TestEntryHasOnlyMetadata(t *testing.T) {
-	want := []string{"app", "bytes_in", "bytes_out", "duration_ms", "peer", "result", "target", "time"}
+	want := []string{"app", "bytes_in", "bytes_out", "decision", "duration_ms", "peer", "result", "session", "target", "time"}
 	var got []string
 	ty := reflect.TypeOf(Entry{})
 	for i := 0; i < ty.NumField(); i++ {

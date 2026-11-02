@@ -1,7 +1,7 @@
 // Package accesslog keeps the agent's local record of forwarded
-// connections: one JSON line per connection with addresses, byte counts,
-// duration and result. It never holds payloads, headers or visitor
-// identity. Files live in the v2 store directory, are readable only by the
+// connections and data streams: one JSON line each with addresses, byte
+// counts, duration, result and the visitor-token decision. It never holds
+// payloads, headers, tokens or user ids. Files live in the v2 store directory, are readable only by the
 // agent's user, rotate daily or by size, and are deleted after the
 // retention period or when the set exceeds its size cap.
 package accesslog
@@ -52,9 +52,14 @@ const (
 	ResultRefused     = "refused"
 	ResultUnreachable = "unreachable"
 	ResultBusy        = "busy"
+	// ResultDenied: the visitor token check refused the stream.
+	ResultDenied = "denied"
+	// ResultMalformed: the request bytes were refused after the reply.
+	ResultMalformed = "malformed"
 )
 
-var knownResult = map[string]bool{ResultOK: true, ResultRefused: true, ResultUnreachable: true, ResultBusy: true}
+var knownResult = map[string]bool{ResultOK: true, ResultRefused: true, ResultUnreachable: true, ResultBusy: true,
+	ResultDenied: true, ResultMalformed: true}
 
 var (
 	ErrCursor = errors.New("invalid cursor")
@@ -62,9 +67,9 @@ var (
 	digitsRE  = regexp.MustCompile(`^[0-9]{1,19}$`)
 )
 
-// Entry is one forwarded connection. Adding a field needs a privacy
-// review: visitor identity is out of scope until visitor tokens are
-// verified locally.
+// Entry is one forwarded connection or data stream. Adding a field needs a
+// privacy review. Decision is the visitor-token check's code and Session a
+// short hash of the visitor session; the token itself is never kept.
 type Entry struct {
 	Time       time.Time `json:"time"`
 	App        string    `json:"app"`
@@ -74,6 +79,8 @@ type Entry struct {
 	BytesOut   int64     `json:"bytes_out"`
 	DurationMS int64     `json:"duration_ms"`
 	Result     string    `json:"result"`
+	Decision   string    `json:"decision,omitempty"`
+	Session    string    `json:"session,omitempty"`
 }
 
 type Config struct {
@@ -413,6 +420,7 @@ func encode(e Entry) ([]byte, bool) {
 	}
 	e.Time = e.Time.UTC().Truncate(time.Millisecond)
 	e.App, e.Peer, e.Target = cleanField(e.App), cleanField(e.Peer), cleanField(e.Target)
+	e.Decision, e.Session = cleanField(e.Decision), cleanField(e.Session)
 	e.BytesIn, e.BytesOut, e.DurationMS = max(e.BytesIn, 0), max(e.BytesOut, 0), max(e.DurationMS, 0)
 	b, err := json.Marshal(e)
 	if err != nil || len(b) >= MaxLine {
@@ -457,6 +465,8 @@ func ParseLine(line []byte) (Entry, error) {
 		BytesOut   *int64     `json:"bytes_out"`
 		DurationMS *int64     `json:"duration_ms"`
 		Result     *string    `json:"result"`
+		Decision   *string    `json:"decision"`
+		Session    *string    `json:"session"`
 	}
 	if len(line) > MaxLine {
 		return Entry{}, errors.New("line too long")
@@ -475,8 +485,15 @@ func ParseLine(line []byte) (Entry, error) {
 	}
 	e := Entry{Time: w.Time.UTC(), App: *w.App, Peer: *w.Peer, Target: *w.Target,
 		BytesIn: *w.BytesIn, BytesOut: *w.BytesOut, DurationMS: *w.DurationMS, Result: *w.Result}
+	if w.Decision != nil {
+		e.Decision = *w.Decision
+	}
+	if w.Session != nil {
+		e.Session = *w.Session
+	}
 	if e.Time.IsZero() || !validField(e.App) || !validField(e.Peer) || !validField(e.Target) ||
-		e.BytesIn < 0 || e.BytesOut < 0 || e.DurationMS < 0 || !knownResult[e.Result] {
+		e.BytesIn < 0 || e.BytesOut < 0 || e.DurationMS < 0 || !knownResult[e.Result] ||
+		!validField(e.Decision) || !validField(e.Session) {
 		return Entry{}, errors.New("invalid entry")
 	}
 	return e, nil

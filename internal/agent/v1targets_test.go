@@ -137,3 +137,24 @@ func TestNewAppForwardedWithoutConfirmation(t *testing.T) {
 		t.Fatal("metadata app has a forwarder")
 	}
 }
+
+func TestV1ThisMachineTargetsAdmitted(t *testing.T) {
+	var targets []store.Target
+	for i, host := range []string{"0.0.0.0", "::", "[::]"} {
+		targets = append(targets, store.Target{LocalID: fmt.Sprintf("tm-%d", i), Subdomain: fmt.Sprintf("s-%d", i), Host: host, Port: 8096,
+			Source: store.SourceV1Machine, Grandfathered: true})
+	}
+	for i, host := range []string{"0.0.0.1", "0:0::0", "::ffff:0.0.0.0", "169.254.169.254"} {
+		targets = append(targets, store.Target{LocalID: fmt.Sprintf("no-%d", i), Subdomain: fmt.Sprintf("n-%d", i), Host: host, Port: 8096,
+			Source: store.SourceV1Machine, Grandfathered: true})
+	}
+	ok, refused := admit(targets, nil)
+	if len(ok) != 3 || len(refused) != 4 {
+		t.Fatalf("admitted %v refused %v", ok, refused)
+	}
+	for _, tg := range ok {
+		if tg.LocalID[:3] != "tm-" {
+			t.Fatalf("admitted %s", tg.LocalID)
+		}
+	}
+}

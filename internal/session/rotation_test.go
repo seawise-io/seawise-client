@@ -200,9 +200,12 @@ func TestCommitRedialsAtOnce(t *testing.T) {
 		return http.StatusOK, answerJSON(stateFor(t, deviceKeyID(), n, "revoked"), "")
 	})
 	h.refuse(h.dial(), pb.RefuseCode_KEY_REVOKED)
-	h.settle()
-	if !d.isCommitted() {
-		t.Fatal("not committed")
+	deadline := time.Now().Add(5 * time.Second)
+	for !d.isCommitted() {
+		if time.Now().After(deadline) {
+			t.Fatal("not committed")
+		}
+		time.Sleep(2 * time.Millisecond)
 	}
 	h.dial()
 }

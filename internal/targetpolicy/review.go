@@ -29,8 +29,26 @@ type ReviewItem struct {
 	Assessment
 }
 
+// ThisMachine maps a target written exactly 0.0.0.0 or :: (1.x: this
+// machine) to the loopback address of its family.
+func ThisMachine(host string) (netip.Addr, bool) {
+	if len(host) > 2 && host[0] == '[' && host[len(host)-1] == ']' {
+		host = host[1 : len(host)-1]
+	}
+	switch host {
+	case "0.0.0.0":
+		return netip.AddrFrom4([4]byte{127, 0, 0, 1}), true
+	case "::":
+		return netip.IPv6Loopback(), true
+	}
+	return netip.Addr{}, false
+}
+
 // ResolveHost resolves a target host, returning a literal address as is.
 func ResolveHost(ctx context.Context, r Resolver, host string) ([]netip.Addr, error) {
+	if a, ok := ThisMachine(host); ok {
+		return []netip.Addr{a}, nil
+	}
 	h := strings.Trim(host, "[]")
 	if a, err := netip.ParseAddr(h); err == nil {
 		return []netip.Addr{a}, nil

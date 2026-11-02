@@ -26,11 +26,14 @@ import (
 	"github.com/seawise/client/internal/constants"
 	"github.com/seawise/client/internal/controlplane"
 	"github.com/seawise/client/internal/enrol"
+	"github.com/seawise/client/internal/forwarder"
 	"github.com/seawise/client/internal/identity"
 	"github.com/seawise/client/internal/paths"
+	"github.com/seawise/client/internal/session"
 	"github.com/seawise/client/internal/store"
 	"github.com/seawise/client/internal/targetpolicy"
 	"github.com/seawise/client/internal/updatecheck"
+	"github.com/seawise/client/internal/visitor"
 )
 
 const usage = `seawise-agent: next version of the SeaWise client (in development).
@@ -92,6 +95,23 @@ func main() {
 		defer keys.Close()
 	}
 	tr := startTrust(log, st)
+	clock := session.OpenSignedClock(st.Dir(), log)
+	var a *agent.Agent
+	var ins *instructions
+	_, dataStreams, err := newDataStreams(dataStreamSetup{
+		log: log, st: st, keySet: tr.current, clock: clock, record: accessLog.Record,
+		mode: func() visitor.Mode {
+			if ins == nil {
+				return visitor.Observe
+			}
+			return ins.visitorMode()
+		},
+		dial: func(ctx context.Context, localID string) (*forwarder.Upstream, error) { return a.Dial(ctx, localID) },
+	})
+	if err != nil {
+		log.Error("data streams", "error", err)
+		os.Exit(1)
+	}
 	cfg := agent.Config{
 		Store:    st,
 		Logger:   log,
@@ -99,10 +119,11 @@ func main() {
 		Tunnel: tunnelFactory(tunnelSetup{
 			log: log, st: st, keys: keys, keySet: tr.current, keySetHold: tr.hold, name: envOr("SEAWISE_TUNNEL_NAME", defaultTunnelName),
 			client: &http.Client{Transport: controlplane.NewTransport(os.Getenv, nil), Timeout: 30 * time.Second},
+			clock:  clock, streams: dataStreams.Serve,
 		}),
 	}
 	cfg.Forward.Record = accessLog.Record
-	a, err := agent.New(cfg)
+	a, err = agent.New(cfg)
 	if err != nil {
 		log.Error("start agent", "error", err)
 		os.Exit(1)
@@ -132,11 +153,11 @@ func main() {
 	go func() { _ = syncer.Run(ctx) }()
 
 	updates, fresh := startUpdateCheck(ctx, log, st, tr)
-	instructions := newInstructions(log, st, tr, fresh, a.Reconcile)
+	ins = newInstructions(log, st, tr, fresh, a.Reconcile)
 
 	ui, err := startAdminUI(ctx, log, st, a, appEngine, accessLog, func(ctx context.Context) any {
 		as, _ := a.Status(ctx)
-		return map[string]any{"agent": as, "enrolment": enrolment(), "control_plane": syncer.Status(), "app_sync": apps(), "access_log": accessLog.Status(), "updates": updates(), "keyset": tr.status(), "instructions": instructions.status(), "visitor_tokens": instructions.visitorStatus()}
+		return map[string]any{"agent": as, "enrolment": enrolment(), "control_plane": syncer.Status(), "app_sync": apps(), "access_log": accessLog.Status(), "updates": updates(), "keyset": tr.status(), "instructions": ins.status(), "visitor_tokens": ins.visitorStatus(), "data_streams": dataStreams.Status()}
 	})
 	if err != nil {
 		log.Error("admin UI", "error", err)

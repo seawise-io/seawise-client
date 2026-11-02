@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/seawise-io/seawise-client/tunnelwire/claims"
@@ -41,6 +42,10 @@ const (
 	minDrainMs = 1000
 	maxDrainMs = 120000
 	maxRetired = 2
+	// TimeRetryMin and TimeRetryMax bound the backoff of signed-time
+	// requests while the clock has none.
+	TimeRetryMin = 5 * time.Second
+	TimeRetryMax = 2 * time.Minute
 	// rotationRetry is the first wait after a failed rotation proof.
 	rotationRetry = 30 * time.Second
 )
@@ -84,6 +89,11 @@ type Config struct {
 	CommitRotation func(kid string) error
 	// OnRoutes receives every applied RouteSet of the active session.
 	OnRoutes func(*claims.RouteSet)
+	// Streams serves the data streams of each session; its context ends
+	// when that session closes.
+	Streams func(context.Context, DataSession)
+	// SignedClock, if set, observes every verified signed time.
+	SignedClock *SignedClock
 	// Network signals network changes (nil: watch the host).
 	Network <-chan struct{}
 	Clock   Clock
@@ -130,6 +140,10 @@ type Manager struct {
 	netAt       time.Time
 	lastNet     time.Time // last network change that redialled
 	hbBusy      bool
+	timeWanted  bool          // the clock has no signed time; requests retry
+	timePending bool          // a request came while a heartbeat was running
+	timeNext    time.Time     // next retry
+	timeWait    time.Duration // current backoff
 	hbNonce     string
 	rotNonce    string
 	rotLevel    int
@@ -149,6 +163,9 @@ type live struct {
 	info       ConnInfo
 	up         bool
 	routes     *claims.RouteSet
+	applied    atomic.Pointer[claims.RouteSet] // routes, for the stream handler
+	cancel     context.CancelFunc
+	ends       *AppEnds
 	routeVer   int64
 	policyVer  uint64
 	deadline   time.Time // RouteSet deadline before up
@@ -285,6 +302,10 @@ func (m *Manager) Run(ctx context.Context) error {
 		m.wg.Wait()
 		m.drain()
 	}()
+	var wantTime <-chan struct{}
+	if m.cfg.SignedClock != nil {
+		wantTime = m.cfg.SignedClock.Wanted()
+	}
 	netCh := m.cfg.Network
 	if netCh == nil {
 		netCh = WatchNetwork(ctx, m.log)
@@ -309,6 +330,8 @@ func (m *Manager) Run(ctx context.Context) error {
 			if !m.lastNet.IsZero() {
 				m.netAt = later(m.netAt, m.lastNet.Add(NetworkDialEvery))
 			}
+		case <-wantTime:
+			m.needTime(ctx)
 		case <-m.repair:
 			m.step(ctx, ladder.Event{Kind: ladder.EvRepair}, nil)
 		case <-wake:
@@ -599,6 +622,17 @@ func (m *Manager) onDial(ctx context.Context, ev evDial) {
 	m.conns[l.id] = l
 	m.wg.Add(1)
 	go m.read(l)
+	if m.cfg.Streams != nil {
+		lctx, cancel := context.WithCancel(ctx)
+		l.cancel, l.ends = cancel, NewAppEnds()
+		ds := DataSession{Ended: l.ends, Mux: l.info.Mux, Capabilities: slices.Clone(l.info.Capabilities), MaxStreams: int(l.info.MaxStreams),
+			EdgeID: l.info.EdgeID, Routes: l.applied.Load}
+		m.wg.Add(1)
+		go func() {
+			defer m.wg.Done()
+			m.cfg.Streams(lctx, ds)
+		}()
+	}
 }
 
 // retryAfter delays the next redial as an edge asked. The value is
@@ -642,6 +676,9 @@ func (m *Manager) read(l *live) {
 }
 
 func (m *Manager) closeLive(l *live) {
+	if l.cancel != nil {
+		l.cancel()
+	}
 	delete(m.conns, l.id)
 	delete(m.retired, l.id)
 	_ = l.conn.Close()
@@ -730,6 +767,12 @@ func (m *Manager) onMessage(ctx context.Context, l *live, msg *pb.ControlMessage
 		m.log.Info("edge drains the session", "reason", d.GetReason().String(), "action", action)
 		m.step(ctx, ladder.Event{Kind: ladder.EvDrain, Reason: d.GetReason().String(), Action: action, PendingKey: pending}, l)
 	case *pb.ControlMessage_Revoke:
+		if r := b.Revoke; r.GetScope() == pb.RevokeScope_APP && len(r.GetAppId()) == 16 {
+			app := uuidText(r.GetAppId())
+			for _, c := range m.conns {
+				c.ends.Push(app)
+			}
+		}
 		if l != m.active || retired {
 			return
 		}
@@ -763,13 +806,17 @@ func (m *Manager) routeSet(ctx context.Context, l *live, rs *pb.RouteSet) {
 			m.log.Warn("signed time in RouteSet ignored", "error", err)
 		} else {
 			m.cur.SignedTime = max(m.cur.SignedTime, t.Time)
+			m.observeTime(t.Time)
 		}
 	}
+	l.ends.Push(removedApps(l.routes, set)...)
 	l.routeVer, l.routes = set.Version, set
+	l.applied.Store(set)
 	if err := l.conn.Send(&pb.ControlMessage{Body: &pb.ControlMessage_RouteSetAck{RouteSetAck: &pb.RouteSetAck{Version: uint64(set.Version)}}}); err != nil { //nolint:gosec // G115: a verified safe integer
 		m.fail(ctx, l, "routeset_ack")
 		return
 	}
+	defer m.needTime(ctx)
 	if l.up {
 		if l == m.active && m.cfg.OnRoutes != nil {
 			m.cfg.OnRoutes(set)
@@ -779,6 +826,70 @@ func (m *Manager) routeSet(ctx context.Context, l *live, rs *pb.RouteSet) {
 	l.up = true
 	m.log.Info("tunnel session up", "edge", l.info.EdgeID, "carriage", l.info.Carriage.String(), "routes", len(set.Routes))
 	m.step(ctx, ladder.Event{Kind: ladder.EvDialOK}, l)
+}
+
+// needTime asks for signed time (SIGNED_TIME on stream 0 of the active
+// session) while the clock has none.
+// Until one arrives it retries with backoff; a request made while a
+// heartbeat runs is kept and sent when that one completes.
+func (m *Manager) needTime(ctx context.Context) {
+	sc := m.cfg.SignedClock
+	if sc == nil || m.cfg.Heartbeat == nil {
+		return
+	}
+	if sc.Ready() {
+		m.timeWanted, m.timePending, m.timeNext, m.timeWait = false, false, time.Time{}, 0
+		return
+	}
+	m.timeWanted = true
+	if m.hbBusy {
+		m.timePending = true
+		return
+	}
+	m.timePending = false
+	m.heartbeat(ctx)
+	m.timeWait = min(max(m.timeWait*2, TimeRetryMin), TimeRetryMax)
+	half := m.timeWait / 2
+	m.timeNext = m.cfg.Clock.Now().Add(half + time.Duration(m.cfg.Rand(half.Milliseconds()))*time.Millisecond)
+}
+
+// afterHeartbeat settles signed-time requests once a heartbeat completes.
+func (m *Manager) afterHeartbeat(ctx context.Context) {
+	if !m.timeWanted {
+		return
+	}
+	if m.cfg.SignedClock.Ready() || m.timePending {
+		m.needTime(ctx)
+	}
+}
+
+// removedApps lists the apps of old that next no longer routes.
+func removedApps(old, next *claims.RouteSet) []string {
+	if old == nil {
+		return nil
+	}
+	keep := map[string]bool{}
+	for _, r := range next.Routes {
+		keep[r.AppID] = true
+	}
+	var out []string
+	for _, r := range old.Routes {
+		if !keep[r.AppID] {
+			out = append(out, r.AppID)
+		}
+	}
+	return out
+}
+
+func uuidText(b []byte) string {
+	h := hex.EncodeToString(b)
+	return h[:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]
+}
+
+func (m *Manager) observeTime(t int64) {
+	if m.cfg.SignedClock != nil {
+		m.cfg.SignedClock.Observe(t)
+	}
 }
 
 func (m *Manager) sendPing() {
@@ -1008,6 +1119,7 @@ func (m *Manager) onHeartbeat(ctx context.Context, ev evHB) {
 		return
 	}
 	m.hbBusy = false
+	defer m.afterHeartbeat(ctx)
 	if ev.err != nil {
 		m.log.Warn("signed heartbeat failed", "error", ev.err)
 		return
@@ -1031,6 +1143,7 @@ func (m *Manager) onHeartbeat(ctx context.Context, ev evHB) {
 	}
 	m.stateTime = st.Time
 	m.cur.SignedTime = max(m.cur.SignedTime, st.Time)
+	m.observeTime(st.Time)
 	if st.DeviceStatus == claims.DeviceRevoked && m.cfg.Pending != nil && m.cfg.Pending() != nil {
 		// The server may have accepted the rotation already: prove the
 		// pending key before holding on the old key's revocation.
@@ -1078,11 +1191,17 @@ func (m *Manager) nextWake() (time.Time, bool) {
 	if m.out.State == ladder.Reconnecting && m.cfg.Heartbeat != nil {
 		add(m.lastHB.Add(ReconnectingPoll))
 	}
+	if m.timeWanted && !m.hbBusy {
+		add(m.timeNext)
+	}
 	return w, !w.IsZero()
 }
 
 func (m *Manager) onWake(ctx context.Context) {
 	now := m.cfg.Clock.Now()
+	if m.timeWanted && !m.hbBusy && !m.timeNext.After(now) {
+		m.needTime(ctx)
+	}
 	if !m.netAt.IsZero() && !m.netAt.After(now) {
 		m.netAt = time.Time{}
 		m.log.Info("network changed")
