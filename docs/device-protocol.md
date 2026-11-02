@@ -123,6 +123,16 @@ The agent may replace its device key at any time. A rotation is a JSON object wi
 
 **Agent recovery.** The agent keeps the new key as pending until the server confirms, and uses the pending key's creation time as `iat`, so a retry produces the identical rotation. If the agent stops after the server accepted the rotation but before it recorded that, its next request with the old key gets `key_revoked`. The agent then sends one request signed with the pending key; if it is accepted, the pending key becomes current. Only if that also fails does the agent ask to be paired again.
 
+### 6.1 Enrolment of a 1.x server
+
+A server paired by a 1.x client moves to its device key without pairing again. The agent generates the key locally and sends:
+
+1. `POST /device/v2/enroll` with the 1.x token in `X-FRP-Token` (64 lower-case hex), a request proof by the new key and the body `{"server_id":"<uuid>"}`. The server picks the server by the token. Answers: `200 {"result":"enrolled","server_id","device_id","key_id"}` (also for a retry with the same key); `401 {"error":"invalid_token"}`; `409 {"error":"already_enrolled"}` (another key is active); `400 {"error":"invalid_key","code":"bad_key"}`; `403 {"error":"repair_required"}`; `400 {"error":"invalid_request","code":"malformed"}`; proof refusals as in §4.
+2. `GET /device/v2/identity` with the new key: the first call made with the enrolled key.
+3. `POST /device/v2/enroll/confirm` with the new key and `{"server_id":"<uuid>"}`: `200 {"result":"switched"}` (also when already switched) retires the 1.x token; `409 {"error":"not_enrolled"}`; `400 {"error":"invalid_request","code":"wrong_server"|"malformed"}`.
+
+The token is sent only on the enrol call, only to an `https` origin with verified TLS, never through a redirect. The agent never unpairs or deletes anything on a refusal: it holds with the reason and retries every 6 hours; outages and rate limits are retried with backoff. `testdata/vectors/enrol.json` covers the enrol call.
+
 ## 7. Key set
 
 The keys the agent trusts for SeaWise signatures are published as a key set signed by an offline root key. The agent pins two root public keys, a primary and a backup kept apart; a key set signed by either is valid.
@@ -203,4 +213,4 @@ Verifiers report the first failing rule with one of these codes. The vectors ass
 
 ## 11. Test vectors
 
-`testdata/vectors/*.json` hold one file per format. **The keys in them are derived from published seeds and are for tests only.** Each file lists its keys (seed, public key, key ID, fingerprint) and its cases; each case has `name`, `input`, `context` (the verifier's state: request, registry, pinned roots, key set, time, seen identifiers), `expect` (`ok` or an error code) and, for valid cases, `result`. The Go tests regenerate the files and fail if they differ from the committed copies.
+`testdata/vectors/*.json` hold one file per format. `enrol.json` uses the control plane's layout (`input` and `wire` are objects) and is kept identical to its copy there. **The keys in them are derived from published seeds and are for tests only.** Each file lists its keys (seed, public key, key ID, fingerprint) and its cases; each case has `name`, `input`, `context` (the verifier's state: request, registry, pinned roots, key set, time, seen identifiers), `expect` (`ok` or an error code) and, for valid cases, `result`. The Go tests regenerate the files and fail if they differ from the committed copies.

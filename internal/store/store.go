@@ -117,6 +117,8 @@ type State struct {
 	ServerDisableLog []time.Time `json:"server_disable_log,omitempty"`
 	// Holds are hold reasons that survive restarts, such as the kill switch.
 	Holds []string `json:"holds,omitempty"`
+	// Enrolment tracks the move of an imported 1.x account to the device key.
+	Enrolment *Enrolment `json:"enrolment,omitempty"`
 }
 
 // HasHold reports whether reason is persisted.
@@ -306,8 +308,12 @@ func (s *Store) load() (bool, error) {
 }
 
 // checkAccountToken rejects a paired account without its FRP token, which
-// would otherwise leave the agent silently idle.
+// would otherwise leave the agent silently idle, unless the account has
+// switched to its device key.
 func checkAccountToken(st *State, sec *Secrets) error {
+	if e := st.EnrolmentFor(); e != nil && e.Phase == PhaseSwitched {
+		return nil
+	}
 	if st.Account != nil && sec.FRPToken == "" {
 		return fmt.Errorf("%w: account %s has no frp token in %s", ErrInvalid, st.Account.ServerID, SecretsFile)
 	}
@@ -466,6 +472,9 @@ func validateState(st *State) error {
 	if len(st.Targets) > MaxTargets {
 		return fmt.Errorf("%w: too many targets", ErrInvalid)
 	}
+	if err := validateEnrolment(st.Enrolment); err != nil {
+		return err
+	}
 	ids := map[string]bool{}
 	for i, t := range st.Targets {
 		switch {
@@ -535,6 +544,7 @@ func cloneState(st State) State {
 	out.Targets = append([]Target(nil), st.Targets...)
 	out.ServerDisableLog = append([]time.Time(nil), st.ServerDisableLog...)
 	out.Holds = append([]string(nil), st.Holds...)
+	out.Enrolment = cloneEnrolment(st.Enrolment)
 	if out.Targets == nil {
 		out.Targets = []Target{}
 	}

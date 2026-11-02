@@ -12,6 +12,7 @@ import (
 
 	"github.com/seawise/client/internal/agent"
 	"github.com/seawise/client/internal/constants"
+	"github.com/seawise/client/internal/enrol"
 	"github.com/seawise/client/internal/identity"
 	"github.com/seawise/client/internal/protocol"
 	"github.com/seawise/client/internal/session"
@@ -56,6 +57,8 @@ func tunnelFactory(ts tunnelSetup) func() (agent.Tunnel, error) {
 			return nil, notReady("the paired server has no v2 identity yet")
 		case ts.keys == nil:
 			return nil, notReady("device keystore unavailable")
+		case !enrol.Ready(ts.st.State(), ts.st.Secrets()):
+			return nil, notReady("enrolling this server to client v2")
 		}
 		if _, err := ts.keys.Current(); err != nil {
 			if errors.Is(err, identity.ErrNoKey) {

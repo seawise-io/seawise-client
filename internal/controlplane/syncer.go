@@ -39,9 +39,12 @@ type SyncerConfig struct {
 	ListEvery int
 	// SkipList reports that the v2 app sync owns the app list.
 	SkipList func() bool
-	Now      func() time.Time
-	After    func(time.Duration) <-chan time.Time
-	Logger   *slog.Logger
+	// Legacy reports whether 1.x calls may still use the token; it turns
+	// false once the device key is enrolled.
+	Legacy func() bool
+	Now    func() time.Time
+	After  func(time.Duration) <-chan time.Time
+	Logger *slog.Logger
 }
 
 type SyncStatus struct {
@@ -110,7 +113,7 @@ func (s *Syncer) Run(ctx context.Context) error {
 // before the next step.
 func (s *Syncer) Step(ctx context.Context) time.Duration {
 	st := s.cfg.Store.State()
-	if st.Account == nil || s.cfg.Store.Secrets().FRPToken == "" {
+	if st.Account == nil || s.cfg.Store.Secrets().FRPToken == "" || (s.cfg.Legacy != nil && !s.cfg.Legacy()) {
 		return DefaultBeat
 	}
 	now := s.cfg.Now()

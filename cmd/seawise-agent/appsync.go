@@ -14,6 +14,7 @@ import (
 	"github.com/seawise/client/internal/appsync"
 	"github.com/seawise/client/internal/constants"
 	"github.com/seawise/client/internal/controlplane"
+	"github.com/seawise/client/internal/enrol"
 	"github.com/seawise/client/internal/identity"
 	"github.com/seawise/client/internal/store"
 )
@@ -37,7 +38,7 @@ func startAppSync(ctx context.Context, log *slog.Logger, st *store.Store, keys i
 	}
 	active := func() bool {
 		acc := st.State().Account
-		return acc != nil && claims.ValidUUID(acc.ServerID) && signer() != nil
+		return acc != nil && claims.ValidUUID(acc.ServerID) && enrol.Ready(st.State(), st.Secrets()) && signer() != nil
 	}
 	client := &http.Client{Transport: controlplane.NewTransport(os.Getenv, nil), Timeout: 30 * time.Second}
 	carrier := &appsync.HTTPS{Origin: apiURL(st), Key: signer, Client: client, Version: constants.Version}

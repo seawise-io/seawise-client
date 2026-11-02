@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/seawise/client/internal/agent"
+	"github.com/seawise/client/internal/enrol"
 	"github.com/seawise/client/internal/store"
 )
 
@@ -345,5 +346,63 @@ func TestSyncerSkipsListWhileV2SyncRuns(t *testing.T) {
 	s.Step(context.Background())
 	if lists.Load() != 1 {
 		t.Fatal("v1 list did not resume")
+	}
+}
+
+func TestSyncerStopsLegacyCallsAfterEnrolment(t *testing.T) {
+	var calls atomic.Int32
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, n int) {
+		calls.Add(1)
+		jsonReply(w, 200, okHeartbeat)
+	})
+	st, _ := pairedStore(t)
+	legacy := false
+	s, err := NewSyncer(SyncerConfig{Client: f.client(t), Store: st, Agent: &fakeAgent{}, Version: "test", Now: (&clock{now: t0}).Now,
+		Legacy: func() bool { return legacy }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := s.Step(context.Background()); d != DefaultBeat || calls.Load() != 0 {
+		t.Fatal("1.x call sent after enrolment")
+	}
+	legacy = true
+	s.Step(context.Background())
+	if calls.Load() == 0 {
+		t.Fatal("1.x calls did not run before enrolment")
+	}
+}
+
+// A server held because its token was refused sends no more 1.x calls
+// with that token; other holds before enrolment keep them.
+func TestSyncerStopsLegacyCallsForRefusedToken(t *testing.T) {
+	var calls atomic.Int32
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, n int) {
+		calls.Add(1)
+		jsonReply(w, 200, okHeartbeat)
+	})
+	st, _ := pairedStore(t)
+	s, err := NewSyncer(SyncerConfig{Client: f.client(t), Store: st, Agent: &fakeAgent{}, Version: "test", Now: (&clock{now: t0}).Now,
+		Legacy: func() bool { return enrol.LegacyAllowed(st.State()) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setHold := func(h string) {
+		t.Helper()
+		if err := st.Update(func(s *store.State) error {
+			s.Enrolment = &store.Enrolment{ServerID: serverID, Phase: store.PhasePending, StartedAt: t0, Hold: h}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setHold(store.HoldInvalidToken)
+	s.Step(context.Background())
+	if calls.Load() != 0 {
+		t.Fatal("1.x call sent with a refused token")
+	}
+	setHold(store.HoldRepairRequired)
+	s.Step(context.Background())
+	if calls.Load() == 0 {
+		t.Fatal("1.x calls stopped for a hold that keeps the token live")
 	}
 }

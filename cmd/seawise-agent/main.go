@@ -25,6 +25,7 @@ import (
 	"github.com/seawise/client/internal/appsync"
 	"github.com/seawise/client/internal/constants"
 	"github.com/seawise/client/internal/controlplane"
+	"github.com/seawise/client/internal/enrol"
 	"github.com/seawise/client/internal/identity"
 	"github.com/seawise/client/internal/paths"
 	"github.com/seawise/client/internal/store"
@@ -119,9 +120,11 @@ func main() {
 		log.Error("control plane", "error", err)
 		os.Exit(1)
 	}
+	enrolment := startEnrolment(ctx, log, st, keys, a)
 	apps, appsActive, appEngine := startAppSync(ctx, log, st, keys, a)
 	startHealthProbe(ctx, log, st, cfg.Gateways, tunnelUp(ctx, a), appEngine)
-	syncer, err := controlplane.NewSyncer(controlplane.SyncerConfig{Client: cp, Store: st, Agent: a, Version: constants.Version, Logger: log, SkipList: appsActive})
+	syncer, err := controlplane.NewSyncer(controlplane.SyncerConfig{Client: cp, Store: st, Agent: a, Version: constants.Version, Logger: log, SkipList: appsActive,
+		Legacy: func() bool { return enrol.LegacyAllowed(st.State()) }})
 	if err != nil {
 		log.Error("control plane", "error", err)
 		os.Exit(1)
@@ -133,7 +136,7 @@ func main() {
 
 	ui, err := startAdminUI(ctx, log, st, a, appEngine, accessLog, func(ctx context.Context) any {
 		as, _ := a.Status(ctx)
-		return map[string]any{"agent": as, "control_plane": syncer.Status(), "app_sync": apps(), "access_log": accessLog.Status(), "updates": updates(), "keyset": tr.status(), "instructions": instructions.status(), "visitor_tokens": instructions.visitorStatus()}
+		return map[string]any{"agent": as, "enrolment": enrolment(), "control_plane": syncer.Status(), "app_sync": apps(), "access_log": accessLog.Status(), "updates": updates(), "keyset": tr.status(), "instructions": instructions.status(), "visitor_tokens": instructions.visitorStatus()}
 	})
 	if err != nil {
 		log.Error("admin UI", "error", err)

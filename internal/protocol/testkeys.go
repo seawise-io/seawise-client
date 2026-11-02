@@ -21,6 +21,8 @@ var TestVectorKeyIDs = []string{
 	"mxs4IdKuzGDnvt-UtyEenGBbbKEKqZol-3ImhEZxzxQ", // visitor-1
 	"9JvEpdDSJQjZHGypEiPTFy1NCiNGHMTB7icqfxSiADI", // edge-1
 	"Jk_11RdGyHmmwBtWX3qV3UOXqKGAzf8t7gGrVTJ0Tms", // release-1
+	"eOgqlppWHxs43cvEpBP9pbR_C5oLdwCSnt4f0nRYZ_4", // enrol-new
+	"a21S7ymi_EnpVJKTU8Oz3WYF286UxRsls00h4nHjQ1Y", // enrol-registered
 }
 
 // IsTestVectorKey reports whether kid belongs to a published test key.

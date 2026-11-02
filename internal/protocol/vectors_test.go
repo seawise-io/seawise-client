@@ -26,9 +26,11 @@ func marshalVectors(f vecFile) []byte {
 // committed files. Run with UPDATE_VECTORS=1 to rewrite them.
 func TestVectorsUpToDate(t *testing.T) {
 	update := os.Getenv("UPDATE_VECTORS") == "1"
-	gen := generateVectors()
-	for name, f := range gen {
-		want := marshalVectors(f)
+	gen := map[string][]byte{"enrol.json": marshalEnrol(genEnrol())}
+	for name, f := range generateVectors() {
+		gen[name] = marshalVectors(f)
+	}
+	for name, want := range gen {
 		path := filepath.Join(vectorDir, name)
 		if update {
 			if err := os.MkdirAll(vectorDir, 0o755); err != nil {
@@ -288,7 +290,7 @@ func TestVectorWireCodes(t *testing.T) {
 // the vectors publish.
 func TestVectorKeyIDsListed(t *testing.T) {
 	var want []string
-	for _, n := range vecKeyNames {
+	for _, n := range append(slices.Clone(vecKeyNames), enrolKeyNames...) {
 		want = append(want, vecKID(n))
 	}
 	slices.Sort(want)
@@ -301,6 +303,11 @@ func TestVectorKeyIDsListed(t *testing.T) {
 			if !IsTestVectorKey(k.KID) {
 				t.Errorf("%s: key %s not in TestVectorKeyIDs", name, k.Name)
 			}
+		}
+	}
+	for _, k := range genEnrol().Keys {
+		if !IsTestVectorKey(k.KID) {
+			t.Errorf("enrol.json: key %s not in TestVectorKeyIDs", k.Name)
 		}
 	}
 }
