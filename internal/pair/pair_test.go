@@ -74,6 +74,10 @@ type env struct {
 	origin string
 	paired atomic.Int32
 	ctx    context.Context
+	// stopRun ends the Pairer's context without cancelling its code, as an
+	// agent that stops does.
+	stopRun   context.CancelFunc
+	reconnect atomic.Bool
 }
 
 func newEnv(t *testing.T) *env {
@@ -111,11 +115,14 @@ func (v *env) open() {
 	if err != nil {
 		v.t.Fatal(err)
 	}
+	run, stop := context.WithCancel(v.ctx)
+	v.stopRun = stop
 	p, err := New(Config{
-		Context: v.ctx, Store: st, Keys: ks, Caller: call, Origin: func() string { return v.origin },
+		Context: run, Store: st, Keys: ks, Caller: call, Origin: func() string { return v.origin },
 		WebURL: "https://seawise.io", Now: v.clk.now, Poll: 2 * time.Millisecond,
-		Logger:   slog.New(slog.NewTextHandler(v.logs, nil)),
-		OnPaired: func(context.Context) { v.paired.Add(1) },
+		Logger:        slog.New(slog.NewTextHandler(v.logs, nil)),
+		OnPaired:      func(context.Context) { v.paired.Add(1) },
+		Reconnectable: v.reconnect.Load,
 	})
 	if err != nil {
 		v.t.Fatal(err)

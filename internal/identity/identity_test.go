@@ -503,7 +503,7 @@ func TestRecoverRotationAfterCrash(t *testing.T) {
 	ks = openFile(t, dir)
 	accepted := func(k *Key) error {
 		if k.KeyID() != nextID {
-			return errors.New("key_revoked")
+			return fmt.Errorf("%w: key_revoked", ErrProbeRefused)
 		}
 		return nil
 	}
@@ -535,7 +535,7 @@ func TestRecoverRevokedProbeRejected(t *testing.T) {
 	ks := openFile(t, stateDir(t))
 	old := create(t, ks)
 	ks.BeginRotation()
-	probeErr := errors.New("rejected")
+	probeErr := fmt.Errorf("%w: key_revoked", ErrProbeRefused)
 	if err := RecoverRevoked(ks, func(*Key) error { return probeErr }); !errors.Is(err, ErrRepairNeeded) || !errors.Is(err, probeErr) {
 		t.Fatalf("got %v", err)
 	}
@@ -544,6 +544,28 @@ func TestRecoverRevokedProbeRejected(t *testing.T) {
 	}
 	if _, err := ks.Pending(); err != nil {
 		t.Fatal("pending key dropped after a rejected probe")
+	}
+}
+
+// A transport failure is not a refusal: no repair, nothing changed, the
+// caller retries.
+func TestRecoverRevokedProbeUnreachable(t *testing.T) {
+	ks := openFile(t, stateDir(t))
+	old := create(t, ks)
+	next, err := ks.BeginRotation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	netErr := errors.New("dial tcp: connection refused")
+	err = RecoverRevoked(ks, func(*Key) error { return netErr })
+	if err == nil || errors.Is(err, ErrRepairNeeded) || !errors.Is(err, netErr) {
+		t.Fatalf("got %v", err)
+	}
+	if cur, _ := ks.Current(); cur.KeyID() != old.KeyID() {
+		t.Fatal("current key changed after an unreachable probe")
+	}
+	if p, err := ks.Pending(); err != nil || p.KeyID() != next.KeyID() {
+		t.Fatal("pending key dropped after an unreachable probe")
 	}
 }
 

@@ -764,3 +764,21 @@ func TestHoldTextsNeedNoLocalPairing(t *testing.T) {
 		}
 	}
 }
+
+func TestNeedsReconnect(t *testing.T) {
+	for hold, text := range holdText {
+		if NeedsReconnect(hold) != strings.HasSuffix(text, reconnectText) {
+			t.Errorf("%s", hold)
+		}
+	}
+	for _, h := range []string{store.HoldKeyLost, store.HoldRepairRequired, store.HoldKeyRevoked, store.HoldInvalidToken} {
+		if !NeedsReconnect(h) {
+			t.Errorf("%s needs a new pairing", h)
+		}
+	}
+	for _, h := range []string{"", store.HoldInvalidRequest, store.HoldInsecureOrigin, "unknown"} {
+		if NeedsReconnect(h) {
+			t.Errorf("%q does not", h)
+		}
+	}
+}

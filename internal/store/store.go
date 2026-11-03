@@ -141,6 +141,19 @@ type Secrets struct {
 	Schema            int    `json:"schema"`
 	FRPToken          string `json:"frp_token,omitempty"`
 	AdminPasswordHash string `json:"admin_password_hash,omitempty"`
+	// Pairing is the pairing code being polled, kept so an approval is
+	// completed after a restart.
+	Pairing *PendingPairing `json:"pairing,omitempty"`
+}
+
+// PendingPairing is a pairing code issued for the device key KeyID. The
+// pair package checks its fields before use.
+type PendingPairing struct {
+	DeviceCode string    `json:"device_code"`
+	UserCode   string    `json:"user_code"`
+	Origin     string    `json:"origin"`
+	KeyID      string    `json:"key_id"`
+	ExpiresAt  time.Time `json:"expires_at"`
 }
 
 type Store struct {
@@ -225,7 +238,15 @@ func (s *Store) State() State {
 func (s *Store) Secrets() Secrets {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.secrets
+	return cloneSecrets(s.secrets)
+}
+
+func cloneSecrets(sec Secrets) Secrets {
+	if sec.Pairing != nil {
+		p := *sec.Pairing
+		sec.Pairing = &p
+	}
+	return sec
 }
 
 // Update applies fn to a copy of the state and persists it. The in-memory
@@ -255,7 +276,7 @@ func (s *Store) Update(fn func(*State) error) error {
 func (s *Store) UpdateSecrets(fn func(*Secrets) error) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	next := s.secrets
+	next := cloneSecrets(s.secrets)
 	if err := fn(&next); err != nil {
 		return err
 	}

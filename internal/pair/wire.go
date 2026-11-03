@@ -93,6 +93,20 @@ func parseCodes(raw []byte, now time.Time) (codes, error) {
 	return codes{user: m["user_code"], device: m["device_code"], keyID: m["key_id"], expires: exp}, nil
 }
 
+// deviceCodeOf reads data.device_code from an answer that failed the
+// strict parse, so its code can still be cancelled; "" when absent.
+func deviceCodeOf(raw []byte) string {
+	var doc struct {
+		Data struct {
+			DeviceCode string `json:"device_code"`
+		} `json:"data"`
+	}
+	if len(raw) > devicecall.MaxAnswer || json.Unmarshal(raw, &doc) != nil || !deviceCodeRe.MatchString(doc.Data.DeviceCode) {
+		return ""
+	}
+	return doc.Data.DeviceCode
+}
+
 // pairing is a pair/complete answer.
 type pairing struct {
 	serverID, serverName, userID, deviceID, keyID string

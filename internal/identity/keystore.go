@@ -89,13 +89,18 @@ var (
 	// ErrKeyLost means the agent is paired but its key is gone. A new key
 	// would be a different identity, so none is created.
 	ErrKeyLost = errors.New("the device key of this server is missing; this server needs to be connected again")
+	// ErrProbeRefused marks a probe answer in which the server refused the
+	// pending key. Any other probe error is treated as passing.
+	ErrProbeRefused = errors.New("server refused the pending key")
 )
 
 // RecoverRevoked handles the server reporting the current key as revoked.
 // If a rotation is pending, the server may have accepted it before the
 // agent could commit: probe sends one request signed with the pending key,
-// and on success the rotation is committed. The current key is never
-// replaced otherwise.
+// and on success the rotation is committed. Repair is needed only when
+// there is no pending key or the server refused it (ErrProbeRefused); any
+// other probe error is returned as is so the caller retries. The current
+// key is never replaced otherwise.
 func RecoverRevoked(ks Keystore, probe func(*Key) error) error {
 	next, err := ks.Pending()
 	if errors.Is(err, ErrNoKey) {
@@ -105,7 +110,10 @@ func RecoverRevoked(ks Keystore, probe func(*Key) error) error {
 		return err
 	}
 	if err := probe(next); err != nil {
-		return fmt.Errorf("%w: pending key not accepted: %w", ErrRepairNeeded, err)
+		if errors.Is(err, ErrProbeRefused) {
+			return fmt.Errorf("%w: pending key not accepted: %w", ErrRepairNeeded, err)
+		}
+		return fmt.Errorf("pending key probe: %w", err)
 	}
 	return ks.CommitRotation(next.KeyID())
 }

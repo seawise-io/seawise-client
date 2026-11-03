@@ -8,7 +8,7 @@ import (
 	"github.com/seawise/client/internal/pair"
 )
 
-// Pairing pairs this client with a SeaWise account.
+// Pairing pairs this client with a Seawise.io account.
 type Pairing interface {
 	Start(ctx context.Context, name string) (pair.Status, error)
 	Cancel()

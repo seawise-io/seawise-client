@@ -187,7 +187,9 @@
     var paired = s.state === "paired";
     var pending = s.state === "pending";
     var text;
+    var reconnect = s.state === "reconnect";
     if (paired) text = "This client is paired" + (s.server_name ? " as " + s.server_name : "") + ".";
+    else if (reconnect) text = "This server needs to be connected again" + (s.server_name ? " (" + s.server_name + ")" : "") + ". Pair it, then choose Reconnect an existing server when you approve the code on Seawise.io.";
     else if (pending) text = "Waiting for approval on Seawise.io." + (s.error ? " " + s.error : "");
     else if (s.error) text = s.error;
     else text = "This client is not paired. Pair it to share its apps through Seawise.io.";

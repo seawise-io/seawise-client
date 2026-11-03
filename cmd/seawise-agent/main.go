@@ -155,7 +155,7 @@ func main() {
 	// they use the token.
 	legacyGate := &sync.RWMutex{}
 	enrolment := startEnrolment(ctx, log, st, keys, call, a, legacyGate)
-	pairing := startPairing(ctx, log, st, keys, call, a)
+	pairing := startPairing(ctx, log, st, keys, call, a, enrolment)
 	apps, appsActive, appEngine := startAppSync(ctx, log, st, keys, call, a)
 	startHealthProbe(ctx, log, st, cfg.Gateways, tunnelUp(ctx, a), appEngine)
 	syncer, err := controlplane.NewSyncer(controlplane.SyncerConfig{Client: cp, Store: st, Agent: a, Version: constants.Version, Logger: log, SkipList: appsActive,

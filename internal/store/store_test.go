@@ -729,3 +729,33 @@ func TestOldEdgeCacheMemberIgnored(t *testing.T) {
 		t.Fatal("old member written back")
 	}
 }
+
+func TestPendingPairingKept(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Open(dir, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := &PendingPairing{DeviceCode: "0123456789abcdef0123456789abcdef", UserCode: "ABCDEFGHJK", Origin: "https://api.seawise.io",
+		KeyID: strings.Repeat("A", 43), ExpiresAt: fixedNow.Add(time.Minute).UTC()}
+	if err := s.UpdateSecrets(func(sec *Secrets) error { sec.Pairing = rec; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	got := s.Secrets()
+	got.Pairing.UserCode = "changed"
+	if s.Secrets().Pairing.UserCode != rec.UserCode {
+		t.Fatal("Secrets shares the record")
+	}
+	if err := s.UpdateSecrets(func(sec *Secrets) error { sec.Pairing.KeyID = "x"; return errors.New("no") }); err == nil || s.Secrets().Pairing.KeyID != rec.KeyID {
+		t.Fatal("a failed update changed the record")
+	}
+	s.Close()
+	s, err = Open(dir, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if p := s.Secrets().Pairing; p == nil || *p != *rec {
+		t.Fatalf("record after reopen: %+v", p)
+	}
+}

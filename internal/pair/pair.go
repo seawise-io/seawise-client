@@ -1,8 +1,11 @@
-// Package pair pairs an unpaired agent with a SeaWise account through the
-// device flow, bound to a device key made for this pairing: the request
-// carries the new key's proof, and polling and completion must be signed
-// by the same key. The account is stored with the device and key id the
-// server returns; no 1.x token is involved.
+// Package pair pairs an agent with a Seawise.io account through the device
+// flow, bound to a device key made for this pairing: the request carries
+// the new key's proof, and polling and completion must be signed by the
+// same key. The account is stored with the device and key id the server
+// returns; no 1.x token is involved. A paired agent pairs again only when
+// it can no longer use its account (key missing or revoked); the owner
+// then chooses on the approval page whether this connects the same server
+// again or adds a new one.
 package pair
 
 import (
@@ -27,6 +30,8 @@ const (
 	StatePending = "pending"
 	StatePaired  = "paired"
 	StateFailed  = "failed"
+	// StateReconnect is a paired agent that must pair again.
+	StateReconnect = "reconnect"
 )
 
 const (
@@ -61,6 +66,9 @@ type Config struct {
 	Logger *slog.Logger
 	// OnPaired runs after the account is stored.
 	OnPaired func(context.Context)
+	// Reconnectable reports whether the stored account can no longer be
+	// used, so the agent may pair again. Nil means never.
+	Reconnectable func() bool
 }
 
 // Status is the pairing as shown on the local page. It never carries the
@@ -80,8 +88,10 @@ type attempt struct {
 	key    *identity.Key
 	origin string
 	codes  codes
-	cancel context.CancelFunc
-	done   chan struct{}
+	// replaces is the stored account this pairing may replace, if any.
+	replaces *store.Account
+	cancel   context.CancelFunc
+	done     chan struct{}
 	// finished is set by the poller once the code needs no cancel.
 	finished bool
 }
@@ -117,18 +127,28 @@ func New(cfg Config) (*Pairer, error) {
 	return &Pairer{cfg: cfg, log: cfg.Logger.With("component", "pair"), status: Status{State: StateIdle}}, nil
 }
 
-// Status reports the pairing; a stored account shows as paired.
+// Status reports the pairing; a usable stored account shows as paired.
 func (p *Pairer) Status() Status {
-	if acc := p.cfg.Store.State().Account; acc != nil {
-		return Status{State: StatePaired, ServerName: acc.ServerName}
-	}
 	p.mu.Lock()
 	s := p.status
 	p.mu.Unlock()
+	if acc := p.cfg.Store.State().Account; acc != nil {
+		if !p.reconnectable() {
+			return Status{State: StatePaired, ServerName: acc.ServerName}
+		}
+		if s.State == StatePending || s.State == StateFailed {
+			return s
+		}
+		return Status{State: StateReconnect, ServerName: acc.ServerName}
+	}
 	if s.State == StatePaired {
 		return Status{State: StateIdle}
 	}
 	return s
+}
+
+func (p *Pairer) reconnectable() bool {
+	return p.cfg.Reconnectable != nil && p.cfg.Reconnectable()
 }
 
 // Start asks for a pairing code with a new device key and polls for the
@@ -137,8 +157,12 @@ func (p *Pairer) Status() Status {
 func (p *Pairer) Start(ctx context.Context, name string) (Status, error) {
 	p.op.Lock()
 	defer p.op.Unlock()
+	if p.running() == nil && p.recover(ctx) {
+		return p.Status(), nil
+	}
 	p.stop()
-	if p.cfg.Store.State().Account != nil {
+	acc := p.cfg.Store.State().Account
+	if acc != nil && !p.reconnectable() {
 		return Status{}, ErrPaired
 	}
 	name, err := cleanName(name)
@@ -167,23 +191,171 @@ func (p *Pairer) Start(ctx context.Context, name string) (Status, error) {
 	}
 	c, err := parseCodes(a.Body, p.cfg.Now())
 	if err != nil {
+		p.cancelCode(key, origin, deviceCodeOf(a.Body))
 		return p.failStart(&Error{Text: "Seawise.io sent an unexpected answer. Try again."})
 	}
 	if c.keyID != key.KeyID() {
+		p.cancelCode(key, origin, c.device)
 		return p.failStart(&Error{Text: "Seawise.io bound another key to this request. Try again."})
 	}
-	run, cancel := context.WithCancel(p.cfg.Context)
-	at := &attempt{key: key, origin: origin, codes: c, cancel: cancel, done: make(chan struct{})}
-	s := Status{State: StatePending, Code: c.user, ApproveURL: approveURL(p.cfg.WebURL), ExpiresAt: c.expires, KeyFingerprint: key.Fingerprint()}
+	at := &attempt{key: key, origin: origin, codes: c, replaces: cloneAccount(acc)}
+	p.remember(at)
+	p.log.Info("pairing code issued; waiting for approval", "key", key, "expires_at", c.expires)
+	return p.run(at), nil
+}
+
+// run shows at as pending and polls it in the background.
+func (p *Pairer) run(at *attempt) Status {
+	ctx, cancel := context.WithCancel(p.cfg.Context)
+	at.cancel, at.done = cancel, make(chan struct{})
+	s := Status{State: StatePending, Code: at.codes.user, ApproveURL: approveURL(p.cfg.WebURL), ExpiresAt: at.codes.expires, KeyFingerprint: at.key.Fingerprint()}
 	p.mu.Lock()
 	p.cur, p.status = at, s
 	p.mu.Unlock()
-	p.log.Info("pairing code issued; waiting for approval", "key", key, "expires_at", c.expires)
-	go p.poll(run, at)
-	return s, nil
+	go p.poll(ctx, at)
+	return s
 }
 
-// Cancel stops a running pairing and cancels its code at SeaWise.
+func (p *Pairer) running() *attempt {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.cur
+}
+
+// Resume polls a pairing code kept from an earlier run, so an approval
+// the agent never stored is completed. Call it once at start.
+func (p *Pairer) Resume() {
+	p.op.Lock()
+	defer p.op.Unlock()
+	if p.running() != nil {
+		return
+	}
+	if at := p.saved(); at != nil {
+		p.log.Info("resuming a pairing code from an earlier run", "key", at.key, "expires_at", at.codes.expires)
+		p.run(at)
+	}
+}
+
+// recover finishes a kept pairing code before a new one is requested: an
+// approved code is completed and true returned; any other is cancelled
+// and forgotten. The caller holds op.
+func (p *Pairer) recover(ctx context.Context) bool {
+	at := p.saved()
+	if at == nil {
+		return false
+	}
+	at.cancel, at.done = func() {}, make(chan struct{})
+	close(at.done)
+	p.mu.Lock()
+	p.cur = at
+	p.mu.Unlock()
+	if done, _ := p.check(ctx, at); done {
+		p.forget(at)
+		return p.cfg.Store.State().Account != nil && !p.reconnectable()
+	}
+	p.stop()
+	return false
+}
+
+// saved returns the kept pairing code as an attempt, or nil. A record that
+// is malformed, expired, for another key or already stored is forgotten.
+func (p *Pairer) saved() *attempt {
+	rec := p.cfg.Store.Secrets().Pairing
+	if rec == nil {
+		return nil
+	}
+	drop := func(why string) *attempt {
+		p.log.Info("kept pairing code dropped", "reason", why)
+		p.dropRecord(rec.DeviceCode)
+		return nil
+	}
+	origin, err := devicecall.CheckOrigin(rec.Origin)
+	if err != nil || !userCodeRe.MatchString(rec.UserCode) || !deviceCodeRe.MatchString(rec.DeviceCode) || rec.ExpiresAt.IsZero() {
+		return drop("malformed")
+	}
+	if !p.cfg.Now().Before(rec.ExpiresAt) {
+		return drop("expired")
+	}
+	key, err := p.cfg.Keys.Current()
+	if err != nil || key.KeyID() != rec.KeyID {
+		return drop("not the current device key")
+	}
+	acc := p.cfg.Store.State().Account
+	switch {
+	case acc != nil && acc.KeyID == rec.KeyID:
+		p.finishSave()
+		return drop("already stored")
+	case acc != nil && !p.reconnectable():
+		return drop("paired another way")
+	}
+	exp := rec.ExpiresAt
+	if lim := p.cfg.Now().Add(maxCodeLife); exp.After(lim) {
+		exp = lim
+	}
+	return &attempt{key: key, origin: origin, codes: codes{user: rec.UserCode, device: rec.DeviceCode, keyID: rec.KeyID, expires: exp},
+		replaces: cloneAccount(acc)}
+}
+
+// remember keeps at's code until the attempt ends.
+func (p *Pairer) remember(at *attempt) {
+	rec := &store.PendingPairing{DeviceCode: at.codes.device, UserCode: at.codes.user, Origin: at.origin, KeyID: at.key.KeyID(), ExpiresAt: at.codes.expires}
+	if err := persist(p.cfg.Store.UpdateSecrets(func(s *store.Secrets) error { s.Pairing = rec; return nil })); err != nil {
+		p.log.Warn("pairing code not kept; a restart before approval ends it", "error", err)
+	}
+}
+
+// forget drops at's kept code, if it is still the one kept.
+func (p *Pairer) forget(at *attempt) {
+	p.dropRecord(at.codes.device)
+}
+
+func (p *Pairer) dropRecord(device string) {
+	if rec := p.cfg.Store.Secrets().Pairing; rec == nil || rec.DeviceCode != device {
+		return
+	}
+	err := persist(p.cfg.Store.UpdateSecrets(func(s *store.Secrets) error {
+		if s.Pairing != nil && s.Pairing.DeviceCode == device {
+			s.Pairing = nil
+		}
+		return nil
+	}))
+	if err != nil {
+		p.log.Warn("kept pairing code not removed", "error", err)
+	}
+}
+
+// cancelCode cancels a code the agent will not use, best effort.
+func (p *Pairer) cancelCode(key *identity.Key, origin, device string) {
+	if !deviceCodeRe.MatchString(device) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(p.cfg.Context), cancelWithin)
+	defer cancel()
+	if _, err := p.cfg.Caller.Do(ctx, key, origin, http.MethodPost, PathCancel, deviceCodeBody(device), nil); err != nil {
+		p.log.Warn("pairing cancel not sent", "error", err)
+		return
+	}
+	p.log.Info("pairing cancelled")
+}
+
+func cloneAccount(a *store.Account) *store.Account {
+	if a == nil {
+		return nil
+	}
+	c := *a
+	return &c
+}
+
+// sameAccount reports whether the stored account is still the one a
+// pairing started from.
+func sameAccount(cur, was *store.Account) bool {
+	if cur == nil || was == nil {
+		return cur == nil && was == nil
+	}
+	return cur.ServerID == was.ServerID && cur.KeyID == was.KeyID && cur.DeviceID == was.DeviceID
+}
+
+// Cancel stops a running pairing and cancels its code at Seawise.io.
 func (p *Pairer) Cancel() {
 	p.op.Lock()
 	defer p.op.Unlock()
@@ -196,7 +368,7 @@ func (p *Pairer) Cancel() {
 }
 
 // stop ends the current attempt and, if its code is still open, cancels
-// it at SeaWise with the key that requested it. The caller holds op.
+// it at Seawise.io with the key that requested it. The caller holds op.
 func (p *Pairer) stop() {
 	p.mu.Lock()
 	at := p.cur
@@ -210,16 +382,10 @@ func (p *Pairer) stop() {
 	p.mu.Lock()
 	open := !at.finished
 	p.mu.Unlock()
-	if !open {
-		return
+	if open {
+		p.cancelCode(at.key, at.origin, at.codes.device)
 	}
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(p.cfg.Context), cancelWithin)
-	defer cancel()
-	if _, err := p.cfg.Caller.Do(ctx, at.key, at.origin, http.MethodPost, PathCancel, deviceCodeBody(at.codes.device), nil); err != nil {
-		p.log.Warn("pairing cancel not sent", "error", err)
-		return
-	}
-	p.log.Info("pairing cancelled")
+	p.forget(at)
 }
 
 func (p *Pairer) failStart(err *Error) (Status, error) {
@@ -248,6 +414,14 @@ func approveURL(web string) string {
 func (p *Pairer) poll(ctx context.Context, at *attempt) {
 	defer close(at.done)
 	defer at.cancel()
+	defer func() {
+		p.mu.Lock()
+		ended := at.finished
+		p.mu.Unlock()
+		if ended {
+			p.forget(at)
+		}
+	}()
 	wait := p.cfg.Poll
 	for {
 		t := time.NewTimer(wait)
@@ -352,6 +526,10 @@ func (p *Pairer) complete(ctx context.Context, at *attempt) (bool, time.Duration
 			p.finish(at, StateFailed, "This client was paired another way meanwhile.")
 			return true, 0
 		}
+		if errors.Is(err, errNotReconnectable) {
+			p.finish(at, StateFailed, "This client can use its account again, so the pairing was not stored.")
+			return true, 0
+		}
 		p.log.Error("store pairing", "error", err)
 		p.note(at, "could not save the pairing: "+err.Error()+"; retrying")
 		return false, p.cfg.Poll
@@ -364,20 +542,28 @@ func (p *Pairer) complete(ctx context.Context, at *attempt) (bool, time.Duration
 	return true, 0
 }
 
-// save stores the account. Apps keep their definitions but lose the
-// registrations of any earlier server, so they register on this one; a
-// 1.x token left from an earlier account is removed first.
+var errNotReconnectable = errors.New("the stored account is usable again")
+
+// save stores the account, replacing only the account the pairing started
+// from. Apps keep their definitions but lose the registrations of the
+// earlier server, so the next app list links them again. A 1.x token left
+// from an earlier account and the kept code are removed.
 func (p *Pairer) save(at *attempt, r pairing) error {
-	if p.cfg.Store.State().Account != nil {
+	if !sameAccount(p.cfg.Store.State().Account, at.replaces) {
 		return ErrPaired
 	}
-	if p.cfg.Store.Secrets().FRPToken != "" {
+	if at.replaces != nil && !p.reconnectable() {
+		return errNotReconnectable
+	}
+	// With no account stored a 1.x token left behind can go first; a held
+	// account may still need it until the new one is stored.
+	if at.replaces == nil && p.cfg.Store.Secrets().FRPToken != "" {
 		if err := persist(p.cfg.Store.UpdateSecrets(func(s *store.Secrets) error { s.FRPToken = ""; return nil })); err != nil {
 			return err
 		}
 	}
-	return persist(p.cfg.Store.Update(func(st *store.State) error {
-		if st.Account != nil {
+	err := persist(p.cfg.Store.Update(func(st *store.State) error {
+		if !sameAccount(st.Account, at.replaces) {
 			return ErrPaired
 		}
 		st.Account = &store.Account{
@@ -391,6 +577,27 @@ func (p *Pairer) save(at *attempt, r pairing) error {
 		}
 		return nil
 	}))
+	if err != nil {
+		return err
+	}
+	p.finishSave()
+	return nil
+}
+
+// finishSave removes what a stored key-paired account no longer needs: a
+// 1.x token and the kept code. A failure is retried on the next start.
+func (p *Pairer) finishSave() {
+	sec := p.cfg.Store.Secrets()
+	if sec.FRPToken == "" && sec.Pairing == nil {
+		return
+	}
+	err := persist(p.cfg.Store.UpdateSecrets(func(s *store.Secrets) error {
+		s.FRPToken, s.Pairing = "", nil
+		return nil
+	}))
+	if err != nil {
+		p.log.Warn("old pairing secrets not removed", "error", err)
+	}
 }
 
 func persist(err error) error {

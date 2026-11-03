@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,6 +58,12 @@ var holdText = map[string]string{
 	store.HoldKeyLost:         "The enrolled device key is missing or was replaced. " + reconnectText,
 	store.HoldKeyUnknown:      "The server enrolled this device key but then did not accept it, several times. " + reconnectText,
 	store.HoldInsecureOrigin:  "The API address is not an https address; the 1.x token is only sent over verified TLS.",
+}
+
+// NeedsReconnect reports whether hold can be cleared only by pairing the
+// server again.
+func NeedsReconnect(hold string) bool {
+	return strings.HasSuffix(holdText[hold], reconnectText)
 }
 
 // Config wires an Enroller.
