@@ -553,3 +553,57 @@ func TestListServicesPublicFlag(t *testing.T) {
 		t.Fatal("non-boolean is_public accepted")
 	}
 }
+
+// A retry re-reads the token; once the source returns none (enrolled),
+// nothing more is sent with it.
+func TestRetryStopsWhenTokenRetired(t *testing.T) {
+	var live atomic.Bool
+	live.Store(true)
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, n int) {
+		live.Store(false)
+		jsonReply(w, 503, `{"error":"unavailable"}`)
+	})
+	c, err := New(Config{BaseURL: f.srv.URL, Version: "test", Timeout: 2 * time.Second, AllowedDomains: testDomains,
+		Token: func() string {
+			if live.Load() {
+				return token
+			}
+			return ""
+		},
+		Sleep: func(context.Context, time.Duration) error { return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Heartbeat(context.Background(), serverID, HeartbeatRequest{ClientVersion: "test"}); err == nil {
+		t.Fatal("heartbeat succeeded")
+	}
+	if n := len(f.requests()); n != 1 {
+		t.Fatalf("%d attempts, want 1: no retry once the token is retired", n)
+	}
+}
+
+// Each attempt sends the token current at that moment.
+func TestRetryReadsTokenEachAttempt(t *testing.T) {
+	var n atomic.Int32
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, k int) {
+		if k == 1 {
+			jsonReply(w, 503, `{"error":"unavailable"}`)
+			return
+		}
+		jsonReply(w, 200, okHeartbeat)
+	})
+	toks := []string{token, strings.Repeat("b", 64)}
+	c, err := New(Config{BaseURL: f.srv.URL, Version: "test", Timeout: 2 * time.Second, AllowedDomains: testDomains,
+		Token: func() string { return toks[min(int(n.Add(1))-1, 1)] },
+		Sleep: func(context.Context, time.Duration) error { return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Heartbeat(context.Background(), serverID, HeartbeatRequest{ClientVersion: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	r := f.requests()
+	if len(r) != 2 || r[0].Header.Get("X-FRP-Token") != toks[0] || r[1].Header.Get("X-FRP-Token") != toks[1] {
+		t.Fatalf("tokens sent: %d requests", len(r))
+	}
+}

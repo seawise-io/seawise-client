@@ -76,6 +76,9 @@ type Config struct {
 	OnChange func(context.Context)
 	// Jitter returns a factor in [0.8, 1.2]; tests fix it.
 	Jitter func() float64
+	// Gate is shared with the 1.x calls; it is held for writing from
+	// sending enroll until its outcome is stored. Nil for none.
+	Gate *sync.RWMutex
 }
 
 // Status is the enrolment as shown on the local page.
@@ -266,6 +269,17 @@ func (e *Enroller) enrol(ctx context.Context, origin string, rec *store.Enrolmen
 		}
 		return 0
 	}
+	// OnChange runs after the gate is released.
+	notify := false
+	defer func() {
+		if notify {
+			e.changed(ctx)
+		}
+	}()
+	if g := e.cfg.Gate; g != nil {
+		g.Lock()
+		defer g.Unlock()
+	}
 	a, err := e.do(ctx, key, origin, http.MethodPost, PathEnroll, serverIDBody(rec.ServerID), token)
 	if err != nil {
 		return e.fail(err.Error())
@@ -294,7 +308,7 @@ func (e *Enroller) enrol(ctx context.Context, origin string, rec *store.Enrolmen
 	}
 	e.probed = false
 	e.log.Info("device key enrolled", "key", key, "device_id", deviceID)
-	e.changed(ctx)
+	notify = true
 	return 0
 }
 

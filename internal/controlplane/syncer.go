@@ -19,6 +19,10 @@ var errUnchanged = errors.New("unchanged")
 // register reply. The first list sync runs on the first heartbeat.
 const DefaultListEvery = 30
 
+// DefaultOfflineTimeout keeps the offline call inside Docker's default
+// 10 s stop grace period.
+const DefaultOfflineTimeout = 5 * time.Second
+
 // Agent is the part of the reconcile loop the syncer drives.
 type Agent interface {
 	Hold(ctx context.Context, reason string) error
@@ -42,9 +46,15 @@ type SyncerConfig struct {
 	// Legacy reports whether 1.x calls may still use the token; it turns
 	// false once the device key is enrolled.
 	Legacy func() bool
-	Now    func() time.Time
-	After  func(time.Duration) <-chan time.Time
-	Logger *slog.Logger
+	// Gate is shared with enrolment: every 1.x call holds it for reading
+	// from its Legacy check until its answer, enrolment holds it for
+	// writing while an enroll is in flight. Nil for none.
+	Gate *sync.RWMutex
+	// OfflineTimeout bounds the offline call sent when Run stops.
+	OfflineTimeout time.Duration
+	Now            func() time.Time
+	After          func(time.Duration) <-chan time.Time
+	Logger         *slog.Logger
 }
 
 type SyncStatus struct {
@@ -63,6 +73,9 @@ type Syncer struct {
 	beats    int
 	failures int
 	held     bool
+	// online is true after a 200 heartbeat until a removal or superseded
+	// answer.
+	online bool
 
 	mu     sync.Mutex
 	status SyncStatus
@@ -77,6 +90,9 @@ func NewSyncer(cfg SyncerConfig) (*Syncer, error) {
 	}
 	if cfg.ServerDisablesPerDay <= 0 {
 		cfg.ServerDisablesPerDay = DefaultServerDisablesPerDay
+	}
+	if cfg.OfflineTimeout <= 0 {
+		cfg.OfflineTimeout = DefaultOfflineTimeout
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -98,14 +114,46 @@ func (s *Syncer) Status() SyncStatus {
 	return out
 }
 
+// Run heartbeats until ctx ends, then tells the server this machine is
+// going offline, as 1.x does on a clean stop.
 func (s *Syncer) Run(ctx context.Context) error {
 	for {
 		d := s.Step(ctx)
 		select {
 		case <-ctx.Done():
+			s.goOffline(ctx)
 			return ctx.Err()
 		case <-s.cfg.After(d):
 		}
+	}
+}
+
+func (s *Syncer) rlock() func() {
+	if s.cfg.Gate == nil {
+		return func() {}
+	}
+	s.cfg.Gate.RLock()
+	return s.cfg.Gate.RUnlock
+}
+
+// legacy reports whether 1.x calls may use the stored token.
+func (s *Syncer) legacy(st store.State) bool {
+	return st.Account != nil && s.cfg.Store.Secrets().FRPToken != "" && (s.cfg.Legacy == nil || s.cfg.Legacy())
+}
+
+// goOffline sends one offline call while the 1.x token is still in use and
+// this run was the server's live connection.
+func (s *Syncer) goOffline(parent context.Context) {
+	unlock := s.rlock()
+	defer unlock()
+	st := s.cfg.Store.State()
+	if !s.online || !s.legacy(st) {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), s.cfg.OfflineTimeout)
+	defer cancel()
+	if err := s.cfg.Client.MarkOffline(ctx, st.Account.ServerID); err != nil {
+		s.log.Warn("offline notice not sent", "error", err)
 	}
 }
 
@@ -113,11 +161,19 @@ func (s *Syncer) Run(ctx context.Context) error {
 // before the next step.
 func (s *Syncer) Step(ctx context.Context) time.Duration {
 	st := s.cfg.Store.State()
-	if st.Account == nil || s.cfg.Store.Secrets().FRPToken == "" || (s.cfg.Legacy != nil && !s.cfg.Legacy()) {
+	if !s.legacy(st) {
 		return DefaultBeat
 	}
 	now := s.cfg.Now()
-	hb, err := s.cfg.Client.Heartbeat(ctx, st.Account.ServerID, s.heartbeatRequest(ctx, st))
+	req := s.heartbeatRequest(ctx, st)
+	unlock := s.rlock()
+	// Enrolment may have finished while the request was built.
+	if !s.legacy(s.cfg.Store.State()) {
+		unlock()
+		return DefaultBeat
+	}
+	hb, err := s.cfg.Client.Heartbeat(ctx, st.Account.ServerID, req)
+	unlock()
 	switch KindOf(err) {
 	case 0:
 		s.failures = 0
@@ -129,6 +185,7 @@ func (s *Syncer) Step(ctx context.Context) time.Duration {
 				s.log.Info("server reports this machine again; tunnels resumed")
 			}
 		}
+		s.online = true
 		s.applyEndpoint(ctx, hb)
 		s.beats++
 		if (s.beats-1)%s.cfg.ListEvery == 0 && (s.cfg.SkipList == nil || !s.cfg.SkipList()) {
@@ -139,6 +196,7 @@ func (s *Syncer) Step(ctx context.Context) time.Duration {
 	case Removal:
 		var e *Error
 		errors.As(err, &e)
+		s.online = false
 		s.removal.Observe(now, e.Reason)
 		rs := s.removal.State(now)
 		s.update(func(ss *SyncStatus) { ss.Removal, ss.LastError = rs, err.Error() })
@@ -151,6 +209,7 @@ func (s *Syncer) Step(ctx context.Context) time.Duration {
 		}
 		return DefaultBeat
 	case Superseded:
+		s.online = false
 		s.update(func(ss *SyncStatus) { ss.Superseded, ss.LastError = true, err.Error() })
 		return DefaultBeat
 	default:
@@ -201,7 +260,13 @@ func (s *Syncer) applyEndpoint(ctx context.Context, hb *Heartbeat) {
 }
 
 func (s *Syncer) syncList(ctx context.Context, serverID string, now time.Time) {
+	unlock := s.rlock()
+	if !s.legacy(s.cfg.Store.State()) {
+		unlock()
+		return
+	}
 	remote, err := s.cfg.Client.ListServices(ctx, serverID)
+	unlock()
 	if err != nil {
 		s.update(func(ss *SyncStatus) { ss.LastError = err.Error() })
 		return

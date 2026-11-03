@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -137,24 +138,34 @@ func main() {
 
 	cp, err := controlplane.New(controlplane.Config{
 		BaseURL: apiURL(st),
-		Token:   func() string { return st.Secrets().FRPToken },
+		// No 1.x call carries the token once the device key is enrolled or the token was refused.
+		Token: func() string {
+			if !enrol.LegacyAllowed(st.State()) {
+				return ""
+			}
+			return st.Secrets().FRPToken
+		},
 		Version: constants.Version,
 	})
 	if err != nil {
 		log.Error("control plane", "error", err)
 		os.Exit(1)
 	}
-	enrolment := startEnrolment(ctx, log, st, keys, call, a)
+	// Held by enrolment while an enroll is in flight, by 1.x calls while
+	// they use the token.
+	legacyGate := &sync.RWMutex{}
+	enrolment := startEnrolment(ctx, log, st, keys, call, a, legacyGate)
 	pairing := startPairing(ctx, log, st, keys, call, a)
 	apps, appsActive, appEngine := startAppSync(ctx, log, st, keys, call, a)
 	startHealthProbe(ctx, log, st, cfg.Gateways, tunnelUp(ctx, a), appEngine)
 	syncer, err := controlplane.NewSyncer(controlplane.SyncerConfig{Client: cp, Store: st, Agent: a, Version: constants.Version, Logger: log, SkipList: appsActive,
-		Legacy: func() bool { return enrol.LegacyAllowed(st.State()) }})
+		Legacy: func() bool { return enrol.LegacyAllowed(st.State()) }, Gate: legacyGate})
 	if err != nil {
 		log.Error("control plane", "error", err)
 		os.Exit(1)
 	}
-	go func() { _ = syncer.Run(ctx) }()
+	syncDone := make(chan struct{})
+	go func() { _ = syncer.Run(ctx); close(syncDone) }()
 
 	updates, fresh := startUpdateCheck(ctx, log, st, tr)
 	ins = newInstructions(log, st, tr, fresh, a.Reconcile)
@@ -173,6 +184,8 @@ func main() {
 		log.Error("agent stopped", "error", err)
 		os.Exit(1)
 	}
+	// The syncer's offline call on stop is bounded by its OfflineTimeout.
+	<-syncDone
 }
 
 // testUpdateConfig lets the memory budget test point update checks at a

@@ -82,6 +82,10 @@ type env struct {
 	jti atomic.Pointer[string]
 	// client replaces the test server's client when set.
 	client *http.Client
+	// gate is shared with 1.x calls, as in the agent.
+	gate sync.RWMutex
+	// onChange runs inside OnChange when set.
+	onChange func()
 }
 
 type handlerBox struct{ h http.Handler }
@@ -149,7 +153,13 @@ func (v *env) open() {
 	e, err := New(Config{
 		Store: st, Keys: ks, Origin: func() string { return v.origin }, Caller: call,
 		Now: v.clk.now, Logger: slog.New(slog.NewTextHandler(v.logs, nil)),
-		OnChange: func(context.Context) { v.changes++ }, Jitter: func() float64 { return 1 },
+		OnChange: func(context.Context) {
+			v.changes++
+			if v.onChange != nil {
+				v.onChange()
+			}
+		},
+		Jitter: func() float64 { return 1 }, Gate: &v.gate,
 	})
 	if err != nil {
 		v.t.Fatal(err)

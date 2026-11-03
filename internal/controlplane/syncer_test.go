@@ -20,6 +20,7 @@ type fakeAgent struct {
 	mu         sync.Mutex
 	holds      map[string]bool
 	reconciles int
+	onStatus   func()
 }
 
 func (a *fakeAgent) Hold(_ context.Context, r string) error {
@@ -47,6 +48,9 @@ func (a *fakeAgent) Reconcile(context.Context) error {
 }
 
 func (a *fakeAgent) Status(context.Context) (agent.Status, error) {
+	if a.onStatus != nil {
+		a.onStatus()
+	}
 	return agent.Status{Running: true, Connected: true}, nil
 }
 
@@ -404,5 +408,115 @@ func TestSyncerStopsLegacyCallsForRefusedToken(t *testing.T) {
 	s.Step(context.Background())
 	if calls.Load() == 0 {
 		t.Fatal("1.x calls stopped for a hold that keeps the token live")
+	}
+}
+
+// Enrolment can finish while a step builds its heartbeat; nothing is sent
+// with the 1.x token from then on.
+func TestSyncerRechecksLegacyBeforeEachCall(t *testing.T) {
+	var calls atomic.Int32
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, n int) {
+		calls.Add(1)
+		jsonReply(w, 200, okHeartbeat)
+	})
+	st, _ := pairedStore(t)
+	var legacy atomic.Bool
+	legacy.Store(true)
+	ag := &fakeAgent{onStatus: func() { legacy.Store(false) }}
+	s, err := NewSyncer(SyncerConfig{Client: f.client(t), Store: st, Agent: ag, Version: "test", Now: (&clock{now: t0}).Now, ListEvery: 1,
+		Legacy: legacy.Load})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Step(context.Background())
+	if calls.Load() != 0 {
+		t.Fatalf("%d 1.x calls after enrolment finished during the step", calls.Load())
+	}
+}
+
+func TestSyncerNoListAfterEnrolmentDuringHeartbeat(t *testing.T) {
+	var legacy atomic.Bool
+	legacy.Store(true)
+	var lists atomic.Int32
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, n int) {
+		if r.Method == "GET" {
+			lists.Add(1)
+			jsonReply(w, 200, `{"data":[]}`)
+			return
+		}
+		legacy.Store(false)
+		jsonReply(w, 200, okHeartbeat)
+	})
+	st, _ := pairedStore(t)
+	s, err := NewSyncer(SyncerConfig{Client: f.client(t), Store: st, Agent: &fakeAgent{}, Version: "test", Now: (&clock{now: t0}).Now, ListEvery: 1,
+		Legacy: legacy.Load})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Step(context.Background())
+	if lists.Load() != 0 {
+		t.Fatal("list sent with the 1.x token after enrolment")
+	}
+}
+
+// While enrolment holds the gate no 1.x call starts; once it has stored
+// its outcome the step sees it.
+func TestSyncerWaitsForTheEnrolmentGate(t *testing.T) {
+	var calls atomic.Int32
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, n int) {
+		calls.Add(1)
+		jsonReply(w, 200, okHeartbeat)
+	})
+	st, _ := pairedStore(t)
+	var legacy atomic.Bool
+	legacy.Store(true)
+	var gate sync.RWMutex
+	s, err := NewSyncer(SyncerConfig{Client: f.client(t), Store: st, Agent: &fakeAgent{}, Version: "test", Now: (&clock{now: t0}).Now, ListEvery: 1,
+		Legacy: legacy.Load, Gate: &gate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate.Lock()
+	done := make(chan struct{})
+	go func() { s.Step(context.Background()); close(done) }()
+	time.Sleep(100 * time.Millisecond)
+	legacy.Store(false)
+	gate.Unlock()
+	<-done
+	if calls.Load() != 0 {
+		t.Fatalf("%d 1.x calls while enrolment held the gate", calls.Load())
+	}
+}
+
+func TestSyncerOfflineWaitsForTheEnrolmentGate(t *testing.T) {
+	var beats atomic.Int32
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, n int) {
+		beats.Add(1)
+		jsonReply(w, 200, okHeartbeat)
+	})
+	st, _ := pairedStore(t)
+	var legacy atomic.Bool
+	legacy.Store(true)
+	var gate sync.RWMutex
+	after := func(time.Duration) <-chan time.Time { return make(chan time.Time) }
+	s, err := NewSyncer(SyncerConfig{Client: f.client(t), Store: st, Agent: &fakeAgent{}, Version: "test", Now: (&clock{now: t0}).Now,
+		After: after, Legacy: legacy.Load, Gate: &gate, SkipList: func() bool { return true }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { _ = s.Run(ctx); close(done) }()
+	for beats.Load() == 0 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	gate.Lock()
+	cancel()
+	time.Sleep(100 * time.Millisecond)
+	legacy.Store(false)
+	gate.Unlock()
+	<-done
+	if n, _ := countOffline(f); n != 0 {
+		t.Fatal("offline sent while an enrolment was in flight")
 	}
 }

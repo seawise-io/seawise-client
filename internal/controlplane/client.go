@@ -238,17 +238,23 @@ func (c *Client) do(ctx context.Context, cl call) (json.RawMessage, error) {
 		}
 		payload = b
 	}
-	tok := ""
-	if cl.auth {
-		if tok = c.token(); tok == "" {
-			return nil, &Error{Op: cl.op, Kind: Rejected, Reason: "not paired"}
-		}
-	}
 	key := ""
 	if cl.write {
 		key = newKey()
 	}
+	var last error
 	for attempt := 1; ; attempt++ {
+		// The token is read for every attempt: it may be retired between
+		// a failed attempt and its retry.
+		tok := ""
+		if cl.auth {
+			if tok = c.token(); tok == "" {
+				if last != nil {
+					return nil, last
+				}
+				return nil, &Error{Op: cl.op, Kind: Rejected, Reason: "not paired"}
+			}
+		}
 		data, err := c.once(ctx, cl, payload, tok, key)
 		if err == nil {
 			return data, nil
@@ -264,6 +270,7 @@ func (c *Client) do(ctx context.Context, cl call) (json.RawMessage, error) {
 		if serr := c.sleep(ctx, wait); serr != nil {
 			return nil, err
 		}
+		last = err
 	}
 }
 
