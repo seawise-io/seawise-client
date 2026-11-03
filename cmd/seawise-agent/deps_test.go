@@ -105,3 +105,44 @@ func TestPairingOnlyWithTheDeviceKey(t *testing.T) {
 		t.Fatal("device-key pairing handles a 1.x token")
 	}
 }
+
+// Every device call the agent links is proved by one signer, so one nonce
+// cache serves them all; app sync rides the tunnel session when one is up.
+func TestDeviceCallsShareOneSigner(t *testing.T) {
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatalf("Go toolchain needed to list the agent dependencies: %v", err)
+	}
+	out, err := exec.Command(goBin, "list", "-deps", "-f", `{{if not .Standard}}{{.ImportPath}}|{{.Dir}}|{{join .GoFiles ","}}{{end}}`, ".").CombinedOutput()
+	if err != nil {
+		t.Fatalf("go list: %v\n%s", err, out)
+	}
+	var found []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		f := strings.SplitN(line, "|", 3)
+		if len(f) != 3 || !strings.HasPrefix(f[0], "github.com/seawise/client/") || f[2] == "" {
+			continue
+		}
+		for _, name := range strings.Split(f[2], ",") {
+			b, err := os.ReadFile(filepath.Join(f[1], name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(b), "protocol.NewDPoP(") {
+				found = append(found, f[0]+"/"+name)
+			}
+		}
+	}
+	if len(found) != 1 || found[0] != "github.com/seawise/client/internal/devicecall/caller.go" {
+		t.Fatalf("DPoP proofs built in %v; only internal/devicecall may build them", found)
+	}
+	for file, want := range map[string]string{"tunnel.go": "Caller: ts.caller", "appsync.go": "Stream0: a,"} {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(b), want) {
+			t.Errorf("%s does not wire %q", file, want)
+		}
+	}
+}

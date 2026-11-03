@@ -235,11 +235,15 @@ func (s *Session) Close() error {
 }
 
 func send(w io.Writer, out *wire.SeqOut, m *pb.ControlMessage) error {
-	m.Schema, m.Seq = wire.SchemaVersion, out.Next()
+	// The seq is taken only once the message encodes, so a refused message
+	// leaves no gap the edge would read as a protocol error.
+	next := *out
+	m.Schema, m.Seq = wire.SchemaVersion, next.Next()
 	b, err := wire.EncodeControl(m, wire.FromAgent)
 	if err != nil {
 		return err
 	}
+	*out = next
 	f, err := wire.AppendControlFrame(nil, b)
 	if err != nil {
 		return err
@@ -387,7 +391,9 @@ func (d *Dialer) handshake(ctx context.Context, s *Session, raw net.Conn, edges 
 	defer func() {
 		timer.Stop()
 		stopCtx()
-		if err != nil && expiry.fired() {
+		// The connection and stream deadlines are the Hello deadline too, and
+		// may expire just before the timer runs.
+		if err != nil && (expiry.fired() || timedOut(err)) {
 			err = blocked(stage(st.Load()).cause(), "hello_deadline", err)
 		}
 	}()
@@ -589,6 +595,11 @@ type helloGuard struct {
 	close func()
 	done  bool // finished or fired
 	hit   bool // fired
+}
+
+func timedOut(err error) bool {
+	var t interface{ Timeout() bool }
+	return errors.As(err, &t) && t.Timeout()
 }
 
 func newHelloGuard(close func()) *helloGuard { return &helloGuard{close: close} }

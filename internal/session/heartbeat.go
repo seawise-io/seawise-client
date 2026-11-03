@@ -1,7 +1,6 @@
 package session
 
 import (
-	"bytes"
 	"context"
 	"crypto"
 	"crypto/rand"
@@ -9,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -17,14 +15,14 @@ import (
 
 	pb "github.com/seawise-io/seawise-client/tunnelwire/tunnelpb"
 
-	"github.com/seawise/client/internal/protocol"
+	"github.com/seawise/client/internal/devicecall"
 )
 
 // HeartbeatPath is the signed heartbeat; SIGNED_TIME is its stream 0 twin.
 const HeartbeatPath = "/device/v2/heartbeat"
 
 const (
-	maxAnswer = 64 << 10
+	maxAnswer = devicecall.MaxLargeAnswer
 	// unknownNonce makes the server answer use_dpop_nonce with a fresh one.
 	unknownNonce = "none"
 )
@@ -36,14 +34,19 @@ var ErrUnsigned = errors.New("heartbeat answer carries no signed state")
 // carries the control-key signed device state and the protocol flags.
 type Heartbeat struct {
 	// Origin is the control plane origin, such as https://api.seawise.io.
-	Origin  string
-	Key     func() crypto.Signer
+	Origin string
+	Key    func() crypto.Signer
+	// Caller signs and sends the heartbeat. The agent shares one with its
+	// other device calls, so every proof uses the newest server nonce. nil
+	// builds one from Client, Version and Now.
+	Caller  *devicecall.Caller
 	Client  *http.Client
 	Version string
 	Now     func() time.Time
 
-	mu    sync.Mutex
-	nonce string // newest DPoP-Nonce seen
+	once sync.Once
+	call *devicecall.Caller
+	err  error
 }
 
 // Answer is the signed part of a heartbeat answer.
@@ -52,31 +55,23 @@ type Answer struct {
 	Flags string // sw-tunnel-flags+jws, "" when none
 }
 
-func (h *Heartbeat) url() string { return strings.TrimSuffix(h.Origin, "/") + HeartbeatPath }
-
-func (h *Heartbeat) now() time.Time {
-	if h.Now != nil {
-		return h.Now()
-	}
-	return time.Now()
+func (h *Heartbeat) caller() (*devicecall.Caller, error) {
+	h.once.Do(func() {
+		if h.call = h.Caller; h.call == nil {
+			h.call, h.err = devicecall.New(devicecall.Config{Client: h.Client, Version: h.Version, Now: h.Now})
+		}
+	})
+	return h.call, h.err
 }
+
+func (h *Heartbeat) origin() string { return strings.TrimSuffix(h.Origin, "/") }
 
 func (h *Heartbeat) dpopNonce() string {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.nonce == "" {
+	c, err := h.caller()
+	if err != nil {
 		return unknownNonce
 	}
-	return h.nonce
-}
-
-func (h *Heartbeat) keepNonce(n string) {
-	if !protocol.ValidNonce(n) {
-		return
-	}
-	h.mu.Lock()
-	h.nonce = n
-	h.mu.Unlock()
+	return c.Nonce()
 }
 
 func requestBody(nonce string, connected bool, version string) []byte {
@@ -101,13 +96,6 @@ func (h *Heartbeat) key() crypto.Signer {
 	return h.Key()
 }
 
-func (h *Heartbeat) proof(key crypto.Signer, body []byte) (string, error) {
-	if key == nil {
-		return "", errors.New("no device key")
-	}
-	return protocol.NewDPoP(key, http.MethodPost, h.url(), body, h.dpopNonce(), newID(), h.now().Unix())
-}
-
 // HTTPS sends the heartbeat over HTTPS, retrying once with a server nonce.
 func (h *Heartbeat) HTTPS(ctx context.Context, nonce string, connected bool) (Answer, error) {
 	return h.HTTPSAs(ctx, h.key(), nonce, connected)
@@ -116,60 +104,33 @@ func (h *Heartbeat) HTTPS(ctx context.Context, nonce string, connected bool) (An
 // HTTPSAs sends the heartbeat proved by key, such as a pending rotation
 // key, whose signed state then names that key.
 func (h *Heartbeat) HTTPSAs(ctx context.Context, key crypto.Signer, nonce string, connected bool) (Answer, error) {
-	body := requestBody(nonce, connected, h.Version)
-	for attempt := 0; ; attempt++ {
-		status, raw, retry, err := h.post(ctx, key, body)
-		if err != nil {
-			return Answer{}, err
-		}
-		if status == http.StatusUnauthorized && retry && attempt == 0 {
-			continue
-		}
-		if status != http.StatusOK {
-			return Answer{}, fmt.Errorf("heartbeat: status %d", status)
-		}
-		return parseAnswer(raw)
-	}
-}
-
-func (h *Heartbeat) post(ctx context.Context, key crypto.Signer, body []byte) (int, []byte, bool, error) {
-	p, err := h.proof(key, body)
+	c, err := h.caller()
 	if err != nil {
-		return 0, nil, false, err
+		return Answer{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.url(), bytes.NewReader(body))
+	if key == nil {
+		return Answer{}, errors.New("no device key")
+	}
+	a, err := c.Send(ctx, devicecall.Request{Key: key, Origin: h.origin(), Method: http.MethodPost, Path: HeartbeatPath,
+		Body: requestBody(nonce, connected, h.Version), MaxAnswer: maxAnswer})
 	if err != nil {
-		return 0, nil, false, err
+		return Answer{}, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("DPoP", p)
-	c := h.Client
-	if c == nil {
-		c = http.DefaultClient
+	if a.Status != http.StatusOK {
+		return Answer{}, fmt.Errorf("heartbeat: status %d", a.Status)
 	}
-	resp, err := c.Do(req)
-	if err != nil {
-		return 0, nil, false, err
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxAnswer+1))
-	if err != nil {
-		return 0, nil, false, err
-	}
-	if len(raw) > maxAnswer {
-		return 0, nil, false, errors.New("heartbeat: answer too large")
-	}
-	n := resp.Header.Get("DPoP-Nonce")
-	h.keepNonce(n)
-	retry := n != "" && strings.Contains(resp.Header.Get("WWW-Authenticate"), "use_dpop_nonce")
-	return resp.StatusCode, raw, retry, nil
+	return parseAnswer(a.Body)
 }
 
 // Call builds the stream 0 twin of the heartbeat. The idempotency key is
 // reused for a nonce retry of the same call.
 func (h *Heartbeat) Call(callID uint32, key []byte, nonce string, connected bool) (*pb.DeviceCall, error) {
+	c, err := h.caller()
+	if err != nil {
+		return nil, err
+	}
 	body := requestBody(nonce, connected, h.Version)
-	p, err := h.proof(h.key(), body)
+	p, err := c.Proof(h.key(), http.MethodPost, h.origin()+HeartbeatPath, body)
 	if err != nil {
 		return nil, err
 	}
@@ -179,9 +140,11 @@ func (h *Heartbeat) Call(callID uint32, key []byte, nonce string, connected bool
 // Result reads a DeviceResult of the stream 0 call: the answer, or retry
 // when the server asked for its nonce.
 func (h *Heartbeat) Result(r *pb.DeviceResult) (Answer, bool, error) {
-	h.keepNonce(r.GetDpopNonce())
 	if r.GetClass() != pb.ResultClass_DONE {
 		return Answer{}, false, errors.New("heartbeat call: outcome unknown")
+	}
+	if c, err := h.caller(); err == nil {
+		c.KeepNonce(r.GetDpopNonce())
 	}
 	switch {
 	case r.GetHttpStatus() == http.StatusUnauthorized && r.GetDpopNonce() != "":

@@ -17,7 +17,7 @@ func TestAppSyncOffWithoutKeystore(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	status, active, e := startAppSync(context.Background(), slog.Default(), st, nil, nil)
+	status, active, e := startAppSync(context.Background(), slog.Default(), st, nil, nil, nil)
 	if e != nil || active() {
 		t.Fatal("app sync engine started without a keystore")
 	}

@@ -86,9 +86,9 @@ func TestStreamZeroNonceRefusedTwiceFallsBack(t *testing.T) {
 }
 
 func TestCallIDsWrap(t *testing.T) {
-	m := &Manager{calls: map[uint32]chan *pb.DeviceResult{}, callID: 1<<31 - 2}
-	a, _ := m.register()
-	b, _ := m.register()
+	m := &Manager{calls: map[uint32]pending{}, callID: 1<<31 - 2}
+	a, _ := m.register(1)
+	b, _ := m.register(1)
 	if a != 1<<31-1 || b != 1 {
 		t.Fatal(a, b)
 	}

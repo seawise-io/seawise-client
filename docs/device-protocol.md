@@ -84,6 +84,8 @@ HTTPS requests from the agent to the control plane carry a proof of possession o
 
 **Key.** The server identifies the device by the key ID of the `jwk` and checks it against its registry. During pairing the key is not yet registered; the pairing request binds it.
 
+**Calls over the tunnel.** While a tunnel session is up (its `HelloAck` and first route set verified), the agent sends app registration, app deletion, the app list, health reports and the signed heartbeat as a `DeviceCall` on stream 0 instead of HTTPS. The call carries the proof for its HTTPS twin (same method, canonical URL under the API origin, same body), so the device API verifies it exactly as over HTTPS and the edge cannot change it. Register and delete calls carry the same 128-bit idempotency key on every attempt and on both paths (over HTTPS as `Idempotency-Key`, 32 lower-case hex); the device API returns the stored answer for a repeat. A call without a result on stream 0 (`UNAVAILABLE`, a timeout, the session closing) is sent again over HTTPS under the same key. The agent never acts on a relayed answer that would remove an app; it confirms it with an HTTPS list first. Pairing and enrolment use HTTPS only. One signer proves every call, so the newest nonce from either path goes into the next proof.
+
 ## 5. frp login token
 
 The agent mints its own login token for the tunnel server. It is placed in the frp login metadata and verified by the edge against the device registry, so no control-plane call is needed to reconnect.

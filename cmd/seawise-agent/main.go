@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"net/http"
 	"net/netip"
 	"os"
 	"os/signal"
@@ -96,6 +95,11 @@ func main() {
 	}
 	tr := startTrust(log, st)
 	clock := session.OpenSignedClock(st.Dir(), log)
+	call, err := deviceCaller(clock.Now)
+	if err != nil {
+		log.Error("device API client", "error", err)
+		os.Exit(1)
+	}
 	var a *agent.Agent
 	var ins *instructions
 	_, dataStreams, err := newDataStreams(dataStreamSetup{
@@ -118,8 +122,7 @@ func main() {
 		Gateways: targetpolicy.Gateways(),
 		Tunnel: tunnelFactory(tunnelSetup{
 			log: log, st: st, keys: keys, keySet: tr.current, keySetHold: tr.hold, name: envOr("SEAWISE_TUNNEL_NAME", defaultTunnelName),
-			client: &http.Client{Transport: controlplane.NewTransport(os.Getenv, nil), Timeout: 30 * time.Second},
-			clock:  clock, streams: dataStreams.Serve,
+			caller: call, clock: clock, streams: dataStreams.Serve,
 		}),
 	}
 	cfg.Forward.Record = accessLog.Record
@@ -141,14 +144,9 @@ func main() {
 		log.Error("control plane", "error", err)
 		os.Exit(1)
 	}
-	call, err := deviceCaller(clock.Now)
-	if err != nil {
-		log.Error("device API client", "error", err)
-		os.Exit(1)
-	}
 	enrolment := startEnrolment(ctx, log, st, keys, call, a)
 	pairing := startPairing(ctx, log, st, keys, call, a)
-	apps, appsActive, appEngine := startAppSync(ctx, log, st, keys, a)
+	apps, appsActive, appEngine := startAppSync(ctx, log, st, keys, call, a)
 	startHealthProbe(ctx, log, st, cfg.Gateways, tunnelUp(ctx, a), appEngine)
 	syncer, err := controlplane.NewSyncer(controlplane.SyncerConfig{Client: cp, Store: st, Agent: a, Version: constants.Version, Logger: log, SkipList: appsActive,
 		Legacy: func() bool { return enrol.LegacyAllowed(st.State()) }})

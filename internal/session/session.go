@@ -117,8 +117,10 @@ type Manager struct {
 	cur      Status // owned by the loop; published to status
 
 	callMu sync.Mutex
-	calls  map[uint32]chan *pb.DeviceResult
+	calls  map[uint32]pending
 	callID uint32
+	// relay is the active session, the only one that carries device calls.
+	relay atomic.Pointer[live]
 
 	// Owned by the loop.
 	m           *ladder.Machine
@@ -160,6 +162,7 @@ type Manager struct {
 type live struct {
 	id         int
 	conn       Conn
+	gone       chan struct{} // closed when the session's reader stops
 	info       ConnInfo
 	up         bool
 	routes     *claims.RouteSet
@@ -171,6 +174,12 @@ type live struct {
 	deadline   time.Time // RouteSet deadline before up
 	drainUntil time.Time
 	lastRx     time.Time
+}
+
+// pending is a device call waiting for its result on one session.
+type pending struct {
+	conn int
+	ch   chan *pb.DeviceResult
 }
 
 type dialing struct {
@@ -227,7 +236,7 @@ func New(cfg Config) (*Manager, error) {
 	}
 	m := &Manager{cfg: cfg, log: cfg.Logger.With("component", "tunnel"), serverID: sid,
 		events: make(chan any, 16), done: make(chan struct{}), quit: make(chan struct{}), repair: make(chan struct{}, 1),
-		calls: map[uint32]chan *pb.DeviceResult{}, fire: map[string]time.Time{}, windows: map[string]ladder.Window{},
+		calls: map[uint32]pending{}, fire: map[string]time.Time{}, windows: map[string]ladder.Window{},
 		conns: map[int]*live{}, dials: map[int]*dialing{}, retired: map[int]time.Time{}}
 	f, err := loadFlags(cfg.DataDir)
 	if err == nil && f.generation > 0 {
@@ -505,6 +514,7 @@ func (m *Manager) becomeActive(l *live) {
 		m.trimRetired()
 	}
 	m.active = l
+	m.relay.Store(l)
 	m.pinged = false
 	l.lastRx = l.conn.LastReceived()
 	m.m.SetPing(l.info.PingInterval, l.info.PingTimeout)
@@ -618,7 +628,7 @@ func (m *Manager) onDial(ctx context.Context, ev evDial) {
 		}
 		return
 	}
-	l := &live{id: ev.id, conn: ev.conn, info: ev.conn.Info(), deadline: m.cfg.Clock.Now().Add(RouteSetDeadline)}
+	l := &live{id: ev.id, conn: ev.conn, gone: make(chan struct{}), info: ev.conn.Info(), deadline: m.cfg.Clock.Now().Add(RouteSetDeadline)}
 	m.conns[l.id] = l
 	m.wg.Add(1)
 	go m.read(l)
@@ -664,11 +674,12 @@ func (m *Manager) read(l *live) {
 	for {
 		msg, err := l.conn.Next()
 		if err != nil {
+			close(l.gone)
 			m.post(evClosed{id: l.id, err: err})
 			return
 		}
 		if r := msg.GetDeviceResult(); r != nil {
-			m.deliver(r)
+			m.deliver(l.id, r)
 			continue
 		}
 		m.post(evMsg{id: l.id, msg: msg})
@@ -676,6 +687,7 @@ func (m *Manager) read(l *live) {
 }
 
 func (m *Manager) closeLive(l *live) {
+	m.relay.CompareAndSwap(l, nil)
 	if l.cancel != nil {
 		l.cancel()
 	}
@@ -729,6 +741,7 @@ func (m *Manager) lost(ctx context.Context, l *live) {
 	switch {
 	case l == m.active:
 		m.active = nil
+		m.relay.CompareAndSwap(l, nil)
 		m.step(ctx, ladder.Event{Kind: ladder.EvSessionLost}, l)
 	case !l.up:
 		m.step(ctx, ladder.Event{Kind: ladder.EvDialFailed, Cause: transport.CauseAckSignature}, l)
@@ -932,10 +945,7 @@ func (m *Manager) heartbeat(ctx context.Context) {
 	}
 	nonce := newID()
 	m.hbBusy, m.hbNonce, m.lastHB = true, nonce, m.cfg.Clock.Now()
-	var c Conn
-	if m.active != nil {
-		c = m.active.conn
-	}
+	l := m.active
 	hb := m.cfg.Heartbeat
 	m.wg.Add(1)
 	go func() {
@@ -943,9 +953,9 @@ func (m *Manager) heartbeat(ctx context.Context) {
 		var ans Answer
 		err := errors.New("no session")
 		sent := m.cfg.Clock.Now()
-		if c != nil {
+		if l != nil {
 			sctx, cancel := context.WithTimeout(ctx, 2*callTimeout)
-			ans, err = m.stream0Heartbeat(sctx, hb, c, nonce)
+			ans, err = m.stream0Heartbeat(sctx, hb, l, nonce)
 			cancel()
 			if err != nil {
 				m.log.Info("heartbeat on stream 0 failed; using HTTPS", "error", err)
@@ -954,7 +964,7 @@ func (m *Manager) heartbeat(ctx context.Context) {
 		if err != nil {
 			sent = m.cfg.Clock.Now()
 			hctx, cancel := context.WithTimeout(ctx, HeartbeatTimeout)
-			ans, err = hb.HTTPS(hctx, nonce, c != nil)
+			ans, err = hb.HTTPS(hctx, nonce, l != nil)
 			cancel()
 		}
 		m.post(evHB{nonce: nonce, sent: sent, ans: ans, err: err})
@@ -1057,29 +1067,17 @@ func (m *Manager) redialNow() {
 	}
 }
 
-func (m *Manager) stream0Heartbeat(ctx context.Context, hb *Heartbeat, c Conn, nonce string) (Answer, error) {
+func (m *Manager) stream0Heartbeat(ctx context.Context, hb *Heartbeat, l *live, nonce string) (Answer, error) {
 	key := make([]byte, 16)
 	_, _ = rand.Read(key)
 	for attempt := 0; attempt < 2; attempt++ {
-		id, ch := m.register()
-		call, err := hb.Call(id, key, nonce, true)
+		call, err := hb.Call(0, key, nonce, true)
 		if err != nil {
-			m.unregister(id)
 			return Answer{}, err
 		}
-		if err := c.Send(&pb.ControlMessage{Body: &pb.ControlMessage_DeviceCall{DeviceCall: call}}); err != nil {
-			m.unregister(id)
+		r, err := m.relayOn(ctx, l, call)
+		if err != nil {
 			return Answer{}, err
-		}
-		var r *pb.DeviceResult
-		select {
-		case r = <-ch:
-		case <-ctx.Done():
-			m.unregister(id)
-			return Answer{}, ctx.Err()
-		case <-time.After(callTimeout):
-			m.unregister(id)
-			return Answer{}, errors.New("heartbeat call timed out")
 		}
 		ans, retry, err := hb.Result(r)
 		if !retry {
@@ -1089,12 +1087,56 @@ func (m *Manager) stream0Heartbeat(ctx context.Context, hb *Heartbeat, c Conn, n
 	return Answer{}, errors.New("heartbeat call: nonce refused twice")
 }
 
-func (m *Manager) register() (uint32, chan *pb.DeviceResult) {
+var (
+	// ErrNoSession means no session is up to carry a device call.
+	ErrNoSession = errors.New("no tunnel session up")
+	// ErrSessionLost means the session closed before the call's result
+	// arrived; the call's outcome is unknown.
+	ErrSessionLost = errors.New("tunnel session closed during the call")
+	errCallTimeout = errors.New("device call on stream 0 timed out")
+)
+
+// Relay sends a device call on stream 0 of the active session and returns
+// its result. Only a session whose HelloAck and first RouteSet verified
+// carries calls; without one the call is not sent (ErrNoSession). Any
+// other error means the outcome is unknown. The call id is set here.
+func (m *Manager) Relay(ctx context.Context, call *pb.DeviceCall) (*pb.DeviceResult, error) {
+	l := m.relay.Load()
+	if l == nil {
+		return nil, ErrNoSession
+	}
+	return m.relayOn(ctx, l, call)
+}
+
+// relayOn waits for the result on the session the call went out on; a
+// result arriving on another session is not this call's.
+func (m *Manager) relayOn(ctx context.Context, l *live, call *pb.DeviceCall) (*pb.DeviceResult, error) {
+	id, ch := m.register(l.id)
+	defer m.unregister(id)
+	call.CallId = id
+	if err := l.conn.Send(&pb.ControlMessage{Body: &pb.ControlMessage_DeviceCall{DeviceCall: call}}); err != nil {
+		return nil, err
+	}
+	t := time.NewTimer(callTimeout)
+	defer t.Stop()
+	select {
+	case r := <-ch:
+		return r, nil
+	case <-l.gone:
+		return nil, ErrSessionLost
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-t.C:
+		return nil, errCallTimeout
+	}
+}
+
+func (m *Manager) register(conn int) (uint32, chan *pb.DeviceResult) {
 	m.callMu.Lock()
 	defer m.callMu.Unlock()
 	m.callID = m.callID%(1<<31-1) + 1
 	ch := make(chan *pb.DeviceResult, 1)
-	m.calls[m.callID] = ch
+	m.calls[m.callID] = pending{conn: conn, ch: ch}
 	return m.callID, ch
 }
 
@@ -1104,13 +1146,15 @@ func (m *Manager) unregister(id uint32) {
 	m.callMu.Unlock()
 }
 
-func (m *Manager) deliver(r *pb.DeviceResult) {
+func (m *Manager) deliver(conn int, r *pb.DeviceResult) {
 	m.callMu.Lock()
-	ch, ok := m.calls[r.GetCallId()]
-	delete(m.calls, r.GetCallId())
+	p, ok := m.calls[r.GetCallId()]
+	if ok && p.conn == conn {
+		delete(m.calls, r.GetCallId())
+	}
 	m.callMu.Unlock()
-	if ok {
-		ch <- r
+	if ok && p.conn == conn {
+		p.ch <- r
 	}
 }
 

@@ -1,10 +1,8 @@
-package appsync
+package devapi
 
 import (
 	"context"
 	"crypto"
-	"crypto/ed25519"
-	"crypto/sha256"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,13 +13,11 @@ import (
 
 	pb "github.com/seawise-io/seawise-client/tunnelwire/tunnelpb"
 
+	"github.com/seawise/client/internal/devicecall"
 	"github.com/seawise/client/internal/protocol"
 )
 
-func testKey() crypto.Signer {
-	seed := sha256.Sum256([]byte("appsync-device"))
-	return ed25519.NewKeyFromSeed(seed[:])
-}
+func testKey() crypto.Signer { return deviceKey }
 
 type seen struct {
 	method, path, key, proof, ctype string
@@ -32,7 +28,7 @@ func carrierServer(t *testing.T, handle func(n int, w http.ResponseWriter, r *ht
 	t.Helper()
 	var mu sync.Mutex
 	var reqs []seen
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		mu.Lock()
 		reqs = append(reqs, seen{r.Method, r.URL.RequestURI(), r.Header.Get("Idempotency-Key"), r.Header.Get("DPoP"), r.Header.Get("Content-Type"), b})
@@ -44,8 +40,24 @@ func carrierServer(t *testing.T, handle func(n int, w http.ResponseWriter, r *ht
 	return srv, &reqs
 }
 
-func newCarrier(srv *httptest.Server) *HTTPS {
-	return &HTTPS{Origin: srv.URL, Key: testKey, Client: srv.Client(), Version: "2.0.0", Now: func() time.Time { return time.Unix(1700000000, 0) }}
+type httpsOnly struct {
+	*Client
+	Key func() crypto.Signer
+}
+
+func (h *httpsOnly) Do(ctx context.Context, c Call) (Answer, error) { return h.Client.Do(ctx, c) }
+
+func newCarrier(srv *httptest.Server) *httpsOnly {
+	caller, err := devicecall.New(devicecall.Config{Client: srv.Client(), Version: "2.0.0", Now: func() time.Time { return time.Unix(1700000000, 0) }})
+	if err != nil {
+		panic(err)
+	}
+	h := &httpsOnly{Key: testKey}
+	h.Client, err = New(Config{Caller: caller, Origin: func() string { return srv.URL }, Key: func() crypto.Signer { return h.Key() }})
+	if err != nil {
+		panic(err)
+	}
+	return h
 }
 
 func TestHTTPSFreshProofPerAttemptWithNewestNonce(t *testing.T) {
@@ -62,14 +74,10 @@ func TestHTTPSFreshProofPerAttemptWithNewestNonce(t *testing.T) {
 		}
 	})
 	c := newCarrier(srv)
-	req := Request{Method: pb.DeviceMethod_REGISTER_APPS, Key: strings.Repeat("ab", 16), Body: []byte(`{"apps":[]}`)}
+	req := Call{Method: pb.DeviceMethod_REGISTER_APPS, Key: strings.Repeat("ab", 16), Body: []byte(`{"apps":[]}`)}
 	r1, err := c.Do(context.Background(), req)
-	if err != nil || r1.Status != 401 || !r1.NonceChallenge {
-		t.Fatalf("%+v %v", r1, err)
-	}
-	r2, err := c.Do(context.Background(), req)
-	if err != nil || r2.Status != 200 {
-		t.Fatalf("%+v %v", r2, err)
+	if err != nil || r1.Status != 200 || r1.NonceChallenge || len(*reqs) != 2 {
+		t.Fatalf("one retry with the server nonce: %+v %v", r1, err)
 	}
 	if _, err := c.Do(context.Background(), req); err != nil {
 		t.Fatal(err)
@@ -98,10 +106,10 @@ func TestHTTPSListAndHealthCarryNoKey(t *testing.T) {
 		_, _ = w.Write([]byte(`{}`))
 	})
 	c := newCarrier(srv)
-	if _, err := c.Do(context.Background(), Request{Method: pb.DeviceMethod_LIST_APPS}); err != nil {
+	if _, err := c.Do(context.Background(), Call{Method: pb.DeviceMethod_LIST_APPS}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Do(context.Background(), Request{Method: pb.DeviceMethod_REPORT_HEALTH, Body: []byte(`{"apps":[]}`)}); err != nil {
+	if _, err := c.Do(context.Background(), Call{Method: pb.DeviceMethod_REPORT_HEALTH, Body: []byte(`{"apps":[]}`)}); err != nil {
 		t.Fatal(err)
 	}
 	rs := *reqs
@@ -119,7 +127,7 @@ func TestHTTPSNoRedirects(t *testing.T) {
 		http.Redirect(w, r, other.URL+"/device/v2/apps", http.StatusTemporaryRedirect)
 	})
 	c := newCarrier(srv)
-	r, err := c.Do(context.Background(), Request{Method: pb.DeviceMethod_LIST_APPS})
+	r, err := c.Do(context.Background(), Call{Method: pb.DeviceMethod_LIST_APPS})
 	if err != nil || r.Status != http.StatusTemporaryRedirect || len(*otherReqs) != 0 {
 		t.Fatalf("%+v %v %d", r, err, len(*otherReqs))
 	}
@@ -127,9 +135,9 @@ func TestHTTPSNoRedirects(t *testing.T) {
 
 func TestHTTPSAnswerTooLarge(t *testing.T) {
 	srv, _ := carrierServer(t, func(n int, w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(strings.Repeat("a", maxAnswer+1)))
+		_, _ = w.Write([]byte(strings.Repeat("a", devicecall.MaxLargeAnswer+1)))
 	})
-	if _, err := newCarrier(srv).Do(context.Background(), Request{Method: pb.DeviceMethod_LIST_APPS}); err == nil {
+	if _, err := newCarrier(srv).Do(context.Background(), Call{Method: pb.DeviceMethod_LIST_APPS}); err == nil {
 		t.Fatal("oversized answer accepted")
 	}
 }
@@ -145,11 +153,11 @@ func TestHTTPSRetryAfterAndInvalidNonce(t *testing.T) {
 		w.WriteHeader(200)
 	})
 	c := newCarrier(srv)
-	r, err := c.Do(context.Background(), Request{Method: pb.DeviceMethod_LIST_APPS})
+	r, err := c.Do(context.Background(), Call{Method: pb.DeviceMethod_LIST_APPS})
 	if err != nil || r.Status != 429 || r.RetryAfter != 7*time.Second {
 		t.Fatalf("%+v %v", r, err)
 	}
-	if _, err := c.Do(context.Background(), Request{Method: pb.DeviceMethod_LIST_APPS}); err != nil {
+	if _, err := c.Do(context.Background(), Call{Method: pb.DeviceMethod_LIST_APPS}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := protocol.VerifyDPoP((*reqs)[1].proof, protocol.DPoPRequest{Method: "GET", URL: srv.URL + "/device/v2/apps"},
@@ -162,11 +170,11 @@ func TestHTTPSNoKeyOrUnknownMethod(t *testing.T) {
 	srv, reqs := carrierServer(t, func(int, http.ResponseWriter, *http.Request) {})
 	c := newCarrier(srv)
 	c.Key = func() crypto.Signer { return nil }
-	if _, err := c.Do(context.Background(), Request{Method: pb.DeviceMethod_LIST_APPS}); err == nil {
+	if _, err := c.Do(context.Background(), Call{Method: pb.DeviceMethod_LIST_APPS}); err == nil {
 		t.Fatal("sent without a key")
 	}
 	c.Key = testKey
-	if _, err := c.Do(context.Background(), Request{Method: pb.DeviceMethod(99)}); err == nil {
+	if _, err := c.Do(context.Background(), Call{Method: pb.DeviceMethod(99)}); err == nil {
 		t.Fatal("unknown method sent")
 	}
 	if len(*reqs) != 0 {

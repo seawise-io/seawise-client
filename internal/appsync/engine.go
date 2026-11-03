@@ -23,8 +23,15 @@ import (
 const (
 	DefaultListEvery   = 15 * time.Minute
 	DefaultCallTimeout = 15 * time.Second
-	MaxBackoff         = 30 * time.Second
-	idleWait           = 30 * time.Second
+	// MaxCallAge is how long a queued call keeps its key. The device API
+	// keeps a key's answer for 24 h; an older call is dropped and derived
+	// again from the local state under a new key.
+	MaxCallAge = 20 * time.Hour
+	MaxBackoff = 30 * time.Second
+	// maxDirectFails direct resends in a row fail before they wait a list
+	// period instead of the backoff.
+	maxDirectFails = 3
+	idleWait       = 30 * time.Second
 )
 
 // Modes and results shown in Status.
@@ -130,7 +137,15 @@ type Engine struct {
 	healthFails  int
 	healthWait   time.Time
 	changed      bool
-	status       Status
+	// confirm: a relayed answer named an app deleted on the server, so the
+	// next list goes straight to the device API, whose answer may act on it.
+	confirm bool
+	// confirmAt is when a failed direct list may be tried again.
+	confirmAt time.Time
+	// directFails counts direct resends of the head call that failed in a
+	// row.
+	directFails int
+	status      Status
 
 	failRemoveTarget bool
 	saveHook         func() error
@@ -401,12 +416,21 @@ func (e *Engine) call(ctx context.Context, r Request) (Response, error) {
 
 // transientStatus reports answers whose outcome is unknown.
 func transientStatus(code int) bool {
-	return code == http.StatusRequestTimeout || code == http.StatusTooManyRequests || code >= 500 || (code >= 300 && code < 400)
+	return code < 200 || code == http.StatusRequestTimeout || code == http.StatusTooManyRequests || code >= 500 || (code >= 300 && code < 400)
 }
 
 func (e *Engine) sendHead(ctx context.Context, now time.Time) time.Duration {
 	e.mu.Lock()
 	c := e.box.Calls[0]
+	if !c.CreatedAt.IsZero() && now.Sub(c.CreatedAt) > MaxCallAge {
+		// Past the device API's dedupe window the key no longer protects a
+		// retry; the next list derives the call again.
+		e.log.Info("queued call too old; derived again from the app list", "op", c.Op, "local_ids", c.LocalIDs)
+		e.dropHead(c)
+		e.listNow = true
+		e.mu.Unlock()
+		return 0
+	}
 	if c.Op == OpDelete && !slices.ContainsFunc(c.LocalIDs, func(id string) bool { return slices.Contains(e.box.Registered, id) }) {
 		// Never confirmed by the server: nothing to delete there.
 		e.box.Calls = e.box.Calls[1:]
@@ -420,10 +444,31 @@ func (e *Engine) sendHead(ctx context.Context, now time.Time) time.Duration {
 		method = pb.DeviceMethod_DELETE_APPS
 	}
 	resp, err := e.call(ctx, Request{Method: method, Key: c.Key, Body: c.Body})
+	direct := err == nil && resp.Relayed && e.needsDirect(c, resp)
+	if direct {
+		// Relayed answers are not the device API's own: the same call goes
+		// directly, and its stored answer is the one acted on.
+		resp, err = e.call(ctx, Request{Method: method, Key: c.Key, Body: c.Body, Direct: true})
+		if err == nil && resp.Relayed {
+			err = errors.New("direct call answered on stream 0")
+		}
+	}
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.attempts++
+	if direct && err != nil {
+		e.directFails++
+		if e.directFails >= maxDirectFails {
+			// HTTPS looks blocked: try again a list period later.
+			e.nonceRetried = false
+			e.status.LastResult, e.status.LastError = ResultRetrying, c.Op+": not confirmed directly: "+err.Error()
+			e.waitUntil = now.Add(e.cfg.ListEvery)
+			return e.cfg.ListEvery
+		}
+	} else if direct {
+		e.directFails = 0
+	}
 	if err != nil {
 		e.nonceRetried = false
 		e.status.LastResult = ResultRetrying
@@ -432,7 +477,7 @@ func (e *Engine) sendHead(ctx context.Context, now time.Time) time.Duration {
 	eb := parseError(resp.Body)
 	switch {
 	case resp.Status >= 200 && resp.Status < 300:
-		if err := e.apply(c, resp.Body); err != nil {
+		if err := e.apply(c, resp.Body, resp.Relayed); err != nil {
 			e.status.LastResult = ResultRetrying
 			return e.backoff(now, 0, err.Error())
 		}
@@ -523,6 +568,32 @@ func (e *Engine) sendHead(ctx context.Context, now time.Time) time.Duration {
 	return 0
 }
 
+// needsDirect reports a relayed answer that would drop the head call or
+// change local state other than recording a registration.
+func (e *Engine) needsDirect(c Call, resp Response) bool {
+	switch {
+	case resp.Status < 200 || resp.Status >= 300:
+		return resp.Status != http.StatusUnauthorized && !transientStatus(resp.Status)
+	case c.Op == OpDelete:
+		return true
+	}
+	res, err := parseRegisterAnswer(resp.Body, c.LocalIDs)
+	if err != nil {
+		return false
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, r := range res {
+		if r.Result != resUpdated && r.Result != resUnchanged {
+			continue
+		}
+		if i := slices.IndexFunc(e.box.Retired, func(x Retired) bool { return x.LocalID == r.LocalID }); i >= 0 && r.ID != e.box.Retired[i].ServerID {
+			return true
+		}
+	}
+	return false
+}
+
 // bindServer starts a fresh outbox when the paired server changed.
 func (e *Engine) bindServer(serverID string) error {
 	if e.box.ServerID == serverID {
@@ -596,7 +667,7 @@ func (e *Engine) dropHead(c Call) {
 
 // apply records a 2xx answer: the local state first, then the outbox, so a
 // crash in between replays the call and gets the stored answer again.
-func (e *Engine) apply(c Call, raw []byte) error {
+func (e *Engine) apply(c Call, raw []byte, relayed bool) error {
 	if c.Op == OpDelete {
 		unrecorded, err := parseDeleteAnswer(raw, c.LocalIDs)
 		if err != nil {
@@ -616,7 +687,7 @@ func (e *Engine) apply(c Call, raw []byte) error {
 	if err != nil {
 		return err
 	}
-	auth := e.cfg.Carrier.Authenticated()
+	auth := !relayed
 	var sent registerBody
 	_ = json.Unmarshal(c.Body, &sent)
 	changed := false
@@ -631,6 +702,7 @@ func (e *Engine) apply(c Call, raw []byte) error {
 			switch {
 			case r.Result == resDeleted && !auth:
 				notices = append(notices, "server_reports_deleted:"+r.LocalID)
+				e.needConfirm()
 			case r.Result == resDeleted:
 				s.Targets = slices.Delete(s.Targets, i, i+1)
 				changed = true
@@ -693,14 +765,30 @@ func (e *Engine) apply(c Call, raw []byte) error {
 	return e.save()
 }
 
-func (e *Engine) fetchList(ctx context.Context) (listAnswer, error) {
-	resp, err := e.call(ctx, Request{Method: pb.DeviceMethod_LIST_APPS})
+// needConfirm asks for a direct list after a relayed answer named a
+// delete; the caller holds e.mu.
+func (e *Engine) needConfirm() {
+	e.confirm = true
+	if !e.cfg.Now().Before(e.confirmAt) {
+		e.listNow = true
+	}
+}
+
+// fetchList lists the server's apps; direct asks for the answer straight
+// from the device API. relayed reports how the answer came.
+func (e *Engine) fetchList(ctx context.Context, direct bool) (l listAnswer, relayed bool, err error) {
+	resp, err := e.call(ctx, Request{Method: pb.DeviceMethod_LIST_APPS, Direct: direct})
 	if err == nil && resp.NonceChallenge {
-		resp, err = e.call(ctx, Request{Method: pb.DeviceMethod_LIST_APPS})
+		resp, err = e.call(ctx, Request{Method: pb.DeviceMethod_LIST_APPS, Direct: direct})
 	}
 	if err != nil {
-		return listAnswer{}, fmt.Errorf("list: outcome unknown: %w", err)
+		return listAnswer{}, false, fmt.Errorf("list: outcome unknown: %w", err)
 	}
+	l, err = e.parseListAnswer(ctx, resp)
+	return l, resp.Relayed, err
+}
+
+func (e *Engine) parseListAnswer(ctx context.Context, resp Response) (listAnswer, error) {
 	if resp.Status != http.StatusOK {
 		eb := parseError(resp.Body)
 		if resp.Status == http.StatusRequestEntityTooLarge && eb.Error == "list_too_large" {
@@ -719,7 +807,10 @@ func (e *Engine) fetchList(ctx context.Context) (listAnswer, error) {
 // syncList lists the server's apps and derives the calls that bring the
 // server in line with the local list. Absence never deletes anything.
 func (e *Engine) syncList(ctx context.Context, now time.Time, adopting bool) time.Duration {
-	l, err := e.fetchList(ctx)
+	e.mu.Lock()
+	direct := e.confirm && !now.Before(e.confirmAt)
+	e.mu.Unlock()
+	l, relayed, err := e.fetchList(ctx, direct)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if errors.Is(err, ErrAnswerTooLarge) {
@@ -736,16 +827,27 @@ func (e *Engine) syncList(ctx context.Context, now time.Time, adopting bool) tim
 		e.waitUntil = now.Add(e.cfg.ListEvery)
 		return e.cfg.ListEvery
 	}
+	if err != nil && direct {
+		// A failed confirmation waits a list period; relayed lists go on.
+		e.confirmAt = now.Add(e.cfg.ListEvery)
+		e.listNow = false
+		e.status.LastResult, e.status.LastError = ResultRetrying, err.Error()
+		e.log.Warn("direct app list failed; confirming later", "error", err)
+		return 0
+	}
 	if err != nil {
 		e.status.LastResult = ResultRetrying
 		return e.backoff(now, 0, err.Error())
 	}
 	e.succeeded()
-	if err := e.applyList(l, adopting, now); err != nil {
+	if !relayed {
+		e.confirm, e.confirmAt = false, time.Time{}
+	}
+	if err := e.applyList(l, adopting, now, relayed); err != nil {
 		e.status.LastError = err.Error()
 		return e.backoff(now, 0, err.Error())
 	}
-	e.listNow = false
+	e.listNow = e.confirm && !now.Before(e.confirmAt)
 	e.nextList = now.Add(e.cfg.ListEvery)
 	e.status.LastSync = now
 	if len(e.refused) > 0 {
@@ -756,8 +858,8 @@ func (e *Engine) syncList(ctx context.Context, now time.Time, adopting bool) tim
 	return 0
 }
 
-func (e *Engine) applyList(l listAnswer, adopting bool, now time.Time) error {
-	auth := e.cfg.Carrier.Authenticated()
+func (e *Engine) applyList(l listAnswer, adopting bool, now time.Time, relayed bool) error {
+	auth := !relayed
 	pre := e.cfg.Store.State()
 	importedAccount := pre.Import != nil && pre.Account != nil && pre.Import.ServerID == pre.Account.ServerID
 	byLocal := map[string]ServerApp{}
@@ -778,6 +880,11 @@ func (e *Engine) applyList(l listAnswer, adopting bool, now time.Time) error {
 	}
 	relinks := e.relinks
 	e.relinks = nil
+	if !auth && len(relinks) > 0 {
+		// Relinking takes another app's local_id: only from a direct list.
+		e.relinks, relinks = relinks, nil
+		e.needConfirm()
+	}
 	removed := []string{}
 	var notices []string
 	adoptName := map[string]string{}
@@ -813,6 +920,7 @@ func (e *Engine) applyList(l listAnswer, adopting bool, now time.Time) error {
 			}
 			if !auth {
 				notices = append(notices, "server_reports_deleted:"+t.LocalID)
+				e.needConfirm()
 				return false
 			}
 			removed = append(removed, t.LocalID)
@@ -837,6 +945,7 @@ func (e *Engine) applyList(l listAnswer, adopting bool, now time.Time) error {
 				case !listed:
 					skip[t.LocalID] = true
 					notices = append(notices, "server_lists_without:"+t.LocalID)
+					e.needConfirm()
 				case v1.LocalID == "" && v1.Name != t.Name && checkApp(v1.Name, t.Host, t.Port, t.IconURL) == nil:
 					adoptName[t.LocalID] = v1.Name
 				}
@@ -851,8 +960,13 @@ func (e *Engine) applyList(l listAnswer, adopting bool, now time.Time) error {
 				changed = true
 			}
 			if t.ServerPublic != a.PublicRequested {
-				t.ServerPublic = a.PublicRequested
-				changed = true
+				// A relayed list may only take public access away.
+				if auth || !a.PublicRequested {
+					t.ServerPublic = a.PublicRequested
+					changed = true
+				} else {
+					e.needConfirm()
+				}
 			}
 		}
 		if !changed && len(removed) == 0 {

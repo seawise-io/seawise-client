@@ -28,6 +28,7 @@ type fakeApp struct {
 	Port      int
 	Subdomain string
 	Created   int
+	Public    bool
 }
 
 type stored struct {
@@ -51,11 +52,19 @@ type fakeAPI struct {
 	calls      []Request
 	seq        int
 	health     [][]byte
-	// relayed marks answers as not authenticated, as stream 0 answers are.
+	// relayed carries calls on stream 0 unless they are direct: their
+	// answers are not authenticated by the device API's TLS.
 	relayed bool
+	// directDown fails direct calls, as when HTTPS is unreachable.
+	directDown bool
+	// executed counts writes run per idempotency key (not replayed).
+	executed map[string]int
+	// forge answers relayed calls in place of the device API, as a
+	// hostile edge could; direct calls never see it.
+	forge func(r Request) (Response, bool)
+	// directRelayed marks direct answers relayed, as a broken carrier would.
+	directRelayed bool
 }
-
-func (f *fakeAPI) Authenticated() bool { return !f.relayed }
 
 func newFakeAPI() *fakeAPI { return &fakeAPI{dedupe: map[string]stored{}} }
 
@@ -121,6 +130,17 @@ func (f *fakeAPI) Do(ctx context.Context, r Request) (Response, error) {
 	f.mu.Lock()
 	r.Body = append([]byte(nil), r.Body...)
 	f.calls = append(f.calls, r)
+	if r.Direct && f.directDown {
+		f.mu.Unlock()
+		return Response{}, errors.New("device API unreachable")
+	}
+	if forge := f.forge; f.relayed && !r.Direct && forge != nil {
+		if resp, ok := forge(r); ok {
+			f.mu.Unlock()
+			resp.Relayed = true
+			return resp, nil
+		}
+	}
 	var fl fault
 	if len(f.faults) > 0 {
 		fl, f.faults = f.faults[0], f.faults[1:]
@@ -136,6 +156,7 @@ func (f *fakeAPI) Do(ctx context.Context, r Request) (Response, error) {
 	}
 	f.mu.Lock()
 	resp := f.serve(r)
+	resp.Relayed = f.relayed && (!r.Direct || f.directRelayed)
 	f.mu.Unlock()
 	if lost {
 		return Response{}, errors.New("connection reset")
@@ -160,6 +181,10 @@ func (f *fakeAPI) serve(r Request) Response {
 			}
 			return Response{Status: s.status, Body: s.answer}
 		}
+		if f.executed == nil {
+			f.executed = map[string]int{}
+		}
+		f.executed[r.Key]++
 		var resp Response
 		if r.Method == pb.DeviceMethod_REGISTER_APPS {
 			resp = f.register(r.Body)
@@ -319,7 +344,7 @@ func (f *fakeAPI) list() Response {
 		}
 		apps = append(apps, map[string]any{
 			"id": a.ID, "local_id": lid, "name": a.Name, "subdomain": a.Subdomain, "host": a.Host, "port": a.Port,
-			"status": "online", "icon_url": nil, "public_requested": false, "public_local": true, "created_at": "2026-10-31T00:00:00Z",
+			"status": "online", "icon_url": nil, "public_requested": a.Public, "public_local": true, "created_at": "2026-10-31T00:00:00Z",
 		})
 	}
 	del := append([]string{}, f.tombstones...)
@@ -493,4 +518,12 @@ func app(name, host string, port int) store.Target {
 
 func v1App(localHex, name, host string, port int, serverID, sub string) store.Target {
 	return store.Target{LocalID: localHex, Name: name, Host: host, Port: port, ServerServiceID: serverID, Subdomain: sub, Source: store.SourceV1Machine, Grandfathered: true}
+}
+
+// steps runs n steps whether or not the engine goes idle.
+func (h *harness) steps(n int) {
+	h.t.Helper()
+	for range n {
+		h.clk.Add(h.e.Step(context.Background()))
+	}
 }

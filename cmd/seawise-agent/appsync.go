@@ -4,26 +4,24 @@ import (
 	"context"
 	"crypto"
 	"log/slog"
-	"net/http"
-	"os"
-	"time"
 
 	"github.com/seawise-io/seawise-client/tunnelwire/claims"
 
 	"github.com/seawise/client/internal/agent"
 	"github.com/seawise/client/internal/appsync"
-	"github.com/seawise/client/internal/constants"
-	"github.com/seawise/client/internal/controlplane"
+	"github.com/seawise/client/internal/devapi"
+	"github.com/seawise/client/internal/devicecall"
 	"github.com/seawise/client/internal/enrol"
 	"github.com/seawise/client/internal/identity"
 	"github.com/seawise/client/internal/store"
 )
 
 // startAppSync runs the v2 app sync while a device key exists for a server
-// with a v2 identity. It returns its status, whether it is active, and the
+// with a v2 identity. Its calls ride the tunnel session while one is up and
+// HTTPS otherwise. It returns its status, whether it is active, and the
 // engine for local app changes (nil without a keystore or when the outbox
 // cannot be read).
-func startAppSync(ctx context.Context, log *slog.Logger, st *store.Store, keys identity.Keystore, a *agent.Agent) (func() appsync.Status, func() bool, *appsync.Engine) {
+func startAppSync(ctx context.Context, log *slog.Logger, st *store.Store, keys identity.Keystore, call *devicecall.Caller, a *agent.Agent) (func() appsync.Status, func() bool, *appsync.Engine) {
 	if keys == nil {
 		return func() appsync.Status {
 			return appsync.Status{Mode: appsync.ModeOff, LastError: "app sync off: no device keystore"}
@@ -40,8 +38,13 @@ func startAppSync(ctx context.Context, log *slog.Logger, st *store.Store, keys i
 		acc := st.State().Account
 		return acc != nil && claims.ValidUUID(acc.ServerID) && enrol.Ready(st.State(), st.Secrets()) && signer() != nil
 	}
-	client := &http.Client{Transport: controlplane.NewTransport(os.Getenv, nil), Timeout: 30 * time.Second}
-	carrier := &appsync.HTTPS{Origin: apiURL(st), Key: signer, Client: client, Version: constants.Version}
+	carrier, err := devapi.New(devapi.Config{Caller: call, Origin: func() string { return apiURL(st) }, Key: signer, Stream0: a, Logger: log})
+	if err != nil {
+		log.Error("app sync off", "error", err)
+		return func() appsync.Status {
+			return appsync.Status{Mode: appsync.ModeOff, LastError: "app sync off: " + err.Error()}
+		}, func() bool { return false }, nil
+	}
 	e, err := appsync.New(appsync.Config{
 		Store: st, Carrier: carrier, Logger: log,
 		OnChange:   func(ctx context.Context) { _ = a.Reconcile(ctx) },

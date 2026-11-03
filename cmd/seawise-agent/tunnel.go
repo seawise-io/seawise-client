@@ -7,12 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 
 	"github.com/seawise-io/seawise-client/tunnelwire/claims"
 
 	"github.com/seawise/client/internal/agent"
 	"github.com/seawise/client/internal/constants"
+	"github.com/seawise/client/internal/devicecall"
 	"github.com/seawise/client/internal/enrol"
 	"github.com/seawise/client/internal/identity"
 	"github.com/seawise/client/internal/protocol"
@@ -33,9 +33,10 @@ type tunnelSetup struct {
 	// keySetHold names why no new session may be dialled, or "".
 	keySetHold func() string
 	name       string
-	client     *http.Client
-	clock      *session.SignedClock
-	streams    func(context.Context, session.DataSession)
+	// caller signs the heartbeat with the agent's other device calls.
+	caller  *devicecall.Caller
+	clock   *session.SignedClock
+	streams func(context.Context, session.DataSession)
 }
 
 // runID identifies this process to the edge; a reconnect with the same
@@ -106,7 +107,7 @@ func tunnelFactory(ts tunnelSetup) func() (agent.Tunnel, error) {
 		m, err := session.New(session.Config{
 			Dial: session.FromTransport(newDialer), Name: ts.name, ServerID: serverID,
 			KeyID: keyID, KeySet: ts.keySet,
-			Heartbeat: &session.Heartbeat{Origin: apiURL(ts.st), Key: signer, Client: ts.client, Version: constants.Version},
+			Heartbeat: &session.Heartbeat{Origin: apiURL(ts.st), Key: signer, Caller: ts.caller, Version: constants.Version},
 			DataDir:   ts.st.Dir(),
 			Pending: func() crypto.Signer {
 				k, err := ts.keys.Pending()

@@ -14,6 +14,7 @@ import (
 
 	pb "github.com/seawise-io/seawise-client/tunnelwire/tunnelpb"
 
+	"github.com/seawise/client/internal/devicecall"
 	"github.com/seawise/client/internal/protocol"
 )
 
@@ -126,6 +127,9 @@ func TestDeviceResult(t *testing.T) {
 	if _, retry, err := hb.Result(&pb.DeviceResult{Class: pb.ResultClass_DONE, HttpStatus: 401, DpopNonce: "x"}); err != nil || !retry || hb.dpopNonce() != "x" {
 		t.Fatal(retry, err)
 	}
+	if _, _, err := hb.Result(&pb.DeviceResult{Class: pb.ResultClass_UNAVAILABLE, DpopNonce: "y"}); err == nil || hb.dpopNonce() != "x" {
+		t.Fatal("nonce kept from UNAVAILABLE")
+	}
 	for _, r := range []*pb.DeviceResult{
 		{Class: pb.ResultClass_UNAVAILABLE},
 		{Class: pb.ResultClass_DONE, HttpStatus: 401},
@@ -148,9 +152,43 @@ func TestCallShape(t *testing.T) {
 		func(n string) bool { return n == unknownNonce }, func(string, string) bool { return true }); err != nil {
 		t.Fatal(err)
 	}
-	hb.keepNonce("bad nonce with space")
+	hb.Result(&pb.DeviceResult{Class: pb.ResultClass_DONE, HttpStatus: 401, DpopNonce: "bad nonce with space"})
 	if hb.dpopNonce() != unknownNonce {
 		t.Fatal("invalid nonce kept")
+	}
+}
+
+// One caller serves the heartbeat and every other device call, so a nonce
+// learned by one is used by the next proof of the other.
+func TestSharedCallerNonce(t *testing.T) {
+	c, err := devicecall.New(devicecall.Config{Version: "2.0.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hb := &Heartbeat{Origin: "https://api.example.test/", Key: func() crypto.Signer { return seedKey("device") }, Caller: c}
+	c.KeepNonce("n1.AAAAAQ.c2VydmVyLW5vbmNl")
+	call, err := hb.Call(1, make([]byte, 16), "AAAAAAAAAAAAAAAAAAAAAA", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := protocol.VerifyDPoP(call.Dpop, protocol.DPoPRequest{Method: "POST", URL: "https://api.example.test" + HeartbeatPath, Body: call.Body},
+		func(n string) bool { return n == "n1.AAAAAQ.c2VydmVyLW5vbmNl" }, func(string, string) bool { return true }); err != nil {
+		t.Fatal(err)
+	}
+	hb.Result(&pb.DeviceResult{Class: pb.ResultClass_DONE, HttpStatus: 401, DpopNonce: "n1.AAAAAg.c2VydmVyLW5vbmNl"})
+	if c.Nonce() != "n1.AAAAAg.c2VydmVyLW5vbmNl" {
+		t.Fatal("relayed nonce not shared")
+	}
+}
+
+func TestHTTPSAnswerOverCap(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat(" ", maxAnswer+1)))
+	}))
+	defer srv.Close()
+	hb := &Heartbeat{Origin: srv.URL, Key: func() crypto.Signer { return seedKey("device") }, Client: srv.Client()}
+	if _, err := hb.HTTPS(context.Background(), "AAAAAAAAAAAAAAAAAAAAAA", false); !errors.Is(err, devicecall.ErrAnswerTooLarge) {
+		t.Fatal(err)
 	}
 }
 

@@ -928,6 +928,47 @@ func TestAdoptionKeepsOwnerDeletedAppGone(t *testing.T) {
 	}
 }
 
+// Over stream 0 a 1.x app missing from the list is only reported; the
+// direct list then disables it as 1.x did, and it is never registered.
+func TestRelayedAdoptionWaitsForADirectList(t *testing.T) {
+	api := newFakeAPI()
+	api.relayed, api.directDown = true, true
+	m := api.addV1App("Media", "192.168.1.20", 8096, "brave-otter")
+	gone := v1App("fedcba9876543210fedcba9876543210", "Old", "192.168.1.30", 81, "aaaaaaaa-0000-4000-8000-000000000099", "old-one")
+	h := newHarness(t, v1App("0123456789abcdef0123456789abcdef", "Media", "192.168.1.20", 8096, m.ID, m.Subdomain), gone)
+	h.api = api
+	h.start()
+	h.steps(20)
+	for _, tg := range h.targets() {
+		if tg.Name == "Old" && (tg.Disabled || tg.ServerServiceID == "") {
+			t.Fatalf("relayed list disabled an app: %+v", tg)
+		}
+	}
+	if !strings.Contains(strings.Join(h.e.Status().Notices, " "), "server_lists_without:") || !anyDirectList(api) {
+		t.Fatalf("relayed absence not reported for a direct list: %+v", h.e.Status())
+	}
+	api.mu.Lock()
+	api.directDown = false
+	api.mu.Unlock()
+	h.clk.Add(DefaultListEvery)
+	h.settle(20)
+	h.clk.Add(DefaultListEvery)
+	h.settle(20)
+	for _, r := range api.requests(pb.DeviceMethod_REGISTER_APPS) {
+		if bytes.Contains(r.Body, []byte(`"Old"`)) {
+			t.Fatal("owner-deleted app registered")
+		}
+	}
+	for _, tg := range h.targets() {
+		if tg.Name == "Old" && (!tg.Disabled || tg.ServerServiceID != "") {
+			t.Fatalf("not disabled after the direct list: %+v", tg)
+		}
+	}
+	if !h.e.Status().Adopted {
+		t.Fatal("first sync not done")
+	}
+}
+
 func TestServerDisableRequestNotRegistered(t *testing.T) {
 	a := app("A", "10.0.0.1", 80)
 	now := time.Now()
@@ -980,10 +1021,12 @@ func TestRelayedDeletedOnlyReported(t *testing.T) {
 	a, b := app("A", "10.0.0.1", 80), app("B", "10.0.0.2", 81)
 	h := newHarness(t, a, b)
 	h.settle(20)
-	h.api.relayed = true
+	h.api.mu.Lock()
+	h.api.relayed, h.api.directDown = true, true
+	h.api.mu.Unlock()
 	h.api.ownerDelete(a.LocalID)
 	h.clk.Add(DefaultListEvery)
-	h.settle(20)
+	h.steps(20)
 	if h.target(a.LocalID) == nil {
 		t.Fatal("relayed list removed an app")
 	}
@@ -993,11 +1036,58 @@ func TestRelayedDeletedOnlyReported(t *testing.T) {
 	if h.target(a.LocalID) == nil || h.target(b.LocalID) == nil {
 		t.Fatal("relayed register answer removed an app")
 	}
-	h.api.relayed = false
+	if !anyDirectList(h.api) {
+		t.Fatal("no direct list to confirm the relayed delete")
+	}
+	// The direct list (HTTPS) is the device API's own answer and applies
+	// the owner delete, while the tunnel stays up.
+	h.api.mu.Lock()
+	h.api.directDown = false
+	h.api.mu.Unlock()
 	h.clk.Add(DefaultListEvery)
 	h.settle(20)
 	if h.target(a.LocalID) != nil {
 		t.Fatal("authenticated list did not apply the owner delete")
+	}
+	if h.target(b.LocalID) == nil {
+		t.Fatal("other app removed")
+	}
+	// Confirmed: lists ride stream 0 again.
+	h.clk.Add(DefaultListEvery)
+	h.settle(20)
+	if lastList(h.api).Direct {
+		t.Fatal("direct lists after the confirmation")
+	}
+}
+
+func anyDirectList(f *fakeAPI) bool {
+	for _, r := range f.requests(pb.DeviceMethod_LIST_APPS) {
+		if r.Direct {
+			return true
+		}
+	}
+	return false
+}
+
+func lastList(f *fakeAPI) Request {
+	l := f.requests(pb.DeviceMethod_LIST_APPS)
+	return l[len(l)-1]
+}
+
+// A relayed list that names nothing deleted never asks for a direct list.
+func TestRelayedListWithoutDeletesStaysRelayed(t *testing.T) {
+	a := app("A", "10.0.0.1", 80)
+	h := newHarness(t, a)
+	h.api.mu.Lock()
+	h.api.relayed = true
+	h.api.mu.Unlock()
+	h.settle(20)
+	h.clk.Add(DefaultListEvery)
+	h.settle(20)
+	for _, r := range h.api.requests(pb.DeviceMethod_LIST_APPS) {
+		if r.Direct {
+			t.Fatal("direct list without a relayed delete")
+		}
 	}
 }
 
@@ -1114,18 +1204,28 @@ func TestAdoptionRenameAfterSuccess(t *testing.T) {
 func TestRelayedRegisterDeletedOnlyReported(t *testing.T) {
 	a := app("A", "10.0.0.1", 80)
 	h := newHarness(t, a)
-	h.api.relayed = true
 	h.api.mu.Lock()
+	h.api.relayed, h.api.directDown = true, true
 	h.api.tombstones = []string{a.LocalID}
 	h.api.mu.Unlock()
 	h.api.push(only(pb.DeviceMethod_LIST_APPS, status(200, map[string]any{"apps": []any{}, "deleted": []any{}})))
-	h.settle(20)
-	h.e.Step(context.Background())
+	h.steps(20)
 	if h.target(a.LocalID) == nil {
 		t.Fatal("relayed register answer removed the app")
 	}
 	if !strings.Contains(strings.Join(h.e.Status().Notices, " "), "server_reports_deleted:"+a.LocalID) {
 		t.Fatalf("not reported: %+v", h.e.Status())
+	}
+	if !anyDirectList(h.api) {
+		t.Fatal("no direct list to confirm the relayed delete")
+	}
+	h.api.mu.Lock()
+	h.api.directDown = false
+	h.api.mu.Unlock()
+	h.clk.Add(DefaultListEvery)
+	h.settle(20)
+	if h.target(a.LocalID) != nil {
+		t.Fatal("direct list did not apply the owner delete")
 	}
 }
 

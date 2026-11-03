@@ -15,7 +15,10 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"sync/atomic"
 	"time"
+
+	pb "github.com/seawise-io/seawise-client/tunnelwire/tunnelpb"
 
 	"github.com/seawise/client/internal/forwarder"
 	"github.com/seawise/client/internal/session"
@@ -41,6 +44,12 @@ var ErrNoTunnel = errors.New("no tunnel session manager running")
 // rotationProver is the session manager's on-demand rotation proof.
 type rotationProver interface {
 	ProveRotation() error
+}
+
+// relayer carries device calls on stream 0 of the session manager's
+// verified session.
+type relayer interface {
+	Relay(ctx context.Context, call *pb.DeviceCall) (*pb.DeviceResult, error)
 }
 
 // ErrNotReady wraps a missing tunnel prerequisite.
@@ -126,6 +135,8 @@ type Agent struct {
 	log     *slog.Logger
 	intents chan intent
 	done    chan struct{}
+	// relay is the running tunnel, for device calls from any goroutine.
+	relay atomic.Pointer[running]
 
 	// Owned by the loop goroutine.
 	holds        map[string]bool
@@ -196,6 +207,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			in.reply <- a.handle(in)
 		case err := <-tunnelDone:
 			a.tunnel = nil
+			a.relay.Store(nil)
 			a.status.LastError = fmt.Sprint("tunnel stopped: ", err)
 			a.log.Warn("tunnel stopped", "error", err)
 			a.retryAt = a.cfg.After(a.cfg.Retry)
@@ -280,6 +292,20 @@ func (a *Agent) SetKillSwitch(ctx context.Context, on bool) error {
 		return errors.Join(fmt.Errorf("persist kill switch: %w", err), serr)
 	}
 	return serr
+}
+
+// Relay carries a device call on stream 0 of the running tunnel's verified
+// session. Without one the call is not sent (session.ErrNoSession).
+func (a *Agent) Relay(ctx context.Context, call *pb.DeviceCall) (*pb.DeviceResult, error) {
+	r := a.relay.Load()
+	if r == nil {
+		return nil, session.ErrNoSession
+	}
+	rl, ok := r.tunnel.(relayer)
+	if !ok {
+		return nil, session.ErrNoSession
+	}
+	return rl.Relay(ctx, call)
 }
 
 // ProveRotation asks the running session manager to prove the pending
@@ -400,6 +426,7 @@ func (a *Agent) reconcile() error {
 	r := &running{tunnel: t, cancel: cancel, done: make(chan error, 1)}
 	go func() { r.done <- t.Run(ctx) }()
 	a.tunnel = r
+	a.relay.Store(r)
 	return nil
 }
 
@@ -428,6 +455,7 @@ func (a *Agent) stopTunnel() {
 		return
 	}
 	a.tunnel = nil
+	a.relay.Store(nil)
 	r.cancel()
 	select {
 	case <-r.done:
