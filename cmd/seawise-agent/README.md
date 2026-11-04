@@ -165,6 +165,6 @@ stay on the current client.
 | `SEAWISE_NAT64_PREFIXES` | Extra NAT64 prefixes used on this network, comma separated |
 | `SEAWISE_CONTAINER` | `1` treats the process as running in a container |
 | `SEAWISE_WEB_URL` | Site where pairing codes are approved (default `https://seawise.io`) |
-| `SEAWISE_TUNNEL_NAME` | Tunnel name to dial (default `tunnel-us-east.seawise.dev`); must be in the signed edge list |
+| `SEAWISE_TUNNEL_NAME` | Tunnel name to dial (default `tunnel-us-east.seawise.dev`); must be under `seawise.dev` (development builds also accept `.localhost` names) and in the signed edge list |
 | `SEAWISE_UPDATE_CHANNEL` | `stable` (default) or `beta`: which releases update notices follow |
 | `SEAWISE_UPDATE_CHECK` | `0` hides release notices; the signed metadata and the signing key set are still fetched |

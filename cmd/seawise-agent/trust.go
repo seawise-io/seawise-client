@@ -20,7 +20,8 @@ import (
 	"github.com/seawise/client/internal/visitor"
 )
 
-// testKeySetConfig lets the memory budget test pin test roots; it does
+// testKeySetConfig lets seawise_tuftest builds (the budget and network
+// fault suites, and the local test stack) pin test key-set roots; it does
 // nothing in release builds.
 var testKeySetConfig = func(*keyset.Config) {}
 

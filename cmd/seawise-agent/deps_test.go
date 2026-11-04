@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -32,14 +33,33 @@ func TestAgentDependencies(t *testing.T) {
 
 // The build tag that points update checks at a test repository must never
 // reach a release build.
+// Release builds take no build tags at all: not seawise_tuftest (test roots
+// from the environment) and not dev (local pool and FRP domains).
+var buildTagFlag = regexp.MustCompile(`(^|[\s"'=])-tags([\s=]|$)|(^|[^A-Za-z0-9_])tags=`)
+
 func TestReleaseBuildsHaveNoTestTag(t *testing.T) {
-	for _, f := range []string{"../../Dockerfile.agent", "../../Makefile", "../../.github/workflows/release.yml", "../../.github/workflows/promote-stable.yml"} {
+	for _, f := range []string{"../../Dockerfile.agent", "../../Dockerfile", "../../Makefile", "../../.github/workflows/release.yml", "../../.github/workflows/promote-stable.yml"} {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if strings.Contains(string(b), "seawise_tuftest") {
 			t.Errorf("%s uses the seawise_tuftest build tag", f)
+		}
+		for i, line := range strings.Split(string(b), "\n") {
+			if buildTagFlag.MatchString(line) {
+				t.Errorf("%s:%d sets build tags: %s", f, i+1, strings.TrimSpace(line))
+			}
+		}
+	}
+	for _, bad := range []string{"-tags dev", "GOFLAGS=-tags=dev", `go build -tags="x"`, "tags=dev"} {
+		if !buildTagFlag.MatchString(bad) {
+			t.Errorf("tag check misses %q", bad)
+		}
+	}
+	for _, ok := range []string{"git fetch --no-tags origin main", "TAGS: x", "for t in $TAGS; do"} {
+		if buildTagFlag.MatchString(ok) {
+			t.Errorf("tag check flags %q", ok)
 		}
 	}
 	goBin, err := exec.LookPath("go")
@@ -52,6 +72,13 @@ func TestReleaseBuildsHaveNoTestTag(t *testing.T) {
 	}
 	if strings.Contains(string(out), "tuftest.go") {
 		t.Error("the test hook is part of the default build")
+	}
+	out, err = exec.Command(goBin, "list", "-f", "{{.GoFiles}}", "../../internal/transport").CombinedOutput()
+	if err != nil {
+		t.Fatalf("go list: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "pooldomain_dev.go") || !strings.Contains(string(out), "pooldomain_prod.go") {
+		t.Errorf("the default build does not take the release pool domain: %s", out)
 	}
 }
 

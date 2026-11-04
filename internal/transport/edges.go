@@ -8,10 +8,11 @@ import (
 	"github.com/seawise/client/internal/protocol"
 )
 
-// Pool names are tunnel-<region>.seawise.dev.
+// Pool names are tunnel-<region>.<pool domain>. Release builds dial only
+// the production pool domain (poolDomainAllowed).
 const (
 	poolPrefix = "tunnel-"
-	poolSuffix = ".seawise.dev"
+	poolDomain = "seawise.dev"
 )
 
 var edgeIDRe = regexp.MustCompile(`^edge-([a-z]+-[a-z]+)-[0-9]{1,4}$`)
@@ -60,15 +61,19 @@ func regionOf(edgeID string) (string, bool) {
 	return m[1], true
 }
 
-// PoolName is the tunnel name of a region.
-func PoolName(region string) string { return poolPrefix + region + poolSuffix }
+// PoolName is the production tunnel name of a region.
+func PoolName(region string) string { return poolPrefix + region + "." + poolDomain }
 
-// Region returns the region of a pool name the list allows.
+// Region returns the region of a pool name the list allows, under a pool
+// domain this build allows.
 func (l *EdgeList) Region(name string) (string, bool) {
-	if l == nil || !strings.HasPrefix(name, poolPrefix) || !strings.HasSuffix(name, poolSuffix) {
+	if l == nil || !strings.HasPrefix(name, poolPrefix) {
 		return "", false
 	}
-	region := name[len(poolPrefix) : len(name)-len(poolSuffix)]
+	region, domain, ok := strings.Cut(name[len(poolPrefix):], ".")
+	if !ok || !poolDomainAllowed(domain) {
+		return "", false
+	}
 	return region, l.regions[region]
 }
 
