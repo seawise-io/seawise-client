@@ -1,12 +1,14 @@
 package transport
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
+	"os"
+	"testing"
 	"time"
 
-	"bytes"
 	"github.com/seawise-io/seawise-client/tunnelwire/caps"
-	"testing"
-
 	pb "github.com/seawise-io/seawise-client/tunnelwire/tunnelpb"
 	"github.com/seawise-io/seawise-client/tunnelwire/wire"
 )
@@ -60,6 +62,31 @@ func TestHelloDeadlineWhenTheStreamDeadlineFiresFirst(t *testing.T) {
 		}
 		if d := time.Since(start); d > 5*time.Second {
 			t.Fatal(c, "waited for the timer", d)
+		}
+	}
+}
+
+// A deadline error counts at any time; any other error only once the
+// Hello deadline has passed, so a peer's text ending in "i/o timeout" does
+// not count early.
+func TestHelloTimedOut(t *testing.T) {
+	deadline := time.Unix(1_700_000_000, 0)
+	text := errors.New("stream reset: connection closed: read tcp 127.0.0.1:1->127.0.0.1:2: i/o timeout")
+	for _, c := range []struct {
+		err  error
+		now  time.Time
+		want bool
+	}{
+		{nil, deadline.Add(time.Second), false},
+		{os.ErrDeadlineExceeded, deadline.Add(-time.Second), true},
+		{fmt.Errorf("ack: %w", os.ErrDeadlineExceeded), deadline.Add(-time.Second), true},
+		{text, deadline.Add(-time.Millisecond), false},
+		{text, deadline, true},
+		{errors.New("stream reset: connection closed: EOF"), deadline.Add(time.Second), true},
+		{errors.New("stream reset: connection closed: EOF"), deadline.Add(-time.Second), false},
+	} {
+		if got := helloTimedOut(c.err, deadline, c.now); got != c.want {
+			t.Errorf("helloTimedOut(%v, now-deadline=%v) = %v, want %v", c.err, c.now.Sub(deadline), got, c.want)
 		}
 	}
 }

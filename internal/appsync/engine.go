@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"math/rand/v2"
 	"net/http"
 	"path/filepath"
@@ -28,6 +29,9 @@ const (
 	// again from the local state under a new key.
 	MaxCallAge = 20 * time.Hour
 	MaxBackoff = 30 * time.Second
+	// HealthRefresh is how often a health report the server already
+	// accepted is sent again unchanged.
+	HealthRefresh = 15 * time.Minute
 	// maxDirectFails direct resends in a row fail before they wait a list
 	// period instead of the backoff.
 	maxDirectFails = 3
@@ -136,6 +140,9 @@ type Engine struct {
 	healthSent   int
 	healthFails  int
 	healthWait   time.Time
+	// lastHealth is the last report the server answered, at lastHealthAt.
+	lastHealth   map[string]string
+	lastHealthAt time.Time
 	changed      bool
 	// confirm: a relayed answer named an app deleted on the server, so the
 	// next list goes straight to the device API, whose answer may act on it.
@@ -1180,8 +1187,16 @@ func (e *Engine) addRegistered(id string) {
 }
 
 // SetHealth replaces the pending health report; only the latest is sent.
-func (e *Engine) SetHealth(statuses map[string]string) {
+func (e *Engine) SetHealth(statuses map[string]string) { e.ReportHealth(statuses, true) }
+
+// ReportHealth is SetHealth for the prober: unless fresh, a report equal to
+// the last one answered is not sent again within HealthRefresh.
+func (e *Engine) ReportHealth(statuses map[string]string, fresh bool) {
 	e.mu.Lock()
+	if !fresh && e.healthGen == e.healthSent && maps.Equal(statuses, e.lastHealth) && e.cfg.Now().Sub(e.lastHealthAt) < HealthRefresh {
+		e.mu.Unlock()
+		return
+	}
 	e.health = make(map[string]string, len(statuses))
 	for id, s := range statuses {
 		e.health[id] = s
@@ -1194,6 +1209,7 @@ func (e *Engine) SetHealth(statuses map[string]string) {
 func (e *Engine) sendHealth(ctx context.Context, now time.Time) time.Duration {
 	e.mu.Lock()
 	gen := e.healthGen
+	sent := maps.Clone(e.health)
 	var items []healthItem
 	for id, s := range e.health {
 		if (s == "online" || s == "offline") && slices.Contains(e.box.Registered, id) {
@@ -1202,6 +1218,7 @@ func (e *Engine) sendHealth(ctx context.Context, now time.Time) time.Duration {
 	}
 	e.mu.Unlock()
 	sort.Slice(items, func(i, j int) bool { return items[i].LocalID < items[j].LocalID })
+	refused := false
 	for i := 0; i < len(items); i += MaxItems {
 		body, _ := json.Marshal(healthBody{Apps: items[i:min(i+MaxItems, len(items))]})
 		resp, err := e.call(ctx, Request{Method: pb.DeviceMethod_REPORT_HEALTH, Body: body})
@@ -1228,12 +1245,18 @@ func (e *Engine) sendHealth(ctx context.Context, now time.Time) time.Duration {
 		}
 		if resp.Status != http.StatusOK {
 			e.log.Info("health report refused", "status", resp.Status, "reason", parseError(resp.Body).Error)
+			refused = true
 			break
 		}
 	}
 	e.mu.Lock()
 	e.succeeded()
+	// A refused report is not retried at once, but the next probe round
+	// sends it again.
 	e.healthSent = gen
+	if !refused {
+		e.lastHealth, e.lastHealthAt = sent, now
+	}
 	e.healthFails, e.healthWait = 0, time.Time{}
 	e.mu.Unlock()
 	return 0

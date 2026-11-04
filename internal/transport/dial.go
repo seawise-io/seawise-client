@@ -417,7 +417,7 @@ func (d *Dialer) handshake(ctx context.Context, s *Session, raw net.Conn, edges 
 		stopCtx()
 		// The connection and stream deadlines are the Hello deadline too, and
 		// may expire just before the timer runs.
-		if err != nil && (expiry.fired() || timedOut(err)) {
+		if err != nil && (expiry.fired() || helloTimedOut(err, deadline, time.Now())) {
 			err = blocked(stage(st.Load()).cause(), "hello_deadline", err)
 		}
 	}()
@@ -624,6 +624,14 @@ type helloGuard struct {
 func timedOut(err error) bool {
 	var t interface{ Timeout() bool }
 	return errors.As(err, &t) && t.Timeout()
+}
+
+// helloTimedOut reports an error caused by the Hello deadline: a deadline
+// error, or any error once the deadline has passed (yamux passes a
+// connection's deadline error on as text only, and text from the peer is
+// never trusted). now is the wall clock the connection deadlines run on.
+func helloTimedOut(err error, deadline, now time.Time) bool {
+	return err != nil && (timedOut(err) || !now.Before(deadline))
 }
 
 func newHelloGuard(close func()) *helloGuard { return &helloGuard{close: close} }

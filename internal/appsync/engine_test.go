@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -1463,5 +1465,106 @@ func TestHealthOtherRefusalDropped(t *testing.T) {
 	h.settle(20)
 	if got := len(h.api.requests(pb.DeviceMethod_REPORT_HEALTH)); got != 1 {
 		t.Fatalf("health requests %d", got)
+	}
+}
+
+// An unchanged report is not sent again within HealthRefresh; a change, a
+// fresh report or the refresh period sends it.
+func TestHealthUnchangedIsNotResent(t *testing.T) {
+	a, b := app("A", "10.0.0.1", 80), app("B", "10.0.0.2", 81)
+	h := newHarness(t, a, b)
+	h.settle(20)
+	up := map[string]string{a.LocalID: "online", b.LocalID: "online"}
+	report := func(m map[string]string, fresh bool, want int) {
+		t.Helper()
+		h.e.ReportHealth(maps.Clone(m), fresh)
+		h.settle(20)
+		if len(h.api.health) != want {
+			t.Fatalf("health reports %d, want %d", len(h.api.health), want)
+		}
+	}
+	report(up, false, 1)
+	report(up, false, 1)
+	h.clk.Add(HealthRefresh - time.Second)
+	report(up, false, 1)
+	report(up, true, 2)
+	down := map[string]string{a.LocalID: "offline", b.LocalID: "online"}
+	report(down, false, 3)
+	report(down, false, 3)
+	h.clk.Add(HealthRefresh)
+	report(down, false, 4)
+}
+
+// A report the server did not answer is not taken as sent.
+func TestHealthUnansweredIsResent(t *testing.T) {
+	a := app("A", "10.0.0.1", 80)
+	h := newHarness(t, a)
+	h.settle(20)
+	up := map[string]string{a.LocalID: "online"}
+	h.api.push(only(pb.DeviceMethod_REPORT_HEALTH, fail503()))
+	h.e.ReportHealth(up, false)
+	h.e.Step(context.Background())
+	h.e.ReportHealth(maps.Clone(up), false)
+	h.settle(20)
+	if len(h.api.health) != 1 {
+		t.Fatalf("health reports %d", len(h.api.health))
+	}
+}
+
+// A refused report is not retried at once, but it is not taken as known to
+// the server: the next unchanged round sends it again.
+func TestHealthRefusedIsResentNextRound(t *testing.T) {
+	a := app("A", "10.0.0.1", 80)
+	h := newHarness(t, a)
+	h.settle(20)
+	up := map[string]string{a.LocalID: "online"}
+	h.api.push(only(pb.DeviceMethod_REPORT_HEALTH, status(400, map[string]string{"error": "invalid_request"})))
+	h.e.ReportHealth(maps.Clone(up), false)
+	h.settle(20)
+	if n := len(h.api.requests(pb.DeviceMethod_REPORT_HEALTH)); n != 1 {
+		t.Fatalf("health calls %d after a refusal, want 1 (no retry loop)", n)
+	}
+	h.e.ReportHealth(maps.Clone(up), false)
+	h.settle(20)
+	if n := len(h.api.requests(pb.DeviceMethod_REPORT_HEALTH)); n != 2 {
+		t.Fatalf("health calls %d, want the refused report sent again", n)
+	}
+	h.e.ReportHealth(maps.Clone(up), false)
+	h.settle(20)
+	if n := len(h.api.requests(pb.DeviceMethod_REPORT_HEALTH)); n != 2 {
+		t.Fatalf("health calls %d, want an accepted report not sent again", n)
+	}
+}
+
+// With more than MaxItems apps the report goes in batches; a refusal of the
+// second batch makes the next round send the whole report again.
+func TestHealthBatchesAndRefusedSecondBatch(t *testing.T) {
+	var ts []store.Target
+	for i := range MaxItems + 3 {
+		ts = append(ts, app(fmt.Sprintf("app %d", i), "10.0.0.1", 1000+i))
+	}
+	h := newHarness(t, ts...)
+	h.settle(60)
+	all := map[string]string{}
+	for _, tg := range ts {
+		all[tg.LocalID] = "online"
+	}
+	pass := func(Request) (Response, error, bool, bool) { return Response{}, nil, false, false }
+	h.api.push(only(pb.DeviceMethod_REPORT_HEALTH, pass), only(pb.DeviceMethod_REPORT_HEALTH, status(400, map[string]string{"error": "invalid_request"})))
+	h.e.ReportHealth(maps.Clone(all), false)
+	h.settle(20)
+	calls := h.api.requests(pb.DeviceMethod_REPORT_HEALTH)
+	if len(calls) != 2 || bytes.Count(calls[0].Body, []byte(`"local_id"`)) != MaxItems || bytes.Count(calls[1].Body, []byte(`"local_id"`)) != 3 {
+		t.Fatalf("batches %d", len(calls))
+	}
+	h.e.ReportHealth(maps.Clone(all), false)
+	h.settle(20)
+	if n := len(h.api.requests(pb.DeviceMethod_REPORT_HEALTH)); n != 4 {
+		t.Fatalf("health calls %d, want both batches sent again", n)
+	}
+	h.e.ReportHealth(maps.Clone(all), false)
+	h.settle(20)
+	if n := len(h.api.requests(pb.DeviceMethod_REPORT_HEALTH)); n != 4 {
+		t.Fatalf("health calls %d, want no resend once both batches were accepted", n)
 	}
 }

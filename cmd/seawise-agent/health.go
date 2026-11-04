@@ -20,7 +20,7 @@ func startHealthProbe(ctx context.Context, log *slog.Logger, st *store.Store, ga
 	}
 	p, err := healthprobe.New(healthprobe.Config{
 		Targets:   func() []store.Target { return st.State().Targets },
-		Report:    e.SetHealth,
+		Report:    e.ReportHealth,
 		Connected: connected,
 		Gateways:  gateways,
 	})

@@ -47,6 +47,10 @@ var runID = func() [16]byte {
 	return b
 }()
 
+// testTransportConfig lets the budget tests point the dialer at a test
+// edge; it does nothing in release builds.
+var testTransportConfig = func(*transport.Config) {}
+
 func notReady(why string) error { return fmt.Errorf("%w: %s", agent.ErrNotReady, why) }
 
 // tunnelFactory builds the session manager once the server is paired, the
@@ -93,7 +97,7 @@ func tunnelFactory(ts tunnelSetup) func() (agent.Tunnel, error) {
 			if err != nil {
 				return nil, &transport.Error{Kind: transport.Local, Reason: "device_key", Err: err}
 			}
-			return transport.New(transport.Config{
+			cfg := transport.Config{
 				Edges: func() *transport.EdgeList {
 					l, _ := transport.NewEdgeList(ts.keySet())
 					return l
@@ -102,7 +106,9 @@ func tunnelFactory(ts tunnelSetup) func() (agent.Tunnel, error) {
 				KillSwitch: func() bool { return ts.st.State().HasHold(store.HoldKillSwitch) },
 				KeySetHold: ts.keySetHold,
 				DataDir:    ts.st.Dir(), TLSTime: ts.clock.TrustTime, TLSRetryTime: ts.clock.RetryTime, Logger: ts.log,
-			})
+			}
+			testTransportConfig(&cfg)
+			return transport.New(cfg)
 		}
 		m, err := session.New(session.Config{
 			Dial: session.FromTransport(newDialer), Name: ts.name, ServerID: serverID,

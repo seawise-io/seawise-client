@@ -16,16 +16,18 @@ import (
 )
 
 type reports struct {
-	mu  sync.Mutex
-	got []map[string]string
-	ch  chan map[string]string
+	mu    sync.Mutex
+	got   []map[string]string
+	fresh []bool
+	ch    chan map[string]string
 }
 
 func newReports() *reports { return &reports{ch: make(chan map[string]string, 64)} }
 
-func (r *reports) report(m map[string]string) {
+func (r *reports) report(m map[string]string, fresh bool) {
 	r.mu.Lock()
 	r.got = append(r.got, m)
+	r.fresh = append(r.fresh, fresh)
 	r.mu.Unlock()
 	r.ch <- m
 }
@@ -122,17 +124,17 @@ func TestRoundReportsUpDownAndUpAgain(t *testing.T) {
 	p := newProber(t, ts, r, nil)
 	ctx := context.Background()
 
-	p.round(ctx)
+	p.round(ctx, false)
 	if got := r.last(t); len(got) != 1 || got["a"] != Online {
 		t.Fatalf("first round %v", got)
 	}
 	_ = ln.Close()
-	p.round(ctx)
+	p.round(ctx, false)
 	if r.count() != 2 || r.last(t)["a"] != Offline {
 		t.Fatalf("after close: %d reports, last %v", r.count(), r.last(t))
 	}
 	listen(t, addr)
-	p.round(ctx)
+	p.round(ctx, false)
 	if r.count() != 3 || r.last(t)["a"] != Online {
 		t.Fatalf("after reopen: %d reports, last %v", r.count(), r.last(t))
 	}
@@ -152,18 +154,18 @@ func TestEveryRoundReportsFullSnapshot(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	p.round(ctx)
-	p.round(ctx)
+	p.round(ctx, false)
+	p.round(ctx, false)
 	if got := r.last(t); r.count() != 2 || len(got) != 2 || got["a"] != Online || got["b"] != Offline {
 		t.Fatalf("unchanged round: %d reports, last %v", r.count(), got)
 	}
 	listen(t, "127.0.0.1:"+strconv.Itoa(down))
-	p.round(ctx)
+	p.round(ctx, false)
 	if got := r.last(t); len(got) != 2 || got["a"] != Online || got["b"] != Online {
 		t.Fatalf("change report %v", got)
 	}
 	ts.set(app("a", "127.0.0.1", portOf(up)), app("c", "127.0.0.1", portOf(up)))
-	p.round(ctx)
+	p.round(ctx, false)
 	if got := r.last(t); len(got) != 2 || got["a"] != Online || got["c"] != Online {
 		t.Fatalf("after replacing an app %v", got)
 	}
@@ -176,13 +178,13 @@ func TestAppLeavingProbedSetReportedOffline(t *testing.T) {
 	ts.set(a)
 	r := newReports()
 	p := newProber(t, ts, r, nil)
-	p.round(context.Background())
+	p.round(context.Background(), false)
 	if r.last(t)["a"] != Online {
 		t.Fatalf("%v", r.last(t))
 	}
 	a.Disabled = true
 	ts.set(a)
-	p.round(context.Background())
+	p.round(context.Background(), false)
 	if got := r.last(t); len(got) != 1 || got["a"] != Offline {
 		t.Fatalf("disabled app %v", got)
 	}
@@ -194,9 +196,9 @@ func TestReportIsACopy(t *testing.T) {
 	ts.set(app("a", "127.0.0.1", portOf(ln)))
 	r := newReports()
 	p := newProber(t, ts, r, nil)
-	p.round(context.Background())
+	p.round(context.Background(), false)
 	r.last(t)["a"] = "tampered"
-	p.round(context.Background())
+	p.round(context.Background(), false)
 	if r.last(t)["a"] != Online {
 		t.Fatalf("changing a delivered report changed the next one: %v", r.last(t))
 	}
@@ -223,7 +225,7 @@ func TestOnlyTunnelledAppsAreProbed(t *testing.T) {
 			return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
 		}
 	})
-	p.round(context.Background())
+	p.round(context.Background(), false)
 	got := r.last(t)
 	if len(got) != 4 || got["ok"] != Online || got["max"] == "" || got["one"] == "" || got["disabled"] != Offline {
 		t.Fatalf("report %v", got)
@@ -248,7 +250,7 @@ func TestOnlyTunnelledAppsAreProbed(t *testing.T) {
 func TestNoAppsNoReport(t *testing.T) {
 	r := newReports()
 	p := newProber(t, &targets{}, r, nil)
-	p.round(context.Background())
+	p.round(context.Background(), false)
 	if r.count() != 0 {
 		t.Fatal("empty round reported")
 	}
@@ -283,7 +285,7 @@ func TestPolicyRefusedTargetsAreNeverConnected(t *testing.T) {
 			return []netip.Addr{netip.MustParseAddr("169.254.169.254")}, nil
 		}
 	})
-	p.round(context.Background())
+	p.round(context.Background(), false)
 	got := r.last(t)
 	for _, id := range []string{"metadata", "linklocal", "named"} {
 		if got[id] != Offline {
@@ -311,7 +313,7 @@ func TestResolveFailureIsOffline(t *testing.T) {
 	p := newProber(t, ts, r, func(c *Config) {
 		c.Resolve = func(context.Context, string) ([]netip.Addr, error) { return nil, errors.New("no such host") }
 	})
-	p.round(context.Background())
+	p.round(context.Background(), false)
 	if r.last(t)["a"] != Offline {
 		t.Fatalf("%v", r.last(t))
 	}
@@ -329,7 +331,7 @@ func TestProbeTimeout(t *testing.T) {
 		}
 	})
 	start := time.Now()
-	p.round(context.Background())
+	p.round(context.Background(), false)
 	if d := time.Since(start); d > 2*time.Second {
 		t.Fatalf("probe took %v", d)
 	}
@@ -363,7 +365,7 @@ func TestConcurrencyIsBounded(t *testing.T) {
 			return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
 		}
 	})
-	p.round(context.Background())
+	p.round(context.Background(), false)
 	if got := peak.Load(); got != 3 {
 		t.Fatalf("peak concurrency %d, want 3", got)
 	}
@@ -384,7 +386,7 @@ func TestCancelledRoundDoesNotReport(t *testing.T) {
 	p := newProber(t, ts, r, func(c *Config) { c.Workers = 1 })
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	p.round(ctx)
+	p.round(ctx, false)
 	if r.count() != 0 {
 		t.Fatal("cancelled round reported")
 	}
@@ -477,13 +479,13 @@ func waitReport(t *testing.T, r *reports, want string) {
 }
 
 func TestNewDefaultsAndRequiredFields(t *testing.T) {
-	if _, err := New(Config{Report: func(map[string]string) {}}); err == nil {
+	if _, err := New(Config{Report: func(map[string]string, bool) {}}); err == nil {
 		t.Fatal("no Targets accepted")
 	}
 	if _, err := New(Config{Targets: func() []store.Target { return nil }}); err == nil {
 		t.Fatal("no Report accepted")
 	}
-	p, err := New(Config{Targets: func() []store.Target { return nil }, Report: func(map[string]string) {}})
+	p, err := New(Config{Targets: func() []store.Target { return nil }, Report: func(map[string]string, bool) {}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -493,7 +495,7 @@ func TestNewDefaultsAndRequiredFields(t *testing.T) {
 		c.Connected == nil || !c.Connected() {
 		t.Fatalf("defaults %+v", c)
 	}
-	p, err = New(Config{Targets: func() []store.Target { return nil }, Report: func(map[string]string) {},
+	p, err = New(Config{Targets: func() []store.Target { return nil }, Report: func(map[string]string, bool) {},
 		StartDelay: 1, Interval: 2, Timeout: 3, CheckEvery: 4, Workers: 5})
 	if err != nil {
 		t.Fatal(err)
@@ -505,7 +507,7 @@ func TestNewDefaultsAndRequiredFields(t *testing.T) {
 }
 
 func TestDefaultResolverResolvesLocalhost(t *testing.T) {
-	p, err := New(Config{Targets: func() []store.Target { return nil }, Report: func(map[string]string) {}})
+	p, err := New(Config{Targets: func() []store.Target { return nil }, Report: func(map[string]string, bool) {}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -523,13 +525,13 @@ func TestNewAppNeverReportedOfflineBeforeItIsProbed(t *testing.T) {
 	ts.set(a)
 	r := newReports()
 	p := newProber(t, ts, r, nil)
-	p.round(context.Background())
+	p.round(context.Background(), false)
 	if r.count() != 0 {
 		t.Fatalf("unregistered app reported: %v", r.last(t))
 	}
 	a.Subdomain = "sub-a"
 	ts.set(a)
-	p.round(context.Background())
+	p.round(context.Background(), false)
 	for _, m := range r.got {
 		if m["a"] != Online {
 			t.Fatalf("report %v", m)
@@ -538,4 +540,47 @@ func TestNewAppNeverReportedOfflineBeforeItIsProbed(t *testing.T) {
 	if r.count() != 1 {
 		t.Fatalf("reports %d", r.count())
 	}
+}
+
+// The first rounds after the tunnel comes up, and only those, are fresh;
+// a reconnect starts them again.
+func TestFreshRoundsAfterTunnelUp(t *testing.T) {
+	ln := listen(t, "127.0.0.1:0")
+	ts := &targets{}
+	ts.set(app("a", "127.0.0.1", portOf(ln)))
+	r := newReports()
+	var up atomic.Bool
+	up.Store(true)
+	p := newProber(t, ts, r, func(c *Config) {
+		c.StartDelay = time.Millisecond
+		c.Interval = 20 * time.Millisecond
+		c.CheckEvery = 2 * time.Millisecond
+		c.Connected = up.Load
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { p.Run(ctx); close(done) }()
+	for i := 0; i < FreshRounds+2; i++ {
+		waitReport(t, r, Online)
+	}
+	up.Store(false)
+	time.Sleep(20 * time.Millisecond)
+	n := r.count()
+	up.Store(true)
+	for i := 0; i < FreshRounds+1; i++ {
+		waitReport(t, r, Online)
+	}
+	cancel()
+	<-done
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	check := func(from int) {
+		for i := 0; i <= FreshRounds; i++ {
+			if want := i < FreshRounds; r.fresh[from+i] != want {
+				t.Fatalf("round %d after up: fresh %v, want %v (%v)", i, r.fresh[from+i], want, r.fresh)
+			}
+		}
+	}
+	check(0)
+	check(n)
 }

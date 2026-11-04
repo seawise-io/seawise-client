@@ -27,7 +27,7 @@ import (
 
 // Memory budgets for the agent process, measured on the release build.
 const (
-	idleBudgetKiB = 30 << 10
+	idleBudgetKiB = 24 << 10
 	busyBudgetKiB = 96 << 10
 
 	budgetApps     = 4
@@ -115,7 +115,10 @@ func buildAgent(t *testing.T, dir string) string {
 		t.Fatalf("Go toolchain needed to build the agent for the memory budget: %v", err)
 	}
 	bin := filepath.Join(dir, "seawise-agent")
-	build := exec.Command(goBin, "build", "-trimpath", "-tags", "seawise_tuftest", "-o", bin, ".")
+	// The flags of Dockerfile.agent, with a release version so the tunnel
+	// may be dialled.
+	build := exec.Command(goBin, "build", "-trimpath", "-buildvcs=false", "-tags", "seawise_tuftest",
+		"-ldflags=-s -w -buildid= -X github.com/seawise/client/internal/constants.Version=2.0.0", "-o", bin, ".")
 	build.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)

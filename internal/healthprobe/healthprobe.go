@@ -21,6 +21,8 @@ const (
 	DefaultTimeout    = 3 * time.Second
 	DefaultCheckEvery = 5 * time.Second
 	DefaultWorkers    = 8
+	// FreshRounds rounds after the tunnel comes up are reported as fresh.
+	FreshRounds = 2
 )
 
 const (
@@ -32,8 +34,10 @@ type Config struct {
 	// Targets returns the stored apps; enabled apps with a subdomain are
 	// probed and disabled apps are reported offline.
 	Targets func() []store.Target
-	// Report receives the status of every stored app each round.
-	Report func(map[string]string)
+	// Report receives the status of every stored app each round. fresh is
+	// set for the first FreshRounds rounds after the tunnel comes up, when
+	// the server may have reset what it knew.
+	Report func(statuses map[string]string, fresh bool)
 	// Connected reports whether the tunnel is up; nil means always.
 	Connected func() bool
 	Gateways  []netip.Addr
@@ -91,13 +95,18 @@ func (p *Prober) Run(ctx context.Context) {
 		return
 	}
 	up := false
+	rounds := 0
 	var due time.Time
 	for {
 		if p.cfg.Connected() {
 			if !up || !time.Now().Before(due) {
+				if !up {
+					rounds = 0
+				}
 				up = true
 				due = time.Now().Add(p.cfg.Interval)
-				p.round(ctx)
+				p.round(ctx, rounds < FreshRounds)
+				rounds++
 			}
 		} else {
 			up = false
@@ -119,7 +128,7 @@ func sleep(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-func (p *Prober) round(ctx context.Context) {
+func (p *Prober) round(ctx context.Context, fresh bool) {
 	all := p.cfg.Targets()
 	got := make(map[string]string, len(all))
 	var apps []store.Target
@@ -155,7 +164,7 @@ func (p *Prober) round(ctx context.Context) {
 	if ctx.Err() != nil || len(got) == 0 {
 		return
 	}
-	p.cfg.Report(got)
+	p.cfg.Report(got, fresh)
 }
 
 // probe connects the way the forwarder does: through the target policy,

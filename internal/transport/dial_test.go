@@ -594,6 +594,39 @@ func TestDialTLSInterceptionFails(t *testing.T) {
 	}
 }
 
+// The edge certificate is checked at TLSTime, not the system clock.
+func TestDialCertTime(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		at   func() time.Time
+		ok   bool
+	}{
+		{"system clock", nil, true},
+		{"signed clock inside validity", func() time.Time { return time.Now().Add(30 * time.Minute) }, true},
+		{"signed clock after expiry", func() time.Time { return time.Now().Add(3 * time.Hour) }, false},
+		{"signed clock before issue", func() time.Time { return time.Now().Add(-3 * time.Hour) }, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEdge(t)
+			s, err := e.dialer(t, func(c *Config) { c.TLSTime = tc.at }).Dial(ctx(t), testName, TLS)
+			if tc.ok {
+				if err != nil {
+					t.Fatal(err)
+				}
+				s.Close()
+				return
+			}
+			if err == nil {
+				s.Close()
+				t.Fatal("certificate accepted outside its validity at TLSTime")
+			}
+			if e := asError(t, err); e.Cause != CauseTLS {
+				t.Fatalf("cause %s: %v", e.Cause, err)
+			}
+		})
+	}
+}
+
 func TestDialRetriesOnceAfterExpiredCertificate(t *testing.T) {
 	future := func() time.Time { return time.Now().Add(2 * time.Hour) }
 	for _, car := range []Carriage{TLS, WebSocket} {
