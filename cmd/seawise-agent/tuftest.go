@@ -27,7 +27,7 @@ func init() {
 		pool := x509.NewCertPool()
 		pool.AppendCertsFromPEM(ca)
 		cfg.Root, cfg.URL, cfg.AllowTestRoot = root, strings.TrimSpace(string(url)), true
-		cfg.Transport = controlplane.NewTransport(os.Getenv, pool)
+		cfg.Transport = controlplane.NewTransportAt(os.Getenv, pool, cfg.Now)
 		cfg.FirstDelay = time.Millisecond
 	}
 }

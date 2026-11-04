@@ -198,6 +198,13 @@ jobs:
 
       # Pushed by digest only: no tag points at the image until it is
       # scanned, signed and attested.
+      - name: Source date
+        id: source-date
+        run: |
+          epoch=$(git log -1 --format=%ct)
+          test -n "$epoch"
+          echo "epoch=$epoch" >> "$GITHUB_OUTPUT"
+
       - name: Build and push by digest
         id: build-and-push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -210,6 +217,7 @@ jobs:
           sbom: true
           build-args: |
             VERSION=v${{ needs.classify.outputs.version }}
+            SOURCE_DATE_EPOCH=${{ steps.source-date.outputs.epoch }}
           cache-from: type=gha,scope=agent
           cache-to: type=gha,mode=max,scope=agent
 

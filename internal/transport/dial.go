@@ -102,7 +102,13 @@ type Config struct {
 	// TCP_USER_TIMEOUT on Linux).
 	DialTCP func(ctx context.Context, network, addr string) (net.Conn, error)
 	Now     func() time.Time
-	Logger  *slog.Logger
+	// TLSTime is the time certificates are checked at (nil: the system
+	// clock); the agent passes SignedClock.TrustTime.
+	TLSTime func() time.Time
+	// TLSRetryTime gives, when it gives one, the time for one more dial
+	// after the TLS handshake refused a certificate as expired.
+	TLSRetryTime func() (time.Time, bool)
+	Logger       *slog.Logger
 }
 
 // Dialer dials sessions.
@@ -254,6 +260,24 @@ func send(w io.Writer, out *wire.SeqOut, m *pb.ControlMessage) error {
 
 // Dial opens a session to the tunnel name over the carriage.
 func (d *Dialer) Dial(ctx context.Context, name string, c Carriage) (*Session, error) {
+	s, err := d.dial(ctx, name, c, d.cfg.TLSTime)
+	if err != nil && d.cfg.TLSRetryTime != nil && CertExpired(err) {
+		if t, ok := d.cfg.TLSRetryTime(); ok {
+			d.log.Warn("certificate expired at the time floor; retrying once at the confirmed time")
+			return d.dial(ctx, name, c, func() time.Time { return t })
+		}
+	}
+	return s, err
+}
+
+// CertExpired reports an error from a certificate refused as expired or
+// not yet valid.
+func CertExpired(err error) bool {
+	var ce x509.CertificateInvalidError
+	return errors.As(err, &ce) && ce.Reason == x509.Expired
+}
+
+func (d *Dialer) dial(ctx context.Context, name string, c Carriage, tlsTime func() time.Time) (*Session, error) {
 	if c != TLS && c != WebSocket {
 		return nil, local("config", errors.New("unknown carriage"))
 	}
@@ -282,7 +306,7 @@ func (d *Dialer) Dial(ctx context.Context, name string, c Carriage) (*Session, e
 	var fresh []netip.Addr
 	if p != nil {
 		pctx, cancel := context.WithTimeout(ctx, proxyTimeout)
-		raw, err = d.connect(pctx, p, name)
+		raw, err = d.connect(pctx, p, name, tlsTime)
 		cancel()
 	} else {
 		raw, fresh, err = d.direct(ctx, name)
@@ -291,7 +315,7 @@ func (d *Dialer) Dial(ctx context.Context, name string, c Carriage) (*Session, e
 	if err != nil {
 		return nil, d.ctxErr(ctx, err)
 	}
-	if err := d.handshake(ctx, s, raw, edges, region); err != nil {
+	if err := d.handshake(ctx, s, raw, edges, region, tlsTime); err != nil {
 		_ = raw.Close()
 		return nil, d.ctxErr(ctx, err)
 	}
@@ -381,7 +405,7 @@ func (st stage) cause() string {
 
 // handshake runs TLS, the upgrade, yamux, Hello and HelloAck within the
 // Hello deadline from the TCP connection to the edge.
-func (d *Dialer) handshake(ctx context.Context, s *Session, raw net.Conn, edges *EdgeList, region string) (err error) {
+func (d *Dialer) handshake(ctx context.Context, s *Session, raw net.Conn, edges *EdgeList, region string, tlsTime func() time.Time) (err error) {
 	deadline := d.cfg.Now().Add(caps.HelloDeadline)
 	var st atomic.Int32
 	expiry := newHelloGuard(func() { _ = raw.Close() })
@@ -404,7 +428,7 @@ func (d *Dialer) handshake(ctx context.Context, s *Session, raw net.Conn, edges 
 		alpn = wire.ALPNWebSocket
 	}
 	tc := tls.Client(raw, &tls.Config{ServerName: s.Name, RootCAs: d.cfg.RootCAs, NextProtos: []string{alpn},
-		MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13, SessionTicketsDisabled: true})
+		MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13, SessionTicketsDisabled: true, Time: tlsTime})
 	if err := tc.HandshakeContext(ctx); err != nil {
 		if noALPN(err) {
 			return blocked(CauseALPN, "alpn_refused", err)

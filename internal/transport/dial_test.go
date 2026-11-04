@@ -480,6 +480,12 @@ func TestDialTLSFailures(t *testing.T) {
 		{"untrusted root", func(e *edgeSrv) []dialOpt {
 			return []dialOpt{func(c *Config) { c.RootCAs = x509.NewCertPool() }}
 		}, CauseTLS},
+		{"certificate expired on the TLS clock", func(e *edgeSrv) []dialOpt {
+			return []dialOpt{func(c *Config) { c.TLSTime = func() time.Time { return time.Now().Add(2 * time.Hour) } }}
+		}, CauseTLS},
+		{"certificate not yet valid on the TLS clock", func(e *edgeSrv) []dialOpt {
+			return []dialOpt{func(c *Config) { c.TLSTime = func() time.Time { return time.Unix(0, 0) } }}
+		}, CauseTLS},
 		{"TLS 1.2 only", func(e *edgeSrv) []dialOpt { e.maxVersion = tls.VersionTLS12; return nil }, CauseTLS},
 		{"no ALPN", func(e *edgeSrv) []dialOpt { e.alpn = nil; return nil }, CauseALPN},
 		{"other ALPN only", func(e *edgeSrv) []dialOpt { e.alpn = []string{"h2"}; return nil }, CauseALPN},
@@ -584,6 +590,40 @@ func TestDialTLSInterceptionFails(t *testing.T) {
 		_, err := d.Dial(ctx(t), testName, car)
 		if er := asError(t, err); er.Kind != Auth || er.Code != pb.RefuseCode_INVALID_PROOF {
 			t.Fatal(car, err)
+		}
+	}
+}
+
+func TestDialRetriesOnceAfterExpiredCertificate(t *testing.T) {
+	future := func() time.Time { return time.Now().Add(2 * time.Hour) }
+	for _, car := range []Carriage{TLS, WebSocket} {
+		e := newEdge(t)
+		e.start()
+		var asked int
+		d := e.dialer(t, func(c *Config) {
+			c.TLSTime = future
+			c.TLSRetryTime = func() (time.Time, bool) { asked++; return time.Now(), true }
+		})
+		s, err := d.Dial(ctx(t), testName, car)
+		if err != nil || asked != 1 {
+			t.Fatalf("%s: %v, asked %d", car, err, asked)
+		}
+		_ = s.Close()
+		d = e.dialer(t, func(c *Config) {
+			c.TLSTime = future
+			c.TLSRetryTime = func() (time.Time, bool) { return time.Time{}, false }
+		})
+		if _, err := d.Dial(ctx(t), testName, car); !CertExpired(err) {
+			t.Fatalf("%s: no retry time, want the expiry error: %v", car, err)
+		}
+		// Other TLS failures are not retried.
+		asked = 0
+		d = e.dialer(t, func(c *Config) {
+			c.RootCAs = x509.NewCertPool()
+			c.TLSRetryTime = func() (time.Time, bool) { asked++; return time.Now(), true }
+		})
+		if _, err := d.Dial(ctx(t), testName, car); err == nil || asked != 0 {
+			t.Fatalf("%s: untrusted root retried: %v", car, err)
 		}
 	}
 }

@@ -143,6 +143,17 @@
     $("update").textContent = text;
     $("update").hidden = !text;
   }
+  function findClock(s) {
+    if (!s || typeof s !== "object") return null;
+    if (s.clock && typeof s.clock === "object") return s.clock;
+    return findClock(s.status);
+  }
+  function renderClock(status) {
+    var c = findClock(status) || {};
+    var text = c.state === "wrong" ? (c.text || "The clock on this machine is wrong.") : "";
+    $("clock").textContent = text;
+    $("clock").hidden = !text;
+  }
   function renderTunnels(status) {
     killed = findHolds(status).indexOf("kill_switch") >= 0;
     var tunnel = findTunnel(status);
@@ -227,6 +238,7 @@
         $("status").textContent = JSON.stringify(r.body, null, 2);
         renderTunnels(r.body);
         renderUpdate(r.body);
+        renderClock(r.body);
       });
       loadPair();
       call("GET", "/api/apps").then(function (r) { if (r.ok) renderApps(r.body.apps); });

@@ -91,7 +91,7 @@ func TestKeySetHoldNames(t *testing.T) {
 // The processor follows the paired server without a restart.
 func TestInstructionsFollowTheAccount(t *testing.T) {
 	st := pairedStore(t)
-	h := newInstructions(nil, st, &trust{}, func(time.Time) bool { return false }, func(context.Context) error { return nil })
+	h := newInstructions(nil, st, &trust{}, func(time.Time) bool { return false }, nil, func(context.Context) error { return nil })
 	p1, id1 := h.get()
 	if p1 == nil || id1 != "7c9e6679-7425-40de-944b-e07fc1f90ae7" {
 		t.Fatalf("paired: %v %q", p1, id1)
@@ -121,7 +121,7 @@ func TestInstructionsFollowTheAccount(t *testing.T) {
 // server; another pairing starts in observe.
 func TestVisitorEnforcementFollowsTheAccount(t *testing.T) {
 	st := pairedStore(t)
-	h := newInstructions(nil, st, &trust{}, func(time.Time) bool { return false }, func(context.Context) error { return nil })
+	h := newInstructions(nil, st, &trust{}, func(time.Time) bool { return false }, nil, func(context.Context) error { return nil })
 	if h.visitorMode() != visitor.Observe {
 		t.Fatal("default is not observe")
 	}
@@ -150,7 +150,7 @@ func TestVisitorEnforcementFollowsTheAccount(t *testing.T) {
 		t.Fatal("seq source")
 	}
 
-	h2 := newInstructions(nil, st, &trust{}, func(time.Time) bool { return false }, func(context.Context) error { return nil })
+	h2 := newInstructions(nil, st, &trust{}, func(time.Time) bool { return false }, nil, func(context.Context) error { return nil })
 	if h2.visitorMode() != visitor.Enforce {
 		t.Fatal("mode lost on restart")
 	}

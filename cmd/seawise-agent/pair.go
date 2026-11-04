@@ -84,10 +84,11 @@ func tunnelHold(ctx context.Context, a *agent.Agent) string {
 }
 
 // deviceCaller is the one signer of device API calls outside the tunnel;
-// its proofs carry the signed-time clock.
-func deviceCaller(clock func() time.Time) (*devicecall.Caller, error) {
+// its proofs carry the signed-time clock and its certificates are checked
+// at tlsTime, once more at retry after an expired certificate.
+func deviceCaller(clock, tlsTime func() time.Time, retry func() (time.Time, bool)) (*devicecall.Caller, error) {
 	return devicecall.New(devicecall.Config{
-		Client:  &http.Client{Transport: controlplane.NewTransport(os.Getenv, nil), Timeout: 30 * time.Second},
+		Client:  &http.Client{Transport: controlplane.NewTransportRetry(os.Getenv, nil, tlsTime, retry), Timeout: 30 * time.Second},
 		Version: constants.Version, Now: clock,
 	})
 }

@@ -159,6 +159,19 @@ func TestUIUsesTextContentOnly(t *testing.T) {
 	}
 }
 
+func TestUIShowsWrongClock(t *testing.T) {
+	html, _ := staticFS.ReadFile("static/index.html")
+	if !strings.Contains(string(html), `id="clock"`) {
+		t.Error("index.html has no clock element")
+	}
+	js, _ := staticFS.ReadFile("static/app.js")
+	for _, want := range []string{"s.clock", `c.state === "wrong"`, "renderClock(r.body)"} {
+		if !strings.Contains(string(js), want) {
+			t.Errorf("app.js does not use %s", want)
+		}
+	}
+}
+
 func TestUIShowsUpdateNotice(t *testing.T) {
 	html, _ := staticFS.ReadFile("static/index.html")
 	if !strings.Contains(string(html), `id="update"`) {

@@ -205,10 +205,9 @@ func TestVectorsVerify(t *testing.T) {
 					ServerID:       ctx.ServerID,
 					Lookup:         registryLookup(t, ctx.Registry),
 					PreviousKeyIDs: ctx.PreviousKIDs,
-					Applied:        func(kid string) (Rotation, bool) { r, ok := ctx.Applied[kid]; return r, ok },
 				})
 				if err == nil {
-					res = rotationResult{OldKID: r.OldKeyID, NewKID: r.NewKeyID, AlreadyApplied: r.AlreadyApplied}
+					res = rotationResult{OldKID: r.OldKeyID, NewKID: r.NewKeyID}
 				}
 			}
 			checkCase(t, c, res, err)

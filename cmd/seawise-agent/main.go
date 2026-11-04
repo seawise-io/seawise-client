@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"net/netip"
 	"os"
 	"os/signal"
@@ -96,7 +97,7 @@ func main() {
 	}
 	tr := startTrust(log, st)
 	clock := session.OpenSignedClock(st.Dir(), log)
-	call, err := deviceCaller(clock.Now)
+	call, err := deviceCaller(clock.Now, clock.TrustTime, clock.RetryTime)
 	if err != nil {
 		log.Error("device API client", "error", err)
 		os.Exit(1)
@@ -145,7 +146,8 @@ func main() {
 			}
 			return st.Secrets().FRPToken
 		},
-		Version: constants.Version,
+		Version:    constants.Version,
+		HTTPClient: &http.Client{Transport: controlplane.NewTransportRetry(os.Getenv, nil, clock.TrustTime, clock.RetryTime)},
 	})
 	if err != nil {
 		log.Error("control plane", "error", err)
@@ -167,12 +169,12 @@ func main() {
 	syncDone := make(chan struct{})
 	go func() { _ = syncer.Run(ctx); close(syncDone) }()
 
-	updates, fresh := startUpdateCheck(ctx, log, st, tr)
-	ins = newInstructions(log, st, tr, fresh, a.Reconcile)
+	updates, fresh := startUpdateCheck(ctx, log, st, tr, clock.TrustTime, clock.RetryTime)
+	ins = newInstructions(log, st, tr, fresh, clock.Now, a.Reconcile)
 
 	ui, err := startAdminUI(ctx, log, st, a, appEngine, accessLog, pairing, func(ctx context.Context) any {
 		as, _ := a.Status(ctx)
-		return map[string]any{"agent": as, "enrolment": enrolment(), "control_plane": syncer.Status(), "app_sync": apps(), "access_log": accessLog.Status(), "updates": updates(), "keyset": tr.status(), "instructions": ins.status(), "visitor_tokens": ins.visitorStatus(), "data_streams": dataStreams.Status()}
+		return map[string]any{"agent": as, "enrolment": enrolment(), "control_plane": syncer.Status(), "app_sync": apps(), "access_log": accessLog.Status(), "updates": updates(), "keyset": tr.status(), "instructions": ins.status(), "visitor_tokens": ins.visitorStatus(), "data_streams": dataStreams.Status(), "clock": clock.Status()}
 	})
 	if err != nil {
 		log.Error("admin UI", "error", err)
@@ -195,8 +197,8 @@ var testUpdateConfig = func(*updatecheck.Config) {}
 // startUpdateCheck starts the signed update check and returns its status
 // and whether its metadata is fresh. It hands each verified key set and
 // floor to tr and shows release notices unless SEAWISE_UPDATE_CHECK=0; it
-// never changes the running client.
-func startUpdateCheck(ctx context.Context, log *slog.Logger, st *store.Store, tr *trust) (func() updatecheck.Status, func(time.Time) bool) {
+// never changes the running client. Metadata expiry and TLS use now.
+func startUpdateCheck(ctx context.Context, log *slog.Logger, st *store.Store, tr *trust, now func() time.Time, retry func() (time.Time, bool)) (func() updatecheck.Status, func(time.Time) bool) {
 	never := func(time.Time) bool { return false }
 	fixed := func(s updatecheck.Status) (func() updatecheck.Status, func(time.Time) bool) {
 		return func() updatecheck.Status { return s }, never
@@ -206,7 +208,8 @@ func startUpdateCheck(ctx context.Context, log *slog.Logger, st *store.Store, tr
 		Root: root, URL: url, Dir: filepath.Join(st.Dir(), "tuf"),
 		Channel: envOr("SEAWISE_UPDATE_CHANNEL", "stable"), Version: constants.Version, Logger: log,
 		OnKeySet: tr.offer, AcceptedKeySet: tr.accepted, FloorBackup: tr.tufFloor, OnVerified: tr.setTUFFloor,
-		HideNotices: os.Getenv("SEAWISE_UPDATE_CHECK") == "0",
+		HideNotices: os.Getenv("SEAWISE_UPDATE_CHECK") == "0", Now: now,
+		Transport: controlplane.NewTransportRetry(os.Getenv, nil, now, retry),
 	}
 	testUpdateConfig(&cfg)
 	c, err := updatecheck.New(cfg)

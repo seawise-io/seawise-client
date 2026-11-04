@@ -86,6 +86,8 @@ type Config struct {
 	// accepted; nil uses the last one fetched.
 	AcceptedKeySet func() string
 
+	// Now is the time metadata expiry and TLS certificates are checked
+	// against; the agent passes its signed-time clock.
 	Now    func() time.Time
 	Logger *slog.Logger
 }
@@ -163,9 +165,6 @@ func New(cfg Config) (*Checker, error) {
 	if err := checkPinnedRoot(cfg.Root, cfg.AllowTestRoot); err != nil {
 		return nil, err
 	}
-	if cfg.Transport == nil {
-		cfg.Transport = controlplane.NewTransport(os.Getenv, nil)
-	}
 	if cfg.RequestTimeout <= 0 {
 		cfg.RequestTimeout = 30 * time.Second
 	}
@@ -183,6 +182,9 @@ func New(cfg Config) (*Checker, error) {
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
+	}
+	if cfg.Transport == nil {
+		cfg.Transport = controlplane.NewTransportAt(os.Getenv, nil, cfg.Now)
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.DiscardHandler)

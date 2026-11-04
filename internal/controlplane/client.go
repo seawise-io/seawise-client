@@ -27,6 +27,7 @@ import (
 
 	"github.com/seawise/client/internal/constants"
 	"github.com/seawise/client/internal/netproxy"
+	"github.com/seawise/client/internal/transport"
 )
 
 const (
@@ -180,16 +181,72 @@ func New(cfg Config) (*Client, error) {
 // time is longer than the heartbeat interval, so an active connection
 // sends no probes. roots nil uses the system roots.
 func NewTransport(getenv netproxy.Getenv, roots *x509.CertPool) *http.Transport {
+	return NewTransportAt(getenv, roots, nil)
+}
+
+// NewTransportAt is NewTransport checking certificates against now, such
+// as the signed-time clock on a device without a real-time clock; nil
+// uses the system clock.
+func NewTransportAt(getenv netproxy.Getenv, roots *x509.CertPool, now func() time.Time) *http.Transport {
 	return &http.Transport{
 		Proxy:                 netproxy.Func(getenv),
 		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: tcpKeepAlive}).DialContext,
-		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots},
+		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, Time: now},
 		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 15 * time.Second,
 		IdleConnTimeout:       90 * time.Second,
 		MaxIdleConns:          4,
 		ForceAttemptHTTP2:     true,
 	}
+}
+
+// NewTransportRetry is NewTransportAt plus one more attempt at the time
+// retry gives, when it gives one, after the TLS handshake refused a
+// certificate as expired. The request never reached the server, so any
+// method may be retried; a body is replayed through GetBody.
+func NewTransportRetry(getenv netproxy.Getenv, roots *x509.CertPool, now func() time.Time, retry func() (time.Time, bool)) http.RoundTripper {
+	p := NewTransportAt(getenv, roots, now)
+	if retry == nil {
+		return p
+	}
+	return &RetryTransport{primary: p, retry: retry}
+}
+
+// RetryTransport is the round tripper NewTransportRetry returns.
+type RetryTransport struct {
+	primary *http.Transport
+	retry   func() (time.Time, bool)
+}
+
+// Primary is the transport tried first.
+func (r *RetryTransport) Primary() *http.Transport { return r.primary }
+
+func (r *RetryTransport) CloseIdleConnections() { r.primary.CloseIdleConnections() }
+
+func (r *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := r.primary.RoundTrip(req)
+	if err == nil || !transport.CertExpired(err) {
+		return resp, err
+	}
+	t, ok := r.retry()
+	if !ok {
+		return resp, err
+	}
+	if req.Body != nil && req.Body != http.NoBody {
+		if req.GetBody == nil {
+			return nil, err
+		}
+		b, gerr := req.GetBody()
+		if gerr != nil {
+			return nil, err
+		}
+		req = req.Clone(req.Context())
+		req.Body = b
+	}
+	fb := r.primary.Clone()
+	fb.DisableKeepAlives = true
+	fb.TLSClientConfig.Time = func() time.Time { return t }
+	return fb.RoundTrip(req)
 }
 
 func validateBaseURL(raw string) (string, error) {

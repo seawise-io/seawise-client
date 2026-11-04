@@ -147,9 +147,6 @@ type RotationResult struct {
 	NewKeyID  string
 	NewPublic ed25519.PublicKey
 	IAT       int64
-	// AlreadyApplied is set when r is byte-identical to the rotation the
-	// server already accepted from this key: a retry, answered as success.
-	AlreadyApplied bool
 }
 
 // RotationCheck is what the verifier knows about the requesting server.
@@ -159,8 +156,6 @@ type RotationCheck struct {
 	// PreviousKeyIDs are every key ID ever registered for the server; a
 	// rotation back to one of them is refused.
 	PreviousKeyIDs []string
-	// Applied returns the rotation already accepted from oldKID, if any.
-	Applied func(oldKID string) (Rotation, bool)
 }
 
 // NewRotation signs a rotation from oldKey to newKey.
@@ -223,12 +218,9 @@ func VerifyRotation(r Rotation, c RotationCheck) (*RotationResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	applied := false
-	if c.Applied != nil {
-		prev, ok := c.Applied(st.kid)
-		applied = ok && prev == r
-	}
-	if !applied && old.Status != StatusActive {
+	// A retry after the server accepted is refused too: the agent then
+	// proves the pending key instead.
+	if old.Status != StatusActive {
 		return nil, fail(CodeKeyRevoked, "key is not active")
 	}
 	var cl RotationClaims
@@ -255,7 +247,7 @@ func VerifyRotation(r Rotation, c RotationCheck) (*RotationResult, error) {
 		return nil, fail(CodeBadKey, "new key equals old key")
 	}
 	newKID := KeyID(newPub)
-	if !applied && slices.Contains(c.PreviousKeyIDs, newKID) {
+	if slices.Contains(c.PreviousKeyIDs, newKID) {
 		return nil, fail(CodeBadKey, "new key was registered before")
 	}
 	if pop.kid != newKID {
@@ -264,5 +256,5 @@ func VerifyRotation(r Rotation, c RotationCheck) (*RotationResult, error) {
 	if err := pop.verify(newPub); err != nil {
 		return nil, err
 	}
-	return &RotationResult{ServerID: cl.ServerID, OldKeyID: st.kid, NewKeyID: newKID, NewPublic: newPub, IAT: cl.IAT, AlreadyApplied: applied}, nil
+	return &RotationResult{ServerID: cl.ServerID, OldKeyID: st.kid, NewKeyID: newKID, NewPublic: newPub, IAT: cl.IAT}, nil
 }

@@ -146,6 +146,7 @@ type instructions struct {
 	st        *store.Store
 	t         *trust
 	fresh     func(time.Time) bool
+	now       func() time.Time
 	reconcile func(context.Context) error
 
 	mu       sync.Mutex
@@ -154,11 +155,12 @@ type instructions struct {
 	serverID string
 }
 
-func newInstructions(log *slog.Logger, st *store.Store, t *trust, fresh func(time.Time) bool, reconcile func(context.Context) error) *instructions {
+// newInstructions checks instruction times on now (nil: the system clock).
+func newInstructions(log *slog.Logger, st *store.Store, t *trust, fresh func(time.Time) bool, now func() time.Time, reconcile func(context.Context) error) *instructions {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &instructions{log: log, st: st, t: t, fresh: fresh, reconcile: reconcile}
+	return &instructions{log: log, st: st, t: t, fresh: fresh, now: now, reconcile: reconcile}
 }
 
 // get returns the processor for the server paired now, or nil.
@@ -184,7 +186,7 @@ func (h *instructions) get() (*instruction.Processor, string) {
 	ex := executors(h.st, h.reconcile)
 	p, err := instruction.New(instruction.Config{
 		Dir: filepath.Join(h.st.Dir(), "instructions", id), ServerID: id,
-		KeySet: h.t.current, Fresh: h.fresh, Unpair: ex.unpair, DeleteApp: ex.deleteApp,
+		KeySet: h.t.current, Fresh: h.fresh, Now: h.now, Unpair: ex.unpair, DeleteApp: ex.deleteApp,
 		SetVisitorEnforcement: setVisitorEnforcement(h.log, modes), VisitorSeq: visitorSeq(modes), Logger: h.log,
 	})
 	if err != nil {

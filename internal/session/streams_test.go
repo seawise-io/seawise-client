@@ -151,6 +151,22 @@ func TestSignedClockFromRouteSet(t *testing.T) {
 	}
 }
 
+func TestRouteSetSignedTimeTooLateIgnored(t *testing.T) {
+	sc := NewSignedClock(func() time.Time { return time.Unix(1600000000, 0) })
+	h := newHarness(t, func(c *Config) { c.SignedClock = sc })
+	r := h.dial()
+	h.clock.Advance(SignedTimeWindow + time.Second)
+	c := newConn(r.carriage, h.clock)
+	r.reply <- dialRes{conn: c}
+	m := routeSetMsg(t, 1, testSessionID)
+	m.GetRouteSet().SignedTime = sign(t, "control", protocol.TypTime, map[string]any{"server_id": testServer, "time": 1700000500, "nonce": claims.TimeNonce(c.info.TimeNonce)})
+	c.in <- m
+	h.wait("routes applied", func(s Status) bool { return s.Up })
+	if s := h.m.Status(); s.SignedTime != 0 || sc.Ready() {
+		t.Fatal("signed time from a RouteSet long after the Hello applied:", s.SignedTime)
+	}
+}
+
 func TestSignedClockFromHeartbeat(t *testing.T) {
 	sc := NewSignedClock(func() time.Time { return time.Unix(1900000000, 0) })
 	h := newHarness(t, func(c *Config) { c.SignedClock = sc })

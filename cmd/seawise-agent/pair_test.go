@@ -14,7 +14,7 @@ import (
 
 func TestPairingNeedsAKeystore(t *testing.T) {
 	st, ks := importedStore(t)
-	call, err := deviceCaller(nil)
+	call, err := deviceCaller(nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

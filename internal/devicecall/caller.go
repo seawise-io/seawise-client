@@ -86,7 +86,11 @@ func New(cfg Config) (*Caller, error) {
 	if cfg.Client != nil {
 		cl = *cfg.Client
 	}
-	if t, ok := cl.Transport.(*http.Transport); ok && t.TLSClientConfig != nil && t.TLSClientConfig.InsecureSkipVerify {
+	t, ok := cl.Transport.(*http.Transport)
+	if p, isRetry := cl.Transport.(interface{ Primary() *http.Transport }); isRetry {
+		t, ok = p.Primary(), true
+	}
+	if ok && t.TLSClientConfig != nil && t.TLSClientConfig.InsecureSkipVerify {
 		return nil, ErrInsecureTLS
 	}
 	// A redirect would carry the proof and any credential header elsewhere.

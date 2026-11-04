@@ -101,7 +101,7 @@ func tunnelFactory(ts tunnelSetup) func() (agent.Tunnel, error) {
 				Key: k, ServerID: serverID, RunID: runID, AgentVersion: constants.Version,
 				KillSwitch: func() bool { return ts.st.State().HasHold(store.HoldKillSwitch) },
 				KeySetHold: ts.keySetHold,
-				DataDir:    ts.st.Dir(), Logger: ts.log,
+				DataDir:    ts.st.Dir(), TLSTime: ts.clock.TrustTime, TLSRetryTime: ts.clock.RetryTime, Logger: ts.log,
 			})
 		}
 		m, err := session.New(session.Config{

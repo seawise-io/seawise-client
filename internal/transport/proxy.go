@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/seawise/client/internal/netproxy"
 )
@@ -70,7 +71,7 @@ func parseProxy(u *url.URL) (*proxy, error) {
 // connect opens a CONNECT tunnel to name:443 through the proxy. The edge
 // speaks only after the agent's ClientHello, so any byte after the
 // proxy's answer is refused.
-func (d *Dialer) connect(ctx context.Context, p *proxy, name string) (net.Conn, error) {
+func (d *Dialer) connect(ctx context.Context, p *proxy, name string, tlsTime func() time.Time) (net.Conn, error) {
 	conn, err := d.dialTCP(ctx, "tcp", p.addr)
 	if err != nil {
 		return nil, blocked(CauseDial, "proxy_dial", fmt.Errorf("proxy %s: %w", p.public, opErr(err)))
@@ -79,7 +80,7 @@ func (d *Dialer) connect(ctx context.Context, p *proxy, name string) (net.Conn, 
 	defer stop()
 	if p.tls {
 		tc := tls.Client(conn, &tls.Config{ServerName: p.host, RootCAs: d.cfg.ProxyRootCAs,
-			MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}})
+			MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}, Time: tlsTime})
 		if err := tc.HandshakeContext(ctx); err != nil {
 			_ = conn.Close()
 			return nil, blocked(CauseDial, "proxy_tls", fmt.Errorf("proxy %s: %w", p.public, err))

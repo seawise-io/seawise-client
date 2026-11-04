@@ -48,6 +48,9 @@ const (
 	TimeRetryMax = 2 * time.Minute
 	// rotationRetry is the first wait after a failed rotation proof.
 	rotationRetry = 30 * time.Second
+	// SignedTimeWindow is how long after its request a signed time may
+	// arrive: the heartbeat, or for a RouteSet the dial carrying the Hello.
+	SignedTimeWindow = 30 * time.Second
 )
 
 // Heartbeat budgets; variables so tests can shorten them.
@@ -172,6 +175,7 @@ type live struct {
 	routeVer   int64
 	policyVer  uint64
 	deadline   time.Time // RouteSet deadline before up
+	dialAt     time.Time // dial start, before the Hello carrying TimeNonce
 	drainUntil time.Time
 	lastRx     time.Time
 }
@@ -189,6 +193,7 @@ type dialing struct {
 
 type evDial struct {
 	id   int
+	at   time.Time
 	conn Conn
 	err  error
 }
@@ -558,11 +563,12 @@ func (m *Manager) dial(ctx context.Context, c transport.Carriage, second bool) {
 	id := m.nextID
 	dctx, cancel := context.WithCancel(ctx)
 	m.dials[id] = &dialing{cancel: cancel, second: second}
+	at := m.cfg.Clock.Now()
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
 		conn, err := m.cfg.Dial(dctx, m.cfg.Name, c)
-		m.post(evDial{id: id, conn: conn, err: err})
+		m.post(evDial{id: id, at: at, conn: conn, err: err})
 	}()
 }
 
@@ -628,7 +634,7 @@ func (m *Manager) onDial(ctx context.Context, ev evDial) {
 		}
 		return
 	}
-	l := &live{id: ev.id, conn: ev.conn, gone: make(chan struct{}), info: ev.conn.Info(), deadline: m.cfg.Clock.Now().Add(RouteSetDeadline)}
+	l := &live{id: ev.id, conn: ev.conn, gone: make(chan struct{}), info: ev.conn.Info(), deadline: m.cfg.Clock.Now().Add(RouteSetDeadline), dialAt: ev.at}
 	m.conns[l.id] = l
 	m.wg.Add(1)
 	go m.read(l)
@@ -815,9 +821,13 @@ func (m *Manager) routeSet(ctx context.Context, l *live, rs *pb.RouteSet) {
 	}
 	if st := rs.GetSignedTime(); st != "" {
 		t, err := protocol.VerifySignedTime(st, ks, m.cfg.ServerID, claims.TimeNonce(l.info.TimeNonce))
-		if err != nil {
+		switch {
+		case err != nil:
 			m.log.Warn("signed time in RouteSet ignored", "error", err)
-		} else {
+		case m.cfg.Clock.Now().Sub(l.dialAt) > SignedTimeWindow:
+			// The time nonce was sent with the Hello; a late answer may be old.
+			m.log.Warn("signed time in RouteSet arrived too late; ignored")
+		default:
 			m.cur.SignedTime = max(m.cur.SignedTime, t.Time)
 			m.observeTime(t.Time)
 		}

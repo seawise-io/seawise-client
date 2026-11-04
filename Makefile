@@ -14,7 +14,8 @@ UID := $(shell id -u)
 GID := $(shell id -g)
 
 GOFLAGS_REPRO := -trimpath -buildvcs=false
-LDFLAGS := -s -w -buildid= -X github.com/seawise/client/internal/constants.Version=$(VERSION)
+SOURCE_DATE_EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null)
+LDFLAGS := -s -w -buildid= -X github.com/seawise/client/internal/constants.Version=$(VERSION) -X github.com/seawise/client/internal/constants.BuildEpoch=$(SOURCE_DATE_EPOCH)
 
 ifeq ($(GO_DOCKER),1)
 RUN := docker run --rm --init \
@@ -72,7 +73,7 @@ image:
 	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE_TAG) .
 
 image-agent:
-	docker build -f Dockerfile.agent --build-arg VERSION=$(VERSION) -t $(AGENT_IMAGE_TAG) .
+	docker build -f Dockerfile.agent --build-arg VERSION=$(VERSION) --build-arg SOURCE_DATE_EPOCH=$(SOURCE_DATE_EPOCH) -t $(AGENT_IMAGE_TAG) .
 
 # Runs the agent image as each packaging template does.
 test-packaging: image-agent

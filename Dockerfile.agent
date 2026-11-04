@@ -23,13 +23,16 @@ RUN go mod download
 COPY . .
 
 ARG VERSION=dev
+# Source date (unix seconds) of the build; the agent treats a system clock
+# more than 30 days before it as having no real-time clock.
+ARG SOURCE_DATE_EPOCH=
 ARG TARGETARCH=amd64
 ARG TARGETVARIANT=
 RUN GOARM="" && \
     if [ "${TARGETARCH}" = "arm" ]; then GOARM="${TARGETVARIANT#v}"; fi && \
     CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} GOARM=${GOARM} go build \
     -trimpath -buildvcs=false \
-    -ldflags="-s -w -buildid= -X github.com/seawise/client/internal/constants.Version=${VERSION}" \
+    -ldflags="-s -w -buildid= -X github.com/seawise/client/internal/constants.Version=${VERSION} -X github.com/seawise/client/internal/constants.BuildEpoch=${SOURCE_DATE_EPOCH}" \
     -o /seawise-agent ./cmd/seawise-agent
 
 # Runtime stage

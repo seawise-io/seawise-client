@@ -67,7 +67,7 @@ func TestTimeFloorPersistedAcrossRestart(t *testing.T) {
 	if c.Ready() {
 		t.Fatal("ready before any signed time")
 	}
-	c.Observe(1700000500)
+	c.Observe(1700000200)
 	if !c.Ready() {
 		t.Fatal("not ready after a signed time")
 	}
@@ -77,10 +77,10 @@ func TestTimeFloorPersistedAcrossRestart(t *testing.T) {
 	}
 	f2 := &fakeClocks{wall: time.Unix(1600000000, 0)}
 	r := openSignedClock(dir, f2.Wall, f2.Mono, nil)
-	if fl, ok := r.Floor(); !ok || fl != 1700000500 {
+	if fl, ok := r.Floor(); !ok || fl != 1700000200 {
 		t.Fatal(fl, ok)
 	}
-	if got := r.Now().Unix(); got != 1700000500 {
+	if got := r.Now().Unix(); got != 1700000200 {
 		t.Fatal("clock behind the persisted floor:", got)
 	}
 	if r.Ready() {
@@ -254,7 +254,7 @@ func TestFarFutureFloorHeals(t *testing.T) {
 	}
 }
 
-func TestFloorWithinAnHourKept(t *testing.T) {
+func TestAcceptedSignedTimeBecomesTheFloor(t *testing.T) {
 	dir := floorDir(t)
 	if err := os.WriteFile(filepath.Join(dir, TimeFloorFile), []byte(`{"schema":1,"floor":1700003000}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -262,7 +262,7 @@ func TestFloorWithinAnHourKept(t *testing.T) {
 	f := &fakeClocks{wall: time.Unix(1700000000, 0)}
 	c := openSignedClock(dir, f.Wall, f.Mono, nil)
 	c.Observe(1700000000)
-	if fl, _ := c.Floor(); fl != 1700003000 {
+	if fl, _ := c.Floor(); fl != 1700000000 {
 		t.Fatal(fl)
 	}
 }

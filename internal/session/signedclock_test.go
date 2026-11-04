@@ -63,10 +63,12 @@ func TestSignedClockNeverBelowFloor(t *testing.T) {
 }
 
 func TestSignedClockIgnoresOlderSignedTime(t *testing.T) {
-	w := &wall{t: time.Unix(1700000000, 0)}
+	// A system clock ahead, so older times are not closer to it.
+	w := &wall{t: time.Unix(1700001000, 0)}
 	sc := NewSignedClock(w.now)
 	sc.Observe(1700000100)
-	sc.Observe(1700000050)
+	sc.Observe(1700000050) // older than the last
+	sc.Observe(1699999000) // far behind both clocks
 	if got := sc.Now().Unix(); got != 1700000100 {
 		t.Fatal(got)
 	}
@@ -82,20 +84,21 @@ func TestSignedClockIgnoresOlderSignedTime(t *testing.T) {
 }
 
 func TestSignedClockConcurrent(t *testing.T) {
-	sc := NewSignedClock(nil)
+	// Every signed time agrees with the system clock.
+	sc := NewSignedClock(func() time.Time { return time.Unix(1700000200, 0) })
 	var wg sync.WaitGroup
 	for i := range 8 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for j := range 200 {
-				sc.Observe(1700000000 + int64(i*1000+j))
+				sc.Observe(1700000000 + int64(i*30+j))
 				_ = sc.Now()
 			}
 		}()
 	}
 	wg.Wait()
-	if f, _ := sc.Floor(); f != 1700007199 {
+	if f, _ := sc.Floor(); f != 1700000409 {
 		t.Fatal(f)
 	}
 }

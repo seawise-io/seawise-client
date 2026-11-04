@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fakeProxy is an HTTP CONNECT proxy that sends every tunnel to the edge.
@@ -256,6 +257,18 @@ func TestHTTPSProxy(t *testing.T) {
 	_ = s.Close()
 	// An https proxy with an untrusted certificate is refused.
 	d = e.dialer(t, env(map[string]string{"HTTPS_PROXY": "https://localhost:" + port}), func(c *Config) {
+		c.DialTCP = func(ctx context.Context, n, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, n, p.ln.Addr().String())
+		}
+	})
+	if _, err := d.Dial(ctx(t), testName, TLS); asError(t, err).Reason != "proxy_tls" {
+		t.Fatal(err)
+	}
+	// The proxy certificate is checked on the TLS clock.
+	d = e.dialer(t, env(map[string]string{"HTTPS_PROXY": "https://localhost:" + port}), func(c *Config) {
+		c.ProxyRootCAs = roots
+		c.TLSTime = func() time.Time { return time.Now().Add(2 * time.Hour) }
 		c.DialTCP = func(ctx context.Context, n, _ string) (net.Conn, error) {
 			var d net.Dialer
 			return d.DialContext(ctx, n, p.ln.Addr().String())

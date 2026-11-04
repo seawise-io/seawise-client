@@ -491,22 +491,20 @@ func genFRP() vecFile {
 // --- rotation.json ---------------------------------------------------------
 
 type rotationContext struct {
-	ServerID     string              `json:"server_id"`
-	Registry     []registryJSON      `json:"registry"`
-	PreviousKIDs []string            `json:"previous_kids"`
-	Applied      map[string]Rotation `json:"applied"`
+	ServerID     string         `json:"server_id"`
+	Registry     []registryJSON `json:"registry"`
+	PreviousKIDs []string       `json:"previous_kids"`
 }
 
 type rotationResult struct {
-	OldKID         string `json:"old_kid"`
-	NewKID         string `json:"new_kid"`
-	AlreadyApplied bool   `json:"already_applied"`
+	OldKID string `json:"old_kid"`
+	NewKID string `json:"new_kid"`
 }
 
 func genRotation() vecFile {
 	a, nk := vecKey("device-a"), vecKey("device-new")
 	prev := []string{vecKID("device-a"), vecKID("device-b"), vecKID("device-old")}
-	ctx := raw(rotationContext{ServerID: vecServer1, Registry: vecRegistry(), PreviousKIDs: prev, Applied: map[string]Rotation{}})
+	ctx := raw(rotationContext{ServerID: vecServer1, Registry: vecRegistry(), PreviousKIDs: prev})
 	enc := func(r Rotation) string { return string(mustJSON(r)) }
 	rot := func(old, nw ed25519.PrivateKey, server string) Rotation {
 		r, err := NewRotation(old, nw, server, vecNow)
@@ -523,8 +521,7 @@ func genRotation() vecFile {
 		{ServerID: vecServer2, X: vecX("device-b"), Status: StatusActive, ValidFrom: vecT0},
 	}
 	rotatedPrev := append(slices.Clone(prev), vecKID("device-new"))
-	rotated := raw(rotationContext{ServerID: vecServer1, Registry: rotatedReg, PreviousKIDs: rotatedPrev, Applied: map[string]Rotation{vecKID("device-a"): valid}})
-	rot2, _ := NewRotation(a, nk, vecServer1, vecNow+1)
+	rotated := raw(rotationContext{ServerID: vecServer1, Registry: rotatedReg, PreviousKIDs: rotatedPrev})
 	claims := RotationClaims{ServerID: vecServer1, OldKID: vecKID("device-a"), NewJWK: mustJSON(PublicJWK(vecPub("device-new"))), IAT: vecNow}
 	payload := string(mustJSON(claims))
 	stHdr := kidHeader(TypRotate, vecKID("device-a"))
@@ -535,9 +532,8 @@ func genRotation() vecFile {
 	f := vecFile{Format: "rotation", Note: vectorNote, Keys: keyInfos("device-a", "device-b", "device-c", "device-new", "device-old")}
 	f.Cases = []vecCase{
 		{Name: "valid", Input: enc(valid), Context: ctx, Expect: "ok", Result: raw(rotationResult{OldKID: vecKID("device-a"), NewKID: vecKID("device-new")})},
-		{Name: "valid-retry-after-accept", Input: enc(valid), Context: rotated, Expect: "ok", Result: raw(rotationResult{OldKID: vecKID("device-a"), NewKID: vecKID("device-new"), AlreadyApplied: true})},
+		{Name: "retry-after-accept", Input: enc(valid), Context: rotated, Expect: "key_revoked"},
 		{Name: "other-rotation-after-accept", Input: enc(rot(a, vecKey("device-c"), vecServer1)), Context: rotated, Expect: "key_revoked"},
-		{Name: "retry-not-byte-identical", Input: enc(valid), Context: raw(rotationContext{ServerID: vecServer1, Registry: rotatedReg, PreviousKIDs: rotatedPrev, Applied: map[string]Rotation{vecKID("device-a"): rot2}}), Expect: "key_revoked"},
 		{Name: "rotate-back-to-previous-key", Input: enc(rot(nk, a, vecServer1)), Context: rotated, Expect: "bad_key"},
 		{Name: "rotate-to-key-of-other-device", Input: enc(rot(a, vecKey("device-b"), vecServer1)), Context: ctx, Expect: "bad_key"},
 		{Name: "statement-wrong-key", Input: pair(signRaw(vecKey("device-b"), stHdr, payload), valid.PoP), Context: ctx, Expect: "bad_signature"},
