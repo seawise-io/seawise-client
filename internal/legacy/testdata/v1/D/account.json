@@ -1,0 +1,11 @@
+{
+  "server_id": "00000000-0000-4000-8000-0000000000a1",
+  "server_name": "nas-D",
+  "frp_token": "synthetic-frp-token-D",
+  "frp_server_addr": "frp-1.example.invalid",
+  "frp_server_port": 7000,
+  "frp_use_tls": true,
+  "api_url": "https://api.example.invalid",
+  "user_id": "00000000-0000-4000-8000-0000000000b1",
+  "user_email": "owner@example.invalid"
+}

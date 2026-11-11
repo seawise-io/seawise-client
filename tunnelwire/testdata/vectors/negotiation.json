@@ -1,0 +1,274 @@
+{
+  "format": "negotiation",
+  "note": "TEST ONLY. Every key in this file is derived from a published seed; never use these keys outside tests.",
+  "keys": [
+    {
+      "name": "edge-us-east-1",
+      "seed": "e35b8a7761cefe5638786ca58772471ba7cd60cc27748fcf2efe928be612d766",
+      "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI",
+      "kid": "UQ2ttPbjBtNbT_c3ULYGOGuCXkkYbGqHGxcaD90W5H8"
+    }
+  ],
+  "cases": [
+    {
+      "name": "launch",
+      "kind": "negotiate",
+      "context": {
+        "agent_capabilities": [],
+        "agent_minor": 0,
+        "edge_capabilities": [],
+        "edge_minor": 0
+      },
+      "expect": "ok",
+      "result": {
+        "capabilities": [],
+        "protocol_minor": 0
+      }
+    },
+    {
+      "name": "agent-newer-minor",
+      "kind": "negotiate",
+      "context": {
+        "agent_capabilities": [],
+        "agent_minor": 3,
+        "edge_capabilities": [],
+        "edge_minor": 1
+      },
+      "expect": "ok",
+      "result": {
+        "capabilities": [],
+        "protocol_minor": 1
+      }
+    },
+    {
+      "name": "edge-newer-minor",
+      "kind": "negotiate",
+      "context": {
+        "agent_capabilities": [],
+        "agent_minor": 1,
+        "edge_capabilities": [],
+        "edge_minor": 4
+      },
+      "expect": "ok",
+      "result": {
+        "capabilities": [],
+        "protocol_minor": 1
+      }
+    },
+    {
+      "name": "intersection",
+      "kind": "negotiate",
+      "context": {
+        "agent_capabilities": [
+          "datagram",
+          "raw_tcp"
+        ],
+        "agent_minor": 0,
+        "edge_capabilities": [
+          "quic",
+          "raw_tcp"
+        ],
+        "edge_minor": 0
+      },
+      "expect": "ok",
+      "result": {
+        "capabilities": [
+          "raw_tcp"
+        ],
+        "protocol_minor": 0
+      }
+    },
+    {
+      "name": "unknown-strings-ignored",
+      "kind": "negotiate",
+      "context": {
+        "agent_capabilities": [
+          "future_thing",
+          "raw_tcp"
+        ],
+        "agent_minor": 0,
+        "edge_capabilities": [
+          "raw_tcp",
+          "zzz"
+        ],
+        "edge_minor": 0
+      },
+      "expect": "ok",
+      "result": {
+        "capabilities": [
+          "raw_tcp"
+        ],
+        "protocol_minor": 0
+      }
+    },
+    {
+      "name": "disjoint",
+      "kind": "negotiate",
+      "context": {
+        "agent_capabilities": [
+          "a"
+        ],
+        "agent_minor": 0,
+        "edge_capabilities": [
+          "b"
+        ],
+        "edge_minor": 0
+      },
+      "expect": "ok",
+      "result": {
+        "capabilities": [],
+        "protocol_minor": 0
+      }
+    },
+    {
+      "name": "edge-unsorted-input",
+      "kind": "negotiate",
+      "context": {
+        "agent_capabilities": [
+          "a",
+          "b",
+          "c"
+        ],
+        "agent_minor": 0,
+        "edge_capabilities": [
+          "c",
+          "a"
+        ],
+        "edge_minor": 0
+      },
+      "expect": "ok",
+      "result": {
+        "capabilities": [
+          "a",
+          "c"
+        ],
+        "protocol_minor": 0
+      }
+    },
+    {
+      "name": "ack-intersection",
+      "kind": "hello_ack",
+      "input": "Cl8KEAM2ITJNDtE5QRoAFidIJfgSDmVkZ2UtdXMtZWFzdC0xIgdyYXdfdGNwKiDTsH5o2PZg9+KYZuRT2rB4qqhjxlrdq8Pe9KBe9QIw7zCgnAE4mHVAgAFIgIAEUKD6AxJArTQhdRtao6bL+Dogo1P3U75izGNY6vHllqPqOe6c7TRaGX6IgEeL3JkqeBNobr1S8qaOiH+U+sRO4Vqam1gyAg==",
+      "context": {
+        "edge_keys": [
+          {
+            "edge_id": "edge-us-east-1",
+            "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI"
+          }
+        ],
+        "exporter": "c0ffee00c0ffee01c0ffee02c0ffee03c0ffee04c0ffee05c0ffee06c0ffee07",
+        "required": [],
+        "sent_body": "ChA/KpweW31Oj5oLHC0+T1prEitaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvGhD4zgZpPB/sVRN0vfA5bNYvKghkYXRhZ3JhbSoHcmF3X3RjcDIFMi4xLjA4AUIQfy6WOPrB8D3Ap3IY4xs+B0gCUIAB"
+      },
+      "expect": "ok"
+    },
+    {
+      "name": "ack-required-present",
+      "kind": "hello_ack",
+      "input": "Cl8KEAM2ITJNDtE5QRoAFidIJfgSDmVkZ2UtdXMtZWFzdC0xIgdyYXdfdGNwKiDTsH5o2PZg9+KYZuRT2rB4qqhjxlrdq8Pe9KBe9QIw7zCgnAE4mHVAgAFIgIAEUKD6AxJArTQhdRtao6bL+Dogo1P3U75izGNY6vHllqPqOe6c7TRaGX6IgEeL3JkqeBNobr1S8qaOiH+U+sRO4Vqam1gyAg==",
+      "context": {
+        "edge_keys": [
+          {
+            "edge_id": "edge-us-east-1",
+            "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI"
+          }
+        ],
+        "exporter": "c0ffee00c0ffee01c0ffee02c0ffee03c0ffee04c0ffee05c0ffee06c0ffee07",
+        "required": [
+          "raw_tcp"
+        ],
+        "sent_body": "ChA/KpweW31Oj5oLHC0+T1prEitaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvGhD4zgZpPB/sVRN0vfA5bNYvKghkYXRhZ3JhbSoHcmF3X3RjcDIFMi4xLjA4AUIQfy6WOPrB8D3Ap3IY4xs+B0gCUIAB"
+      },
+      "expect": "ok"
+    },
+    {
+      "name": "ack-required-missing",
+      "kind": "hello_ack",
+      "input": "Cl8KEAM2ITJNDtE5QRoAFidIJfgSDmVkZ2UtdXMtZWFzdC0xIgdyYXdfdGNwKiDTsH5o2PZg9+KYZuRT2rB4qqhjxlrdq8Pe9KBe9QIw7zCgnAE4mHVAgAFIgIAEUKD6AxJArTQhdRtao6bL+Dogo1P3U75izGNY6vHllqPqOe6c7TRaGX6IgEeL3JkqeBNobr1S8qaOiH+U+sRO4Vqam1gyAg==",
+      "context": {
+        "edge_keys": [
+          {
+            "edge_id": "edge-us-east-1",
+            "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI"
+          }
+        ],
+        "exporter": "c0ffee00c0ffee01c0ffee02c0ffee03c0ffee04c0ffee05c0ffee06c0ffee07",
+        "required": [
+          "datagram"
+        ],
+        "sent_body": "ChA/KpweW31Oj5oLHC0+T1prEitaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvGhD4zgZpPB/sVRN0vfA5bNYvKghkYXRhZ3JhbSoHcmF3X3RjcDIFMi4xLjA4AUIQfy6WOPrB8D3Ap3IY4xs+B0gCUIAB"
+      },
+      "expect": "edge_too_old"
+    },
+    {
+      "name": "ack-required-dropped-by-downgrade",
+      "kind": "hello_ack",
+      "input": "ClYKEAM2ITJNDtE5QRoAFidIJfgSDmVkZ2UtdXMtZWFzdC0xKiDTsH5o2PZg9+KYZuRT2rB4qqhjxlrdq8Pe9KBe9QIw7zCgnAE4mHVAgAFIgIAEUKD6AxJAGmtRaCJ8bQdme+sGaXvUqG0gD0gK36GyizngRiwejjzy1pxXH9LqoP2lUAv04IwMExwV3P22AYg/DOCg+MYPAw==",
+      "context": {
+        "edge_keys": [
+          {
+            "edge_id": "edge-us-east-1",
+            "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI"
+          }
+        ],
+        "exporter": "c0ffee00c0ffee01c0ffee02c0ffee03c0ffee04c0ffee05c0ffee06c0ffee07",
+        "required": [
+          "raw_tcp"
+        ],
+        "sent_body": "ChA/KpweW31Oj5oLHC0+T1prEitaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvGhD4zgZpPB/sVRN0vfA5bNYvKghkYXRhZ3JhbSoHcmF3X3RjcDIFMi4xLjA4AUIQfy6WOPrB8D3Ap3IY4xs+B0gCUIAB"
+      },
+      "expect": "edge_too_old"
+    },
+    {
+      "name": "ack-capability-added",
+      "kind": "hello_ack",
+      "input": "ClwKEAM2ITJNDtE5QRoAFidIJfgSDmVkZ2UtdXMtZWFzdC0xIgRxdWljKiDTsH5o2PZg9+KYZuRT2rB4qqhjxlrdq8Pe9KBe9QIw7zCgnAE4mHVAgAFIgIAEUKD6AxJAFmtEKHBm2xiFToK7W9utcmCxuIVyaSlhHdyJrLp7WT+wLpspBxz1K7NG0timOSNBlrC8LIbhoC0SfCnBqXI4AA==",
+      "context": {
+        "edge_keys": [
+          {
+            "edge_id": "edge-us-east-1",
+            "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI"
+          }
+        ],
+        "exporter": "c0ffee00c0ffee01c0ffee02c0ffee03c0ffee04c0ffee05c0ffee06c0ffee07",
+        "required": [],
+        "sent_body": "ChA/KpweW31Oj5oLHC0+T1prEitaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvGhD4zgZpPB/sVRN0vfA5bNYvKghkYXRhZ3JhbSoHcmF3X3RjcDIFMi4xLjA4AUIQfy6WOPrB8D3Ap3IY4xs+B0gCUIAB"
+      },
+      "expect": "bad_negotiation"
+    },
+    {
+      "name": "ack-unsorted",
+      "kind": "hello_ack",
+      "input": "CmkKEAM2ITJNDtE5QRoAFidIJfgSDmVkZ2UtdXMtZWFzdC0xIgdyYXdfdGNwIghkYXRhZ3JhbSog07B+aNj2YPfimGbkU9qweKqoY8Za3avD3vSgXvUCMO8woJwBOJh1QIABSICABFCg+gMSQHRivC3wO1zwh+RYw+Oi23/7ioACGweWXb+1GMDEh1gMsH4o+QMmGJQD6CbJc9fahCZFNzr5y6s9a74TFRnK/wg=",
+      "context": {
+        "edge_keys": [
+          {
+            "edge_id": "edge-us-east-1",
+            "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI"
+          }
+        ],
+        "exporter": "c0ffee00c0ffee01c0ffee02c0ffee03c0ffee04c0ffee05c0ffee06c0ffee07",
+        "required": [],
+        "sent_body": "ChA/KpweW31Oj5oLHC0+T1prEitaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvGhD4zgZpPB/sVRN0vfA5bNYvKghkYXRhZ3JhbSoHcmF3X3RjcDIFMi4xLjA4AUIQfy6WOPrB8D3Ap3IY4xs+B0gCUIAB"
+      },
+      "expect": "bad_ack"
+    },
+    {
+      "name": "offered-digest-mismatch",
+      "kind": "hello_ack",
+      "input": "Cl8KEAM2ITJNDtE5QRoAFidIJfgSDmVkZ2UtdXMtZWFzdC0xIgdyYXdfdGNwKiDSsH5o2PZg9+KYZuRT2rB4qqhjxlrdq8Pe9KBe9QIw7zCgnAE4mHVAgAFIgIAEUKD6AxJAat/DiuJgzH7qkgFDshrKlsqPMYpyVW+pcrxFx7IwjrE3WIMXHP+XBZE8YX0MfTYNOG/BL2C6qKE7V+HCsEF+Cw==",
+      "context": {
+        "edge_keys": [
+          {
+            "edge_id": "edge-us-east-1",
+            "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI"
+          }
+        ],
+        "exporter": "c0ffee00c0ffee01c0ffee02c0ffee03c0ffee04c0ffee05c0ffee06c0ffee07",
+        "required": [],
+        "sent_body": "ChA/KpweW31Oj5oLHC0+T1prEitaamFKWndjSEJZcnBHREt6dDE0eGIyOUs4aGJ3NGRXQWtxOTBvQ3hmRVlvGhD4zgZpPB/sVRN0vfA5bNYvKghkYXRhZ3JhbSoHcmF3X3RjcDIFMi4xLjA4AUIQfy6WOPrB8D3Ap3IY4xs+B0gCUIAB"
+      },
+      "expect": "digest_mismatch"
+    }
+  ]
+}
