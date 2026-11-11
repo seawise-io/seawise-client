@@ -30,4 +30,4 @@ while [ ! -s "$work/ready" ]; do
   fi
   sleep 0.1
 done
-TMPDIR="$work/tmp" node "$root/tools/a11y/check.mjs" "$(sed -n 1p "$work/ready")" "$(sed -n 2p "$work/ready")"
+TMPDIR="$work/tmp" node "$root/tools/a11y/check.mjs" "$(sed -n 1p "$work/ready")" "$(sed -n 2p "$work/ready")" "$(sed -n 3p "$work/ready")"

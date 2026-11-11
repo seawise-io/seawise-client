@@ -51,6 +51,14 @@ type Config struct {
 	Apps Apps
 	// Pairing pairs an unpaired client; nil turns it off.
 	Pairing Pairing
+	// Disconnect unpairs a paired client; nil turns it off.
+	Disconnect DisconnectFunc
+	// Ready answers /readyz; nil reports not ready.
+	Ready func(context.Context) Readiness
+	// TrustProxy (SEAWISE_TRUST_PROXY=true) takes the client address from
+	// X-Forwarded-For and the scheme from X-Forwarded-Proto. Only safe when
+	// the UI is reachable through the proxy alone: anyone else can set them.
+	TrustProxy bool
 	// KillSwitch drops or restores all tunnels.
 	AccessLog     AccessLog
 	KillSwitch    KillSwitchFunc
@@ -94,6 +102,7 @@ func New(cfg Config) (*Server, error) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET /readyz", s.handleReadyz)
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("GET /static/{file}", s.handleStatic)
 	mux.Handle("GET /api/status", s.requireSession(http.HandlerFunc(s.handleStatus)))
@@ -111,7 +120,9 @@ func New(cfg Config) (*Server, error) {
 	mux.Handle("GET /api/pair/status", s.requireSession(http.HandlerFunc(s.handlePairStatus)))
 	mux.Handle("POST /api/pair/start", s.requireSession(http.HandlerFunc(s.handlePairStart)))
 	mux.Handle("POST /api/pair/cancel", s.requireSession(http.HandlerFunc(s.handlePairCancel)))
+	mux.Handle("POST /api/disconnect", s.requireSession(http.HandlerFunc(s.handleDisconnect)))
 	mux.Handle("POST /api/auth/logout", s.requireSession(http.HandlerFunc(s.handleLogout)))
+	mux.Handle("POST /api/auth/password", s.requireSession(http.HandlerFunc(s.handlePasswordChange)))
 	s.secure = mux
 	return s, nil
 }
@@ -130,7 +141,7 @@ func (s *Server) PlainHandler() http.Handler {
 	ui := s.hostCheck(s.scheme(false, s.originCheck(s.limitBody(s.secure))))
 	return s.headers(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if loopbackHealthz(r) {
-			s.handleHealthz(w, r)
+			s.probe(w, r)
 			return
 		}
 		ui.ServeHTTP(w, r)
@@ -261,8 +272,36 @@ type httpsKey struct{}
 // and the session cookie.
 func (s *Server) scheme(https bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, withHTTPS(r, https))
+		on := https || (s.cfg.TrustProxy && strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https"))
+		next.ServeHTTP(w, withHTTPS(r, on))
 	})
+}
+
+// forwardedLoopback stands for a forwarded loopback address, which never
+// gets the loopback allowances.
+const forwardedLoopback = "forwarded-loopback"
+
+// clientIP is the address the login and setup limits count. Behind a
+// trusted proxy it is the last X-Forwarded-For entry, the one the proxy
+// itself added.
+func (s *Server) clientIP(r *http.Request) string {
+	peer := peerIP(r.RemoteAddr)
+	if !s.cfg.TrustProxy {
+		return peer
+	}
+	vals := r.Header.Values("X-Forwarded-For")
+	if len(vals) == 0 {
+		return peer
+	}
+	parts := strings.Split(vals[len(vals)-1], ",")
+	a, err := netip.ParseAddr(strings.TrimSpace(parts[len(parts)-1]))
+	if err != nil {
+		return peer
+	}
+	if a.Unmap().IsLoopback() {
+		return forwardedLoopback
+	}
+	return a.Unmap().String()
 }
 
 func withHTTPS(r *http.Request, on bool) *http.Request {
@@ -275,13 +314,33 @@ func isHTTPS(r *http.Request) bool {
 }
 
 func loopbackHealthz(r *http.Request) bool {
-	return r.URL.Path == "/healthz" && r.Method == http.MethodGet && loopbackPeer(r.RemoteAddr)
+	return (r.URL.Path == "/healthz" || r.URL.Path == "/readyz") && r.Method == http.MethodGet && loopbackPeer(r.RemoteAddr)
+}
+
+// Readiness is /readyz: ready once paired with the tunnel up, as in 1.x.
+type Readiness struct {
+	Paired   bool `json:"paired"`
+	TunnelUp bool `json:"tunnel_up"`
+}
+
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	var rd Readiness
+	if s.cfg.Ready != nil {
+		rd = s.cfg.Ready(r.Context())
+	}
+	body := map[string]any{"status": "not_ready", "paired": rd.Paired, "tunnel_up": rd.TunnelUp, "version": constants.Version}
+	if rd.Paired && rd.TunnelUp {
+		body["status"] = "ready"
+		writeJSON(w, http.StatusOK, body)
+		return
+	}
+	writeJSON(w, http.StatusServiceUnavailable, body)
 }
 
 // plainTLSOn answers plain HTTP while the UI is HTTPS only.
 func (s *Server) plainTLSOn(w http.ResponseWriter, r *http.Request) {
 	if loopbackHealthz(r) {
-		s.handleHealthz(w, r)
+		s.probe(w, r)
 		return
 	}
 	if !hostAllowed(r.Host, s.hosts) {
@@ -294,6 +353,14 @@ func (s *Server) plainTLSOn(w http.ResponseWriter, r *http.Request) {
 func loopbackPeer(remote string) bool {
 	ap, err := netip.ParseAddrPort(remote)
 	return err == nil && ap.Addr().Unmap().IsLoopback()
+}
+
+func (s *Server) probe(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/readyz" {
+		s.handleReadyz(w, r)
+		return
+	}
+	s.handleHealthz(w, r)
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
@@ -311,6 +378,10 @@ func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
 		s.serveFile(w, "app.js", "text/javascript; charset=utf-8")
 	case "app.css":
 		s.serveFile(w, "app.css", "text/css; charset=utf-8")
+	case "seawise-logo.png":
+		s.serveFile(w, "seawise-logo.png", "image/png")
+	case "seawise-icon.png":
+		s.serveFile(w, "seawise-icon.png", "image/png")
 	default:
 		http.NotFound(w, r)
 	}

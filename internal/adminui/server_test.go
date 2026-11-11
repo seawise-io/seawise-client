@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -376,7 +377,10 @@ func TestServeNeedsCertWithTLS(t *testing.T) {
 
 func TestStaticServesOnlyEmbeddedAssets(t *testing.T) {
 	s := newServer(t, newStore(t, nil), &testClock{now: t0})
-	for name, ct := range map[string]string{"app.js": "text/javascript; charset=utf-8", "app.css": "text/css; charset=utf-8"} {
+	for name, ct := range map[string]string{
+		"app.js": "text/javascript; charset=utf-8", "app.css": "text/css; charset=utf-8",
+		"seawise-logo.png": "image/png", "seawise-icon.png": "image/png",
+	} {
 		want, err := staticFS.ReadFile("static/" + name)
 		if err != nil {
 			t.Fatal(err)
@@ -387,9 +391,40 @@ func TestStaticServesOnlyEmbeddedAssets(t *testing.T) {
 			t.Errorf("%s: %d %q", name, w.Code, w.Header())
 		}
 	}
-	for _, p := range []string{"/static/index.html", "/static/server.go", "/static/..%2fserver.go", "/static/%3Cscript%3E", "/static/app.js%00"} {
+	for _, p := range []string{"/static/index.html", "/static/server.go", "/static/seawise-logo-black.png", "/static/SEAWISE-LOGO.PNG", "/static/..%2fserver.go", "/static/%3Cscript%3E", "/static/app.js%00"} {
 		if w := serve(s.SecureHandler(), req("GET", p, "192.168.1.10:8082")); w.Code != http.StatusNotFound {
 			t.Errorf("%s: %d", p, w.Code)
+		}
+	}
+}
+
+func TestPageAssetsAreServed(t *testing.T) {
+	s := newServer(t, newStore(t, nil), &testClock{now: t0})
+	html, err := staticFS.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs := regexp.MustCompile(`(?:src|href)="(/static/[^"]+)"`).FindAllStringSubmatch(string(html), -1)
+	if len(refs) < 4 {
+		t.Fatalf("found %d asset references", len(refs))
+	}
+	for _, m := range refs {
+		if w := serve(s.SecureHandler(), req("GET", m[1], "localhost")); w.Code != http.StatusOK {
+			t.Errorf("%s: %d", m[1], w.Code)
+		}
+	}
+}
+
+func TestUICopy(t *testing.T) {
+	for _, name := range []string{"static/index.html", "static/app.js"} {
+		b, err := staticFS.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, bad := range []string{"SeaWise", "\u2014"} {
+			if strings.Contains(string(b), bad) {
+				t.Errorf("%s contains %q", name, bad)
+			}
 		}
 	}
 }

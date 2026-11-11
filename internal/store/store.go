@@ -91,6 +91,9 @@ type Target struct {
 	Public *bool `json:"public,omitempty"`
 	// ServerPublic is the server's last report of the app's public flag.
 	ServerPublic bool `json:"server_public,omitempty"`
+	// RemovedFromAccount marks an app deleted on the website; it stays here
+	// turned off until the owner turns it on again or deletes it.
+	RemovedFromAccount bool `json:"removed_from_account,omitempty"`
 }
 
 // Grants a target can hold; see internal/targetpolicy.

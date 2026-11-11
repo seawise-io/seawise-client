@@ -18,6 +18,7 @@ import (
 	pb "github.com/seawise-io/seawise-client/tunnelwire/tunnelpb"
 
 	"github.com/seawise/client/internal/store"
+	"github.com/seawise/client/internal/targetpolicy"
 )
 
 func registeredOn(t *testing.T, api *fakeAPI, n int) []fakeApp {
@@ -382,6 +383,37 @@ func TestTombstoneFromOwnerDelete(t *testing.T) {
 			t.Fatal("tombstoned local_id sent again")
 		}
 	}
+	kept := removedApp(t, h, a)
+	// Turning it on again, as 1.x's re-enable did, publishes it as a new app.
+	if err := h.st.Update(func(s *store.State) error { return targetpolicy.Enable(s, kept.LocalID) }); err != nil {
+		t.Fatal(err)
+	}
+	h.clk.Add(DefaultListEvery)
+	h.settle(20)
+	apps := registeredOn(t, h.api, 2)
+	if !slices.ContainsFunc(apps, func(x fakeApp) bool { return x.LocalID == kept.LocalID }) {
+		t.Fatalf("re-enabled app not registered: %+v", apps)
+	}
+	if got := h.target(kept.LocalID); got == nil || got.Disabled || got.RemovedFromAccount || got.ServerServiceID == "" {
+		t.Fatalf("re-enabled app: %+v", got)
+	}
+}
+
+// removedApp is the app kept turned off after the server deleted orig.
+func removedApp(t *testing.T, h *harness, orig store.Target) store.Target {
+	t.Helper()
+	for _, x := range h.targets() {
+		if x.Name != orig.Name {
+			continue
+		}
+		if x.LocalID == orig.LocalID || !ValidLocalID(x.LocalID) || !x.Disabled || !x.RemovedFromAccount ||
+			x.ServerServiceID != "" || x.Subdomain != "" || x.Host != orig.Host || x.Port != orig.Port {
+			t.Fatalf("app deleted on the server kept as %+v", x)
+		}
+		return x
+	}
+	t.Fatalf("app deleted on the server was dropped here")
+	return store.Target{}
 }
 
 func TestTombstoneInRegisterAnswer(t *testing.T) {
@@ -393,9 +425,10 @@ func TestTombstoneInRegisterAnswer(t *testing.T) {
 	// A list that hides the tombstone, so the register meets it.
 	h.api.push(only(pb.DeviceMethod_LIST_APPS, status(200, map[string]any{"apps": []any{}, "deleted": []any{}})))
 	h.settle(20)
-	if len(h.targets()) != 0 {
-		t.Fatal("deleted result did not remove the app")
+	if len(h.targets()) != 1 {
+		t.Fatalf("deleted result: %d apps here", len(h.targets()))
 	}
+	removedApp(t, h, a)
 	h.clk.Add(DefaultListEvery)
 	h.settle(20)
 	if n := len(h.api.requests(pb.DeviceMethod_REGISTER_APPS)); n != 1 {

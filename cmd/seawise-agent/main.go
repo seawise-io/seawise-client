@@ -29,6 +29,7 @@ import (
 	"github.com/seawise/client/internal/enrol"
 	"github.com/seawise/client/internal/forwarder"
 	"github.com/seawise/client/internal/identity"
+	"github.com/seawise/client/internal/pair"
 	"github.com/seawise/client/internal/paths"
 	"github.com/seawise/client/internal/session"
 	"github.com/seawise/client/internal/store"
@@ -37,24 +38,26 @@ import (
 	"github.com/seawise/client/internal/visitor"
 )
 
-const usage = `seawise-agent: next version of the SeaWise client (in development).
+const usage = `seawise-agent: the Seawise.io client, version 2.
 
-The :latest and :1.x images run "seawise serve"; this agent is published
-only as :2, :2.x.y, :beta and :stable. The target policy, forwarder,
-HTTPS admin UI and first-run window described in cmd/seawise-agent/README.md
-apply only to seawise-agent.
+Usage: seawise-agent [serve] [--port N | -p N]
 
-Configuration is through environment variables; see that README.
+"serve" and --port/-p are accepted as in 1.x; --port overrides
+SEAWISE_PORT. Everything else is set through environment variables; see
+cmd/seawise-agent/README.md.
 `
 
 func main() {
-	for _, a := range os.Args[1:] {
-		if a == "-h" || a == "--help" || a == "help" {
-			fmt.Print(usage)
-			return
-		}
+	opts, err := parseArgs(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "seawise-agent: %v\n\n%s", err, usage)
+		os.Exit(2)
 	}
-	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	if opts.help {
+		fmt.Print(usage)
+		return
+	}
+	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel(os.Getenv("SEAWISE_LOG_LEVEL"))}))
 	slog.SetDefault(log)
 	applyMemoryLimit(os.Getenv)
 
@@ -172,9 +175,16 @@ func main() {
 	updates, fresh := startUpdateCheck(ctx, log, st, tr, clock.TrustTime, clock.RetryTime)
 	ins = newInstructions(log, st, tr, fresh, clock.Now, a.Reconcile)
 
-	ui, err := startAdminUI(ctx, log, st, a, appEngine, accessLog, pairing, func(ctx context.Context) any {
+	disc := &disconnector{
+		log: log, st: st, keys: keys, call: call, gate: legacyGate,
+		legacy: cp.Disconnect, legacyAllowed: enrol.LegacyAllowed, reconcile: a.Reconcile,
+	}
+	if pairing != nil {
+		disc.cancelPairing = pairing.Cancel
+	}
+	ui, err := startAdminUI(ctx, log, st, a, appEngine, accessLog, pairing, disc.Disconnect, opts.port, func(ctx context.Context) any {
 		as, _ := a.Status(ctx)
-		return map[string]any{"agent": as, "enrolment": enrolment(), "control_plane": syncer.Status(), "app_sync": apps(), "access_log": accessLog.Status(), "updates": updates(), "keyset": tr.status(), "instructions": ins.status(), "visitor_tokens": ins.visitorStatus(), "data_streams": dataStreams.Status(), "clock": clock.Status()}
+		return map[string]any{"version": constants.Version, "account": accountSummary(st.State().Account), "agent": as, "enrolment": enrolment(), "control_plane": syncer.Status(), "app_sync": apps(), "access_log": accessLog.Status(), "updates": updates(), "keyset": tr.status(), "instructions": ins.status(), "visitor_tokens": ins.visitorStatus(), "data_streams": dataStreams.Status(), "clock": clock.Status()}
 	})
 	if err != nil {
 		log.Error("admin UI", "error", err)
@@ -227,7 +237,7 @@ func startUpdateCheck(ctx context.Context, log *slog.Logger, st *store.Store, tr
 
 // startAdminUI serves the admin UI on the admin port (plain HTTP, or HTTPS
 // with SEAWISE_TLS=auto) and returns a function that waits for it to stop.
-func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *agent.Agent, apps *appsync.Engine, al *accesslog.Log, pairing adminui.Pairing, status func(context.Context) any) (func(), error) {
+func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *agent.Agent, apps *appsync.Engine, al *accesslog.Log, pairing adminui.Pairing, disconnect adminui.DisconnectFunc, portFlag int, status func(context.Context) any) (func(), error) {
 	auth, err := adminui.NewAuth(adminui.AuthConfig{Store: st, Logger: log})
 	if err != nil {
 		return nil, err
@@ -242,11 +252,9 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *age
 			return nil, err
 		}
 	}
-	port := constants.DefaultWebPort
-	if v := os.Getenv("SEAWISE_PORT"); v != "" {
-		if port, err = strconv.Atoi(v); err != nil || port < 1 || port > 65535 {
-			return nil, errors.New("invalid SEAWISE_PORT")
-		}
+	port, err := adminPort(portFlag, os.Getenv("SEAWISE_PORT"), constants.DefaultWebPort)
+	if err != nil {
+		return nil, err
 	}
 	bind, notice := adminui.BindAddr(os.Getenv("SEAWISE_BIND_ADDR"), st.State(), st.Secrets(), adminui.InContainer())
 	if notice != "" {
@@ -262,6 +270,15 @@ func startAdminUI(ctx context.Context, log *slog.Logger, st *store.Store, a *age
 		AccessLog:        al,
 		KillSwitch:       a.SetKillSwitch,
 		Pairing:          pairing,
+		Disconnect:       disconnect,
+		TrustProxy:       os.Getenv("SEAWISE_TRUST_PROXY") == "true",
+		Ready: func(ctx context.Context) adminui.Readiness {
+			paired := st.State().Account != nil
+			if pairing != nil {
+				paired = pairing.Status().State == pair.StatePaired
+			}
+			return adminui.Readiness{Paired: paired, TunnelUp: paired && tunnelUp(ctx, a)()}
+		},
 	}
 	if apps != nil {
 		cfg.Apps = apps
@@ -306,6 +323,14 @@ func apiURL(st *store.Store) string {
 		return a.APIURL
 	}
 	return envOr("SEAWISE_API_URL", constants.DefaultAPIURL)
+}
+
+// accountSummary is what the admin UI shows of the account: never a token.
+func accountSummary(a *store.Account) map[string]string {
+	if a == nil {
+		return nil
+	}
+	return map[string]string{"server_id": a.ServerID, "server_name": a.ServerName, "user_email": a.UserEmail}
 }
 
 func envOr(key, def string) string {

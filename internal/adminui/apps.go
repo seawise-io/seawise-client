@@ -27,6 +27,8 @@ type appRow struct {
 	Subdomain       string `json:"subdomain"`
 	Status          string `json:"status"`
 	ID              string `json:"id"`
+	// RemovedFromAccount: deleted on the website, kept here turned off.
+	RemovedFromAccount bool `json:"removed_from_account,omitempty"`
 }
 
 func rowOf(t store.Target) appRow {
@@ -37,7 +39,8 @@ func rowOf(t store.Target) appRow {
 		status = "registered"
 	}
 	return appRow{LocalID: t.LocalID, Name: t.Name, Host: t.Host, Port: t.Port, IconURL: t.IconURL,
-		ServerServiceID: t.ServerServiceID, Subdomain: t.Subdomain, Status: status, ID: t.ServerServiceID}
+		ServerServiceID: t.ServerServiceID, Subdomain: t.Subdomain, Status: status, ID: t.ServerServiceID,
+		RemovedFromAccount: t.RemovedFromAccount}
 }
 
 func (s *Server) handleAppList(w http.ResponseWriter, r *http.Request) {

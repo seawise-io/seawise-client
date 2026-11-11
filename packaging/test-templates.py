@@ -424,6 +424,28 @@ def readme_example():
     check(ports and all(p.startswith("127.0.0.1:") for p in ports), "docker run example publishes on 127.0.0.1 only %s" % ports)
 
 
+# The 1.x-era templates at the repository root stay on :latest, which moves
+# to v2 only when v2 is promoted; until then they must run the v2 image as
+# they are, host network included.
+LEGACY = [
+    ("1.x unraid", load_unraid, "templates/seawise.xml"),
+    ("1.x compose", load_compose, "docker-compose.yml"),
+    ("1.x portainer", load_compose, "deploy/portainer/docker-compose.yml"),
+]
+
+
+def legacy_templates(image):
+    root = os.path.dirname(HERE)
+    stack = json.load(open(os.path.join(root, "portainer-template.json"), encoding="utf-8"))["repository"]["stackfile"]
+    check(stack == "deploy/portainer/docker-compose.yml", "portainer template points at its stack file (%s)" % stack)
+    for name, load, path in LEGACY:
+        print(name)
+        t = load(name.replace(" ", "-").replace(".", ""), os.path.join(root, path))
+        check(t.image == IMAGE_REPO + ":latest", "%s: stays on :latest (%s)" % (name, t.image))
+        check(not t.privileged, "%s: not privileged" % name)
+        run_template(t, image)
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -441,6 +463,7 @@ def main():
         t = load(name, os.path.join(HERE, path))
         static_checks(t)
         run_template(t, image)
+    legacy_templates(image)
     print("default docker run")
     default_run(image)
     nested_mounts(image)

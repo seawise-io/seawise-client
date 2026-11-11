@@ -344,6 +344,29 @@ func (a *Auth) Login(peer, password string) (time.Duration, error) {
 	return loginDelay(f.count), ErrWrongLogin
 }
 
+// ChangePassword sets a new password once the current one checks out. The
+// check goes through Login, so it shares the login limits. Any stored hash
+// is accepted as current, whatever length the password had when it was set.
+func (a *Auth) ChangePassword(peer, current, next string) (time.Duration, error) {
+	if !validPassword(next) {
+		return 0, ErrBadPassword
+	}
+	if wait, err := a.Login(peer, current); err != nil {
+		return wait, err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(next), a.cfg.BcryptCost)
+	if err != nil {
+		return 0, err
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if err := a.savePassword(hash); err != nil {
+		return 0, err
+	}
+	a.log.Info("admin password changed")
+	return 0, nil
+}
+
 func evictOldest(m map[string]*ipFails) {
 	var oldest string
 	var t time.Time
@@ -392,7 +415,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
 		return
 	}
-	switch err := s.cfg.Auth.Setup(peerIP(r.RemoteAddr), body.Password); {
+	switch err := s.cfg.Auth.Setup(s.clientIP(r), body.Password); {
 	case err == nil:
 	case errors.Is(err, ErrSetupDone):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "already set up"})
@@ -426,7 +449,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request"})
 		return
 	}
-	wait, err := s.cfg.Auth.Login(peerIP(r.RemoteAddr), body.Password)
+	wait, err := s.cfg.Auth.Login(s.clientIP(r), body.Password)
 	switch {
 	case err == nil:
 	case errors.Is(err, ErrSetupPending):
@@ -440,6 +463,43 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "wrong password"})
 		return
 	}
+	token, csrf := s.sess.create()
+	setSessionCookie(w, r, token)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "csrf": csrf})
+}
+
+func (s *Server) handlePasswordChange(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Current  string `json:"current_password"`
+		Password string `json:"password"`
+	}
+	if err := decodeBody(r, &body); err != nil || len(body.Current) > MaxPasswordLen*4 {
+		errJSON(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	wait, err := s.cfg.Auth.ChangePassword(s.clientIP(r), body.Current, body.Password)
+	switch {
+	case err == nil:
+	case errors.Is(err, ErrBadPassword):
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	case errors.Is(err, ErrWrongLogin):
+		errJSON(w, http.StatusForbidden, "Current password is incorrect")
+		return
+	case errors.Is(err, ErrSetupPending):
+		errJSON(w, http.StatusConflict, "setup required")
+		return
+	case errors.Is(err, ErrRateLimited):
+		w.Header().Set("Retry-After", strconv.Itoa(max(1, int((wait+time.Second-1)/time.Second))))
+		errJSON(w, http.StatusTooManyRequests, "too many attempts, try later")
+		return
+	default:
+		s.log.Error("change password", "error", err)
+		errJSON(w, http.StatusInternalServerError, "Failed to change the password")
+		return
+	}
+	// Every other session ends with the old password.
+	s.sess.removeAll()
 	token, csrf := s.sess.create()
 	setSessionCookie(w, r, token)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "csrf": csrf})

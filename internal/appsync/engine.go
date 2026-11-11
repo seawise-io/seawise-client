@@ -711,7 +711,7 @@ func (e *Engine) apply(c Call, raw []byte, relayed bool) error {
 				notices = append(notices, "server_reports_deleted:"+r.LocalID)
 				e.needConfirm()
 			case r.Result == resDeleted:
-				s.Targets = slices.Delete(s.Targets, i, i+1)
+				removedFromAccount(t)
 				changed = true
 			default:
 				// Adoption sent the listed name of a 1.x app; keep it now.
@@ -759,7 +759,7 @@ func (e *Engine) apply(c Call, raw []byte, relayed bool) error {
 		if r.Result == resDeleted {
 			e.box.Deleted = addID(e.box.Deleted, r.LocalID, maxDeleted)
 			e.box.Registered = removeID(e.box.Registered, r.LocalID)
-			e.log.Info("app deleted on the server; removed here", "local_id", r.LocalID)
+			e.log.Info("app deleted on the server; turned off here", "local_id", r.LocalID)
 			continue
 		}
 		e.addRegistered(r.LocalID)
@@ -921,18 +921,19 @@ func (e *Engine) applyList(l listAnswer, adopting bool, now time.Time, relayed b
 			delete(e.refused, r.localID)
 			changed = true
 		}
-		s.Targets = slices.DeleteFunc(s.Targets, func(t store.Target) bool {
+		for i := range s.Targets {
+			t := &s.Targets[i]
 			if !tomb[t.LocalID] {
-				return false
+				continue
 			}
 			if !auth {
 				notices = append(notices, "server_reports_deleted:"+t.LocalID)
 				e.needConfirm()
-				return false
+				continue
 			}
 			removed = append(removed, t.LocalID)
-			return true
-		})
+			removedFromAccount(t)
+		}
 		for i := range s.Targets {
 			t := &s.Targets[i]
 			a, ok := byLocal[t.LocalID]
@@ -986,7 +987,7 @@ func (e *Engine) applyList(l listAnswer, adopting bool, now time.Time, relayed b
 	}
 	e.changed = e.changed || changed || len(removed) > 0
 	for _, id := range removed {
-		e.log.Info("app deleted on the server; removed here", "local_id", id)
+		e.log.Info("app deleted on the server; turned off here", "local_id", id)
 	}
 	if auth {
 		for _, d := range l.Deleted {
@@ -1383,4 +1384,13 @@ func cloneFile(f File) File {
 	out.Deleted = slices.Clone(f.Deleted)
 	out.Retired = slices.Clone(f.Retired)
 	return out
+}
+
+// removedFromAccount keeps an app deleted on the website turned off here,
+// as 1.x did. Its local_id is tombstoned, so it takes a new one and turning
+// it on registers it again as a new app.
+func removedFromAccount(t *store.Target) {
+	t.LocalID = NewLocalID()
+	t.Disabled, t.RemovedFromAccount = true, true
+	t.ServerServiceID, t.Subdomain, t.ServerPublic, t.ServerDisableRequestedAt = "", "", false, nil
 }

@@ -2,7 +2,7 @@
 // rules), keyboard reachability, visible focus, and reflow at 320 px, in
 // every state of the page. Drives Chrome over --remote-debugging-pipe.
 //
-// usage: node check.mjs <url> <closed-setup-url>
+// usage: node check.mjs <url> <closed-setup-url> <paired-url>
 // env:   CHROME_BIN (default google-chrome), A11Y_NO_SANDBOX=1 where the
 //        browser sandbox is unavailable.
 
@@ -13,9 +13,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import https from "node:https";
 
-const [url, closedUrl] = process.argv.slice(2);
-if (!url || !closedUrl) {
-  console.error("usage: node check.mjs <url> <closed-setup-url>");
+const [url, closedUrl, pairedUrl] = process.argv.slice(2);
+if (!url || !closedUrl || !pairedUrl) {
+  console.error("usage: node check.mjs <url> <closed-setup-url> <paired-url>");
   process.exit(2);
 }
 const require = createRequire(import.meta.url);
@@ -102,7 +102,7 @@ async function waitFor(expression, what) {
   }
   throw new Error(`timed out waiting for ${what}`);
 }
-const KEYS = { Tab: 9, Enter: 13 };
+const KEYS = { Tab: 9, Enter: 13, Escape: 27 };
 async function press(key, modifiers = 0) {
   const base = { key, code: key, windowsVirtualKeyCode: KEYS[key], nativeVirtualKeyCode: KEYS[key], modifiers };
   await cdp("Input.dispatchKeyEvent", { type: "rawKeyDown", ...base });
@@ -117,14 +117,15 @@ async function width(w) {
 }
 
 // --- Checks --------------------------------------------------------------
-async function axe(state) {
-  const violations = await evaluate(`axe.run(document, { runOnly: { type: "tag", values: ${JSON.stringify(TAGS)} }, resultTypes: ["violations"] })
+async function axe(state, context = "document") {
+  const violations = await evaluate(`axe.run(${context}, { runOnly: { type: "tag", values: ${JSON.stringify(TAGS)} }, resultTypes: ["violations"] })
     .then(r => r.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.map(n => n.target.join(" ") + (n.failureSummary ? " | " + n.failureSummary.replace(/\\s+/g, " ") : "")) })))`);
   for (const v of violations) fail(state, `axe ${v.id} (${v.impact}): ${v.help}\n      ${v.nodes.join("\n      ")}`);
 }
 
-// Interactive elements a keyboard user must reach, in DOM order.
-const FOCUSABLE = `Array.from(document.querySelectorAll('a[href], button, input, select, textarea, [tabindex]'))
+// Interactive elements a keyboard user must reach, in DOM order; with a
+// modal dialog open, only those inside it.
+const FOCUSABLE = `Array.from((document.querySelector('dialog[open]') || document).querySelectorAll('a[href], button, input, select, textarea, summary, [tabindex]'))
   .filter(e => !e.disabled && e.tabIndex >= 0 && e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden')`;
 const DESCRIBE = `(e => e === document.body || !e ? 'body' : (e.id ? '#' + e.id : e.tagName.toLowerCase()) + (e.textContent ? '[' + e.textContent.trim().slice(0, 30) + ']' : ''))`;
 
@@ -186,7 +187,7 @@ async function reflow(state) {
 async function names(state) {
   const bad = await evaluate(`(() => {
     const out = [];
-    for (const e of document.querySelectorAll('main *')) {
+    for (const e of document.querySelectorAll('main *, dialog[open] *')) {
       if (!e.getClientRects().length) continue;
       const label = e.getAttribute('aria-label');
       if (label !== null && (label !== label.trim() || /\\b(undefined|null|NaN)\\b/.test(label))) out.push(label);
@@ -240,6 +241,14 @@ async function checkServed() {
 }
 
 // --- States --------------------------------------------------------------
+// The settings menu holds Lock, as in 1.x.
+async function lock() {
+  await focus("settings-open");
+  await press("Enter");
+  await waitFor(`!document.getElementById('settings-menu').hidden && document.activeElement === document.getElementById('password-open')`, "the settings menu");
+  await focus("logout");
+  await press("Enter");
+}
 const visible = (id) => `!document.getElementById(${JSON.stringify(id)}).hidden`;
 
 async function main() {
@@ -286,6 +295,58 @@ async function main() {
   await press("Enter");
   await waitFor(`document.getElementById('kill-switch').textContent === 'Drop all tunnels'`, "tunnels restored");
 
+  // Pair from the keyboard: the dialog takes the focus and gives it back.
+  await focus("pair-open");
+  await press("Enter");
+  await waitFor(`document.getElementById('pair-dialog').open`, "the pairing dialog");
+  await checkState("pairing dialog");
+  await focus("pair-name");
+  await type("Home server");
+  await press("Enter");
+  await waitFor(`${visible("pair-pending")} && document.getElementById('pair-code').textContent !== ''`, "the pairing code");
+  await focusKept("pairing code, after starting");
+  await checkState("pairing code");
+  await focus("pair-cancel");
+  await press("Enter");
+  await waitFor(visible("pair-form"), "pairing cancelled");
+  await press("Escape");
+  await waitFor(`!document.getElementById('pair-dialog').open`, "the pairing dialog to close");
+  await focusKept("dashboard, after closing the pairing dialog");
+
+  // Delete asks first; Escape keeps the app and the focus.
+  await evaluate(`document.querySelector('#apps li button[data-action="delete"]').focus()`);
+  await press("Enter");
+  await waitFor(`document.getElementById('delete-dialog').open`, "the delete dialog");
+  await checkState("delete dialog");
+  await press("Escape");
+  await waitFor(`!document.getElementById('delete-dialog').open`, "the delete dialog to close");
+  await focusKept("dashboard, after keeping an app");
+
+  // Settings: the menu, then the change password dialog, which checks the confirmation itself.
+  // The closed dialog hands the focus back in a later task.
+  await new Promise((r) => setTimeout(r, 300));
+  await focus("settings-open");
+  await press("Enter");
+  await waitFor(`!document.getElementById('settings-menu').hidden`, "the settings menu");
+  // An outside click closes the menu and it covers the page below, so axe checks the menu itself.
+  await axe("settings menu", "document.getElementById('settings')");
+  await focus("password-open");
+  await press("Enter");
+  await waitFor(`document.getElementById('password-dialog').open`, "the change password dialog");
+  await checkState("change password dialog");
+  await focus("password-current");
+  await type(PASSWORD);
+  await focus("password-new");
+  await type("a new password 1");
+  await focus("password-confirm");
+  await type("a new password 2");
+  await press("Enter");
+  await waitFor(`document.getElementById('password-error').textContent !== ''`, "the mismatch message");
+  await checkState("change password dialog, error shown");
+  await press("Escape");
+  await waitFor(`!document.getElementById('password-dialog').open`, "the change password dialog to close");
+  await focusKept("dashboard, after closing the change password dialog");
+
   // Act on an app from the keyboard; focus stays on the list.
   await evaluate(`document.querySelector('#review li button').focus()`);
   await press("Enter");
@@ -293,8 +354,7 @@ async function main() {
   await new Promise((r) => setTimeout(r, 300));
   await focusKept("dashboard, after an app action");
 
-  await focus("logout");
-  await press("Enter");
+  await lock();
   await waitFor(visible("login"), "the sign-in form");
   await focusKept("sign in, after signing out");
   await checkState("sign in");
@@ -304,8 +364,7 @@ async function main() {
   await press("Enter");
   await waitFor(visible("dashboard"), "the dashboard after sign-in");
   await focusKept("dashboard, after signing in");
-  await focus("logout");
-  await press("Enter");
+  await lock();
   await waitFor(visible("login"), "the sign-in form");
 
   await focus("login-password");
@@ -321,6 +380,33 @@ async function main() {
   await evaluate(axeSource);
   await waitFor(visible("closed"), "the setup timed out notice");
   await checkState("setup timed out");
+
+  // Paired: disconnect asks first, then the server row offers Connect again.
+  const pairedLoaded = once("Page.loadEventFired", session);
+  await cdp("Page.navigate", { url: pairedUrl });
+  await pairedLoaded;
+  await evaluate(axeSource);
+  await waitFor(visible("setup"), "the paired fixture's setup form");
+  await focus("setup-password");
+  await type(PASSWORD);
+  await press("Enter");
+  await waitFor(`${visible("dashboard")} && ${visible("disconnect-open")}`, "the paired dashboard");
+  await checkState("dashboard, paired");
+  await focus("disconnect-open");
+  await press("Enter");
+  await waitFor(`document.getElementById('disconnect-dialog').open`, "the disconnect dialog");
+  await checkState("disconnect dialog");
+  await press("Escape");
+  await waitFor(`!document.getElementById('disconnect-dialog').open`, "the disconnect dialog to close");
+  await focusKept("dashboard, after keeping the pairing");
+  await focus("disconnect-open");
+  await press("Enter");
+  await waitFor(`document.getElementById('disconnect-dialog').open`, "the disconnect dialog");
+  await focus("disconnect-confirm");
+  await press("Enter");
+  await waitFor(`${visible("pair-open")} && document.getElementById('disconnect-open').hidden`, "the unpaired server row");
+  await waitFor(`document.activeElement === document.getElementById('pair-open')`, "the focus on Connect");
+  await checkState("dashboard, after disconnecting");
 
   for (const e of cspErrors) fail("page", `script error: ${e}`);
 }

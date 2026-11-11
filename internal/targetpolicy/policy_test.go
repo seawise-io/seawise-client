@@ -314,3 +314,21 @@ func TestNAT64AllPrefixLengths(t *testing.T) {
 		t.Fatal("IPv4 prefix accepted")
 	}
 }
+
+// Re-enabling an app deleted on the website turns it on and drops the mark.
+func TestEnableRemovedFromAccount(t *testing.T) {
+	st := &store.State{Targets: []store.Target{{LocalID: "a", Name: "A", Host: "10.0.0.1", Port: 80, Disabled: true, RemovedFromAccount: true}}}
+	items := BuildReview(context.Background(), st.Targets, nil, []netip.Addr{})
+	if len(items) != 1 || !items[0].RemovedFromAccount || !items[0].Disabled {
+		t.Fatalf("review: %+v", items)
+	}
+	if err := Enable(st, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if tg := st.Targets[0]; tg.Disabled || tg.RemovedFromAccount {
+		t.Fatalf("%+v", tg)
+	}
+	if err := Enable(st, "b"); err != ErrNotFound {
+		t.Fatal(err)
+	}
+}

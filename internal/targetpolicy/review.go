@@ -23,6 +23,8 @@ type ReviewItem struct {
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	Disabled bool   `json:"disabled"`
+	// RemovedFromAccount: deleted on the website, kept here turned off.
+	RemovedFromAccount bool `json:"removed_from_account,omitempty"`
 	// ServerDisableRequestedAt is set while the server asks to turn the app
 	// off; the app keeps running until the owner accepts.
 	ServerDisableRequestedAt *time.Time `json:"server_disable_requested_at,omitempty"`
@@ -74,7 +76,7 @@ func BuildReview(ctx context.Context, targets []store.Target, resolve Resolver, 
 			continue
 		}
 		out = append(out, ReviewItem{
-			LocalID: t.LocalID, Name: t.Name, Host: t.Host, Port: t.Port, Disabled: t.Disabled,
+			LocalID: t.LocalID, Name: t.Name, Host: t.Host, Port: t.Port, Disabled: t.Disabled, RemovedFromAccount: t.RemovedFromAccount,
 			ServerDisableRequestedAt: t.ServerDisableRequestedAt, Assessment: as,
 		})
 	}
@@ -112,7 +114,7 @@ func Enable(st *store.State, localID string) error {
 	if t == nil {
 		return ErrNotFound
 	}
-	t.Disabled = false
+	t.Disabled, t.RemovedFromAccount = false, false
 	return nil
 }
 
