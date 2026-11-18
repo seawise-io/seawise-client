@@ -653,7 +653,7 @@ input::placeholder { color: #8C8C8C; }
 @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
 
 /* ===== Utility / One-off ===== */
-.logo-img { height: 32px; width: auto; }
+.logo-img { height: 28px; width: auto; }
 .lock-item { color: #DC2626; }
 .card-header-center { justify-content: center; }
 .input-hint-center { text-align: center; margin-top: 0.75rem; }

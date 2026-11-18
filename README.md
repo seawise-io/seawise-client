@@ -1,6 +1,9 @@
 <p align="center">
   <a href="https://seawise.io">
-    <img src="https://assets.seawise.io/email/seawise-logo-black.png" alt="Seawise.io" width="300">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/brand/seawise-logo-dark-mode.svg">
+      <img src="docs/brand/seawise-logo-light-mode.svg" alt="Seawise.io" width="300">
+    </picture>
   </a>
 </p>
 <p align="center">

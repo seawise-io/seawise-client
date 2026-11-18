@@ -21,7 +21,7 @@ h2:focus:not(:focus-visible), p:focus:not(:focus-visible) { outline: none; }
   display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;
 }
 .logo-group { display: flex; align-items: center; gap: 0.75rem; font-size: 1rem; font-weight: 400; }
-.logo-img { height: 32px; width: auto; display: block; }
+.logo-img { height: 28px; width: auto; display: block; }
 .subtitle { color: #A3A3A3; font-size: 0.8rem; }
 .header-right { display: flex; align-items: center; gap: 0.75rem; }
 .header-btn {
