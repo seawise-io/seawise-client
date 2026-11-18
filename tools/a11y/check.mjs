@@ -302,8 +302,15 @@ async function main() {
   await checkState("pairing dialog");
   await focus("pair-name");
   await type("Home server");
+  // A blocked popup: the dialog must still show the code and the link.
+  await evaluate(`window.__opened = []; window.open = (...a) => { window.__opened.push(a); return null; }`);
   await press("Enter");
   await waitFor(`${visible("pair-pending")} && document.getElementById('pair-code').textContent !== ''`, "the pairing code");
+  const opened = await evaluate(`JSON.stringify(window.__opened)`);
+  const code = await evaluate(`document.getElementById('pair-code').textContent`);
+  const want = JSON.stringify([[`https://seawise.io/connect?code=${encodeURIComponent(code)}`, "_blank", "noopener,noreferrer"]]);
+  if (opened !== want) fail("pairing code", `connect page opened as ${opened}, want ${want}`);
+  if (await evaluate(`document.getElementById('pair-link').hidden`)) fail("pairing code", "no link to the connect page after a blocked tab");
   await focusKept("pairing code, after starting");
   await checkState("pairing code");
   await focus("pair-cancel");

@@ -290,7 +290,7 @@ func newFakePairing(state string) *fakePairing {
 
 func pendingStatus(name string) pair.Status {
 	return pair.Status{
-		State: pair.StatePending, Code: "WDJB-MJHT", ApproveURL: "https://seawise.io/connect",
+		State: pair.StatePending, Code: "WDJB-MJHT", ApproveURL: "https://seawise.io/connect?code=WDJB-MJHT",
 		ExpiresAt: time.Now().Add(10 * time.Minute), KeyFingerprint: "SHA256:7f3a 91c2 0b4e d8a1", ServerName: name,
 	}
 }

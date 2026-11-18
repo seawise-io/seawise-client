@@ -219,7 +219,7 @@ func TestPairFlow(t *testing.T) {
 	v := newEnv(t)
 	s := v.start()
 	k := v.key()
-	if s.State != StatePending || !userCodeRe.MatchString(s.Code) || s.KeyFingerprint != k.Fingerprint() || s.ApproveURL != "https://seawise.io/connect" || strings.Contains(s.ApproveURL, s.Code) || s.ExpiresAt.IsZero() {
+	if s.State != StatePending || !userCodeRe.MatchString(s.Code) || s.KeyFingerprint != k.Fingerprint() || s.ApproveURL != "https://seawise.io/connect?code="+s.Code || s.ExpiresAt.IsZero() {
 		t.Fatalf("status %+v", s)
 	}
 	if got := v.p.Status(); got != s {
@@ -773,9 +773,9 @@ func TestKeystoreFailure(t *testing.T) {
 
 func TestApproveURL(t *testing.T) {
 	cases := map[string]string{
-		"https://seawise.io":     "https://seawise.io/connect",
-		"https://seawise.io/":    "https://seawise.io/connect",
-		"http://localhost:3000":  "http://localhost:3000/connect",
+		"https://seawise.io":     "https://seawise.io/connect?code=WDJB-MJHT",
+		"https://seawise.io/":    "https://seawise.io/connect?code=WDJB-MJHT",
+		"http://localhost:3000":  "http://localhost:3000/connect?code=WDJB-MJHT",
 		"":                       "",
 		"ftp://seawise.io":       "",
 		"https://seawise.io/x":   "",
@@ -787,8 +787,16 @@ func TestApproveURL(t *testing.T) {
 		"https:///no-host":       "",
 	}
 	for in, want := range cases {
-		if got := approveURL(in); got != want {
+		if got := approveURL(in, "WDJB-MJHT"); got != want {
 			t.Errorf("%q: %q", in, got)
+		}
+	}
+	for code, want := range map[string]string{
+		"":         "https://seawise.io/connect",
+		"A B&c=#d": "https://seawise.io/connect?code=A+B%26c%3D%23d",
+	} {
+		if got := approveURL("https://seawise.io", code); got != want {
+			t.Errorf("code %q: %q", code, got)
 		}
 	}
 }

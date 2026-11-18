@@ -319,7 +319,7 @@
     if (pending) {
       $("pair-code").textContent = s.code || "";
       var link = $("pair-link");
-      var url = typeof s.approve_url === "string" && /^https?:\/\//.test(s.approve_url) ? s.approve_url : "";
+      var url = approveLink(s);
       link.hidden = !url;
       link.href = url || "#";
       $("pair-key").textContent = s.key_fingerprint ? "Device key (for support): " + s.key_fingerprint : "";
@@ -334,6 +334,10 @@
       open.hidden ? $("pair-heading").focus() : open.focus();
     }
     if (was === "pending" && paired) { say("Connected to Seawise.io."); refresh(); }
+  }
+  // approveLink is the connect page with the code filled in, http(s) only.
+  function approveLink(s) {
+    return s && typeof s.approve_url === "string" && /^https?:\/\//.test(s.approve_url) ? s.approve_url : "";
   }
   function loadPair() {
     return call("GET", "/api/pair/status").then(function (r) {
@@ -410,6 +414,9 @@
       call("POST", "/api/pair/start", { server_name: $("pair-name").value }).then(function (r) {
         if (!r.ok) { $("pair-error").textContent = r.body.error || "Could not start pairing."; return; }
         renderPair(r.body);
+        // As in 1.x, the connect page opens at once; the dialog keeps the code and link if the tab is blocked.
+        var url = approveLink(r.body);
+        if (url) window.open(url, "_blank", "noopener,noreferrer");
         $("pair-code").focus();
       });
     });

@@ -208,7 +208,7 @@ func (p *Pairer) Start(ctx context.Context, name string) (Status, error) {
 func (p *Pairer) run(at *attempt) Status {
 	ctx, cancel := context.WithCancel(p.cfg.Context)
 	at.cancel, at.done = cancel, make(chan struct{})
-	s := Status{State: StatePending, Code: at.codes.user, ApproveURL: approveURL(p.cfg.WebURL), ExpiresAt: at.codes.expires, KeyFingerprint: at.key.Fingerprint()}
+	s := Status{State: StatePending, Code: at.codes.user, ApproveURL: approveURL(p.cfg.WebURL, at.codes.user), ExpiresAt: at.codes.expires, KeyFingerprint: at.key.Fingerprint()}
 	p.mu.Lock()
 	p.cur, p.status = at, s
 	p.mu.Unlock()
@@ -400,14 +400,18 @@ func deviceCodeBody(code string) []byte {
 	return b
 }
 
-// approveURL is the page where the owner types the code; the code is
-// never put in the link, so a link cannot approve a request.
-func approveURL(web string) string {
+// approveURL is the page where the owner approves the code, with the code
+// filled in as 1.x did (RFC 8628's verification_uri_complete).
+func approveURL(web, code string) string {
 	u, err := url.Parse(web)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
 		return ""
 	}
-	return (&url.URL{Scheme: u.Scheme, Host: u.Host, Path: "/connect"}).String()
+	out := &url.URL{Scheme: u.Scheme, Host: u.Host, Path: "/connect"}
+	if code != "" {
+		out.RawQuery = url.Values{"code": {code}}.Encode()
+	}
+	return out.String()
 }
 
 // poll checks the code until it is approved, refused or expired.

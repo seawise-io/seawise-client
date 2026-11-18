@@ -46,10 +46,10 @@ its own state in `<data folder>/v2`.
   old password file after that has no effect.
 - **Listening address.** In a container the UI listens on all interfaces.
   Elsewhere it listens on `127.0.0.1` unless `SEAWISE_BIND_ADDR` is set.
-- **Pairing.** An unpaired client pairs from the admin UI: it shows a
-  code that you type on the connect page of Seawise.io; check that the
-  code matches before you approve. The link never carries the code. The
-  page also shows the fingerprint of a device key made for this pairing,
+- **Pairing.** An unpaired client pairs from the admin UI: as in 1.x it
+  opens the connect page of Seawise.io with its code filled in; check that
+  the code matches the one the admin UI shows before you approve. The
+  admin UI also shows the fingerprint of a device key made for this pairing,
   for support. Each pairing makes a new key and removes the previous one;
   apps stay on this machine and register again on the new server.
 - **Kill switch.** "Drop all tunnels" in the admin UI closes every

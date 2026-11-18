@@ -126,15 +126,20 @@ func TestPairUnavailableWithoutKeystore(t *testing.T) {
 	}
 }
 
-// The page never puts the pairing code in a link; the owner types it.
-func TestPairPageNeverLinksTheCode(t *testing.T) {
-	for _, f := range []string{"static/app.js", "static/index.html"} {
-		b, err := staticFS.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
+// The page opens the connect page with the code, as 1.x did, and only an
+// http(s) address.
+func TestPairPageOpensTheConnectPage(t *testing.T) {
+	b, err := staticFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(b)
+	for _, want := range []string{`/^https?:\/\//.test(s.approve_url)`, `window.open(url, "_blank", "noopener,noreferrer")`, "var url = approveLink(r.body);"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("app.js does not use %s", want)
 		}
-		if strings.Contains(string(b), "code=") || strings.Contains(string(b), "Approve only if") {
-			t.Errorf("%s links the code or claims the approval page shows the key", f)
-		}
+	}
+	if strings.Count(js, "window.open(") != 1 {
+		t.Error("app.js opens windows elsewhere")
 	}
 }
