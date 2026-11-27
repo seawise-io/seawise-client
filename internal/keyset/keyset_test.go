@@ -350,8 +350,8 @@ func TestParseRoots(t *testing.T) {
 	if b := Pinned(); strings.TrimSpace(string(b)) != string(b) {
 		t.Fatal("pinned roots not trimmed")
 	}
-	if rs, err := ParseRoots(Pinned()); err != nil || rs != nil {
-		t.Fatalf("production roots placeholder: %v %v", rs, err)
+	if rs, err := ParseRoots(Pinned()); err != nil || len(rs) != 2 {
+		t.Fatalf("production roots: %v %v", rs, err)
 	}
 }
 

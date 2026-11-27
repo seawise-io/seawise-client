@@ -12,9 +12,8 @@ import (
 //go:embed root/production.json
 var productionRoot []byte
 
-// productionURL is the static host serving the release repository. Empty
-// until the hosting is chosen.
-const productionURL = ""
+// productionURL is the static host serving the release repository.
+const productionURL = "https://seawise-io.github.io/seawise-updates"
 
 // Pinned returns the production root and repository URL built into this
 // binary. Either may be empty, and then New returns ErrNotConfigured.
