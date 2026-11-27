@@ -7,6 +7,10 @@ import "time"
 // Default "dev" is used for local/development builds.
 var Version = "dev"
 
+// BuildEpoch is the source date of the build in unix seconds, injected via
+// ldflags from SOURCE_DATE_EPOCH; empty in development builds.
+var BuildEpoch = ""
+
 // Timing constants for connection management
 const (
 	HeartbeatInterval   = 30 * time.Second // API may override via next_heartbeat_ms

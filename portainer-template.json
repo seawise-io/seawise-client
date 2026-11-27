@@ -1,0 +1,13 @@
+{
+  "type": 3,
+  "title": "Seawise.io Client",
+  "description": "Share self-hosted apps with family and friends, no port forwarding. Client for the Seawise.io service (free account required).",
+  "categories": ["Networking"],
+  "platform": "linux",
+  "logo": "https://raw.githubusercontent.com/seawise-io/seawise-client/main/.github/assets/icon.png",
+  "repository": {
+    "url": "https://github.com/seawise-io/seawise-client",
+    "stackfile": "deploy/portainer/docker-compose.yml"
+  },
+  "note": "Uses host networking so the client can reach apps on this host at localhost:PORT. Open <code>http://&lt;your-host&gt;:8082</code> and set a password within 5 minutes of the container starting. Requires a free account at <a href=\"https://seawise.io\" target=\"_blank\">seawise.io</a>."
+}

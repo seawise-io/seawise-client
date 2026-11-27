@@ -1,0 +1,311 @@
+{
+  "format": "relay",
+  "note": "TEST ONLY. Every key in this file is derived from a published seed; never use these keys outside tests.",
+  "keys": [
+    {
+      "name": "edge-us-east-1",
+      "seed": "e35b8a7761cefe5638786ca58772471ba7cd60cc27748fcf2efe928be612d766",
+      "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI",
+      "kid": "UQ2ttPbjBtNbT_c3ULYGOGuCXkkYbGqHGxcaD90W5H8"
+    },
+    {
+      "name": "edge-us-east-2",
+      "seed": "5f8c192f492288ce9332020fb6de4ca8585eda294de6be89f41bead3d2e81a68",
+      "x": "80tU6DHgAz0QuAGl4i6Zfsq2kyCjCApYhamXpA4QJxE",
+      "kid": "PgSYVIvRLt12bNG6Dcht_7XU5KN6xc-89amPFqLaR8g"
+    },
+    {
+      "name": "edge-us-east-3",
+      "seed": "d575b75db2a7411a8e95928e81f6207c4b4ad0331de4d38b272e6c720f05d4ba",
+      "x": "xVam75_RM1VsPt79qzlM_ujYZLQ3_zrXJcA1FhlFFL0",
+      "kid": "p3tGkGFAhxDO6DVWiIGHNYx2aaRYCsxU-iylUg0vF8E"
+    },
+    {
+      "name": "edge-rogue",
+      "seed": "a89dd618ec88b6d063d856e4b900ee826163a45584de904063c061bfd2ef0e66",
+      "x": "ox5YdnRQJt3RgomM1AQ4kc7DdNyYcZw8hQAAiaJ00IQ",
+      "kid": "4N4rka57ghQRzlC56L8re3noz0FJLaNdyvKXDeWqTAI"
+    }
+  ],
+  "cases": [
+    {
+      "name": "good",
+      "kind": "peer",
+      "context": {
+        "acceptor_check": "ok",
+        "dialed": "edge-us-east-2",
+        "edge_keys": [
+          {
+            "edge_id": "edge-us-east-1",
+            "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI"
+          },
+          {
+            "edge_id": "edge-us-east-2",
+            "x": "80tU6DHgAz0QuAGl4i6Zfsq2kyCjCApYhamXpA4QJxE"
+          }
+        ],
+        "transcript": {
+          "dialer_hello": "DmVkZ2UtdXMtZWFzdC0xYSWVXBsp7UZv81ZyjFAwH6q4ycvelLewNHwyD4rbO5M=",
+          "acceptor_hello": "DmVkZ2UtdXMtZWFzdC0y48H+KZXIP5PxP5zZ2qkbxnxTzF1JMqOzP/tmHEB06EQ=",
+          "dialer_sig": "ZS93GqVHSyP40vIE9yV821G4gZLDcMKhF3zkhqT6tSIajwlcARYN7dx+DufGpA+wLZPMUqmFLZfXoSkgB6hBBw==",
+          "acceptor_sig": "p/5iPIU2wnTqDQWda4VsfAMNS7y4J2LkUCQ0GIki1BUJmPZnXVlLoW/89CP68qUU1WJ5fYykqRAw5lg4JdVECg=="
+        }
+      },
+      "expect": "ok",
+      "result": {
+        "acceptor_message": "736561776973652d72656c61792f3100656467652d75732d656173742d31656467652d75732d656173742d326125955c1b29ed466ff356728c50301faab8c9cbde94b7b0347c320f8adb3b93e3c1fe2995c83f93f13f9cd9daa91bc67c53cc5d4932a3b33ffb661c4074e84402",
+        "dialer_message": "736561776973652d72656c61792f3100656467652d75732d656173742d31656467652d75732d656173742d326125955c1b29ed466ff356728c50301faab8c9cbde94b7b0347c320f8adb3b93e3c1fe2995c83f93f13f9cd9daa91bc67c53cc5d4932a3b33ffb661c4074e84401"
+      }
+    },
+    {
+      "name": "wrong-key",
+      "kind": "peer",
+      "context": {
+        "acceptor_check": "bad_signature",
+        "dialed": "edge-us-east-2",
+        "edge_keys": [
+          {
+            "edge_id": "edge-us-east-1",
+            "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI"
+          },
+          {
+            "edge_id": "edge-us-east-2",
+            "x": "80tU6DHgAz0QuAGl4i6Zfsq2kyCjCApYhamXpA4QJxE"
+          }
+        ],
+        "transcript": {
+          "dialer_hello": "DmVkZ2UtdXMtZWFzdC0xYSWVXBsp7UZv81ZyjFAwH6q4ycvelLewNHwyD4rbO5M=",
+          "acceptor_hello": "DmVkZ2UtdXMtZWFzdC0y48H+KZXIP5PxP5zZ2qkbxnxTzF1JMqOzP/tmHEB06EQ=",
+          "dialer_sig": "/FgDkmyMSLuNfUQwNNdMeNCy92P96WBdNQGwZXq+nqUZTAo809Ge/QMPKhfG3/l5GOTdIIedD6X/yqz4Rd59Dw==",
+          "acceptor_sig": "t/4RLQXF4A9TLdMKG9WFJUkEeE7K217t24+mhJsU7LJ5vQwqyJvBxjnufMgRTlSak0EzVlkIpOd/W1jreSW5DQ=="
+        }
+      },
+      "expect": "bad_signature"
+    },
+    {
+      "name": "swapped-roles",
+      "kind": "peer",
+      "context": {
+        "acceptor_check": "bad_signature",
+        "dialed": "edge-us-east-2",
+        "edge_keys": [
+          {
+            "edge_id": "edge-us-east-1",
+            "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI"
+          },
+          {
+            "edge_id": "edge-us-east-2",
+            "x": "80tU6DHgAz0QuAGl4i6Zfsq2kyCjCApYhamXpA4QJxE"
+          }
+        ],
+        "transcript": {
+          "dialer_hello": "DmVkZ2UtdXMtZWFzdC0xYSWVXBsp7UZv81ZyjFAwH6q4ycvelLewNHwyD4rbO5M=",
+          "acceptor_hello": "DmVkZ2UtdXMtZWFzdC0y48H+KZXIP5PxP5zZ2qkbxnxTzF1JMqOzP/tmHEB06EQ=",
+          "dialer_sig": "XRMEePmE23YC8YGkiBs9Qh6kqhnoGlniovyOXZpZXG/wEOx7AoE3A4RgtdpA3u7vtTdpMlHq5KiD54ZoTt36AA==",
+          "acceptor_sig": "YkFOyQa/iRTeJ2+K/aBvr8plGyRUmQGfwcaO9USAvlkhawGhvipnVdD90x+FLl9WhY+J6rwFAPWadAYKAO6YCg=="
+        }
+      },
+      "expect": "bad_signature"
+    },
+    {
+      "name": "replayed-nonce",
+      "kind": "peer",
+      "context": {
+        "acceptor_check": "bad_signature",
+        "dialed": "edge-us-east-2",
+        "edge_keys": [
+          {
+            "edge_id": "edge-us-east-1",
+            "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI"
+          },
+          {
+            "edge_id": "edge-us-east-2",
+            "x": "80tU6DHgAz0QuAGl4i6Zfsq2kyCjCApYhamXpA4QJxE"
+          }
+        ],
+        "transcript": {
+          "dialer_hello": "DmVkZ2UtdXMtZWFzdC0xYSWVXBsp7UZv81ZyjFAwH6q4ycvelLewNHwyD4rbO5M=",
+          "acceptor_hello": "DmVkZ2UtdXMtZWFzdC0y48H+KZXIP5PxP5zZ2qkbxnxTzF1JMqOzP/tmHEB06EQ=",
+          "dialer_sig": "GumA/a+xPibgMk0XpaYR21Jws7zfmcqKv+SYake7Fxc6gWBhGnJGj5BuolksEVd2AQmAYfiTaXhVfIrZWogwCw==",
+          "acceptor_sig": "bqsQXgXcFR8Bw01CMj2t2Bvkl/dP7Cr/u524GLJn0qGU58WwY4m/4kRvDDrIJOOS0+XmAy9oz5qkY4uX4vPpDA=="
+        }
+      },
+      "expect": "bad_signature"
+    },
+    {
+      "name": "reflected-nonce",
+      "kind": "peer",
+      "context": {
+        "acceptor_check": "reflected_nonce",
+        "dialed": "edge-us-east-2",
+        "edge_keys": [
+          {
+            "edge_id": "edge-us-east-1",
+            "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI"
+          },
+          {
+            "edge_id": "edge-us-east-2",
+            "x": "80tU6DHgAz0QuAGl4i6Zfsq2kyCjCApYhamXpA4QJxE"
+          }
+        ],
+        "transcript": {
+          "dialer_hello": "DmVkZ2UtdXMtZWFzdC0xYSWVXBsp7UZv81ZyjFAwH6q4ycvelLewNHwyD4rbO5M=",
+          "acceptor_hello": "DmVkZ2UtdXMtZWFzdC0yYSWVXBsp7UZv81ZyjFAwH6q4ycvelLewNHwyD4rbO5M=",
+          "dialer_sig": "hx3jf3bhJMEr5xCCm4kmpX05JJrCJJLBItcfP5cGm4/c7cjPZeoMSoQW3y69klui2/mk3SNFerApbitZtUnUBQ==",
+          "acceptor_sig": "HKKT8rV9raUFvG7rInMZeO2abkdzrijeE21R1IlVGPeuwFpu60G/rIsLim0TFfBvB/PujcjMP5fGwoFAldviBg=="
+        }
+      },
+      "expect": "reflected_nonce"
+    },
+    {
+      "name": "higher-ordinal-dials",
+      "kind": "peer",
+      "context": {
+        "acceptor_check": "dial_order",
+        "dialed": "edge-us-east-1",
+        "edge_keys": [
+          {
+            "edge_id": "edge-us-east-1",
+            "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI"
+          },
+          {
+            "edge_id": "edge-us-east-2",
+            "x": "80tU6DHgAz0QuAGl4i6Zfsq2kyCjCApYhamXpA4QJxE"
+          }
+        ],
+        "transcript": {
+          "dialer_hello": "DmVkZ2UtdXMtZWFzdC0yYSWVXBsp7UZv81ZyjFAwH6q4ycvelLewNHwyD4rbO5M=",
+          "acceptor_hello": "DmVkZ2UtdXMtZWFzdC0x48H+KZXIP5PxP5zZ2qkbxnxTzF1JMqOzP/tmHEB06EQ=",
+          "dialer_sig": "8Z/ywy8ZviZzWBh+zDbmFLh3EJsX7A7vHISWoMcn7e2gaZOkyMw9qNeGIVCa4sQOsZPNHED6a6tRNoWj2S0MCw==",
+          "acceptor_sig": "RTfj5jV+F75wR9R9T6qPNRyZLY0Eo4lqagjx1KoYZ4M2KEr+dSfTmyu99n6bmqdXLK7zETfzhhHbHV+Sc1DqDg=="
+        }
+      },
+      "expect": "dial_order"
+    },
+    {
+      "name": "peer-claims-own-id",
+      "kind": "peer",
+      "context": {
+        "acceptor_check": "wrong_peer",
+        "dialed": "edge-us-east-2",
+        "edge_keys": [
+          {
+            "edge_id": "edge-us-east-1",
+            "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI"
+          },
+          {
+            "edge_id": "edge-us-east-2",
+            "x": "80tU6DHgAz0QuAGl4i6Zfsq2kyCjCApYhamXpA4QJxE"
+          }
+        ],
+        "transcript": {
+          "dialer_hello": "DmVkZ2UtdXMtZWFzdC0xYSWVXBsp7UZv81ZyjFAwH6q4ycvelLewNHwyD4rbO5M=",
+          "acceptor_hello": "DmVkZ2UtdXMtZWFzdC0x48H+KZXIP5PxP5zZ2qkbxnxTzF1JMqOzP/tmHEB06EQ=",
+          "dialer_sig": "ZS93GqVHSyP40vIE9yV821G4gZLDcMKhF3zkhqT6tSIajwlcARYN7dx+DufGpA+wLZPMUqmFLZfXoSkgB6hBBw==",
+          "acceptor_sig": "YzVV0FIdEJ4DYRgotkNFBqEcDI4QFEZQ8YytXID9b4h/YRyzo/RlNI539VIe+hPPxSfFTnOomW+ehjABSb3ECA=="
+        }
+      },
+      "expect": "wrong_peer"
+    },
+    {
+      "name": "acceptor-not-dialed",
+      "kind": "peer",
+      "context": {
+        "acceptor_check": "ok",
+        "dialed": "edge-us-east-2",
+        "edge_keys": [
+          {
+            "edge_id": "edge-us-east-1",
+            "x": "giYxZUn1n6S9zngwc4OD5yQXVc5wnTjYw0JLlrkQdUI"
+          },
+          {
+            "edge_id": "edge-us-east-2",
+            "x": "80tU6DHgAz0QuAGl4i6Zfsq2kyCjCApYhamXpA4QJxE"
+          }
+        ],
+        "transcript": {
+          "dialer_hello": "DmVkZ2UtdXMtZWFzdC0xYSWVXBsp7UZv81ZyjFAwH6q4ycvelLewNHwyD4rbO5M=",
+          "acceptor_hello": "DmVkZ2UtdXMtZWFzdC0z48H+KZXIP5PxP5zZ2qkbxnxTzF1JMqOzP/tmHEB06EQ=",
+          "dialer_sig": "E8nTabGatSelkQk0R3Pe5/o87sy4lJxe18RNFnZ2wKT39ihrDIdw1E0VXx7+B47+ratZcP9+1UeUZs02kgjyBQ==",
+          "acceptor_sig": "BSFTSv/jqwv3WQTlyluKlZIEyrtw66LLYrD4J/qohUtq7BTJSWULUocvmrUWfVC19ZjgvG+khlkJCAywk3g7Dw=="
+        }
+      },
+      "expect": "wrong_peer"
+    },
+    {
+      "name": "peer-hello-valid",
+      "kind": "peer_hello",
+      "input": "DmVkZ2UtdXMtZWFzdC0xYSWVXBsp7UZv81ZyjFAwH6q4ycvelLewNHwyD4rbO5M=",
+      "expect": "ok"
+    },
+    {
+      "name": "peer-hello-truncated",
+      "kind": "peer_hello",
+      "input": "DmVkZ2UtdXMtZWFzdC0xYSWVXBsp7UZv81ZyjFAwH6q4ycvelLewNHwyD4rbOw==",
+      "expect": "malformed"
+    },
+    {
+      "name": "peer-hello-zero-length",
+      "kind": "peer_hello",
+      "input": "AGEllVwbKe1Gb/NWcoxQMB+quMnL3pS3sDR8Mg+K2zuT",
+      "expect": "malformed"
+    },
+    {
+      "name": "peer-hello-64-length",
+      "kind": "peer_hello",
+      "input": "QAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+      "expect": "malformed"
+    },
+    {
+      "name": "peer-hello-bad-id",
+      "kind": "peer_hello",
+      "input": "BmVkZ2UtMWEllVwbKe1Gb/NWcoxQMB+quMnL3pS3sDR8Mg+K2zuT",
+      "expect": "malformed"
+    },
+    {
+      "name": "prefix-valid",
+      "kind": "relay_prefix",
+      "input": "ACgIARIQPyqcHlt9To+aCxwtPk9aaxgHIg5lZGdlLXVzLWVhc3QtMSgB",
+      "context": {
+        "peer": "edge-us-east-1"
+      },
+      "expect": "ok"
+    },
+    {
+      "name": "prefix-hop-2",
+      "kind": "relay_prefix",
+      "input": "ACgIARIQPyqcHlt9To+aCxwtPk9aaxgHIg5lZGdlLXVzLWVhc3QtMSgC",
+      "context": {
+        "peer": "edge-us-east-1"
+      },
+      "expect": "bad_value"
+    },
+    {
+      "name": "prefix-wrong-ingress",
+      "kind": "relay_prefix",
+      "input": "ACgIARIQPyqcHlt9To+aCxwtPk9aaxgHIg5lZGdlLXVzLWVhc3QtMSgB",
+      "context": {
+        "peer": "edge-us-east-2"
+      },
+      "expect": "wrong_peer"
+    },
+    {
+      "name": "prefix-version-2",
+      "kind": "relay_prefix",
+      "input": "ACgIAhIQPyqcHlt9To+aCxwtPk9aaxgHIg5lZGdlLXVzLWVhc3QtMSgB",
+      "context": {
+        "peer": "edge-us-east-1"
+      },
+      "expect": "bad_value"
+    },
+    {
+      "name": "prefix-epoch-0",
+      "kind": "relay_prefix",
+      "input": "ACYIARIQPyqcHlt9To+aCxwtPk9aayIOZWRnZS11cy1lYXN0LTEoAQ==",
+      "context": {
+        "peer": "edge-us-east-1"
+      },
+      "expect": "bad_value"
+    }
+  ]
+}

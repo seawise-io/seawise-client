@@ -1,0 +1,13 @@
+{
+  "note": "TEST ONLY. Seeds are SHA-256(\"seawise test vector key: \" + name); never use these keys outside tests. Generated with seawise-client internal/tufrepo at fa03847.",
+  "seeds": {
+    "tuf-rogue": "14807f8c61c1461afa93d616ef2291624ff204f673f312644811af5e91caafe0",
+    "tuf-root-1": "087e343fada50d5e3932d698f957ce76838d3393b0b484295bcb7450ebbfd5bf",
+    "tuf-root-2": "e3342ce3043ec61e484f0931d0390789a4a434e5ec960dd711b31e9fbfe157aa",
+    "tuf-root-3": "8d6fead64192a51ededf21c7c87009c8865685eca8f03d33a45a34a5c7921076",
+    "tuf-snapshot": "c0a2d6b84cda178a2ed6bf117a0e9ebed5d18010ca9de26bc1235e677ba4c64b",
+    "tuf-targets": "e9b153eb14add2b85749e2f540256dfc09297f1efbae6fd5835f8496238e63d4",
+    "tuf-timestamp": "8ff14ac52916b2a39410d0fadeb8f58452836b0d5c11cfcb6ea6331924027b24",
+    "tuf-timestamp-2": "c4f82c65c0dc0f09d6eddaa793da47e51fd594fa0de1fb0572b4ab23d6c14256"
+  }
+}

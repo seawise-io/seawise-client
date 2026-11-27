@@ -1,0 +1,29 @@
+{
+  "machine_id": "0123456789abcdef0123456789abcdef",
+  "machine_name": "nas-D",
+  "services": [
+    {
+      "local_id": "11111111111111111111111111111111",
+      "name": "jellyfin",
+      "host": "192.168.1.20",
+      "port": 8096,
+      "server_service_id": "00000000-0000-4000-8000-0000000000c1",
+      "subdomain": "jellyfin-D"
+    },
+    {
+      "local_id": "22222222222222222222222222222222",
+      "name": "kuma",
+      "host": "uptime-kuma",
+      "port": 3001,
+      "icon_url": "https://example.invalid/kuma.png"
+    },
+    {
+      "local_id": "33333333333333333333333333333333",
+      "name": "public-site",
+      "host": "203.0.113.10",
+      "port": 443,
+      "server_service_id": "00000000-0000-4000-8000-0000000000c3",
+      "subdomain": "site-D"
+    }
+  ]
+}
